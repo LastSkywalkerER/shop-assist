@@ -6,6 +6,7 @@ interface ConfirmModalProps {
   confirmLabel?: string
   cancelLabel?: string
   destructive?: boolean
+  confirmDisabled?: boolean
   onConfirm: () => void
   onCancel: () => void
 }
@@ -16,6 +17,7 @@ export function ConfirmModal({
   confirmLabel = 'Подтвердить',
   cancelLabel = 'Отмена',
   destructive,
+  confirmDisabled,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -51,7 +53,8 @@ export function ConfirmModal({
           </button>
           <button
             onClick={onConfirm}
-            className={`flex-1 py-3 text-[15px] font-semibold active:bg-bg-secondary transition-colors ${
+            disabled={confirmDisabled}
+            className={`flex-1 py-3 text-[15px] font-semibold active:bg-bg-secondary transition-colors disabled:opacity-50 disabled:pointer-events-none ${
               destructive ? 'text-destructive' : 'text-primary-text'
             }`}
           >
