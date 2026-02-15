@@ -209,13 +209,14 @@ async function searchPhoton(
 }
 
 // ─── Geoapify ───
-const GEOAPIFY_KEY = '1c92fc2b9c8d4870aca8bbc949b63f3f'
+const GEOAPIFY_KEY = import.meta.env.VITE_GEOAPIFY_KEY || ''
 
 async function searchGeoapify(
   apiQuery: string,
   city: City,
   signal: AbortSignal,
 ): Promise<OsmResult[]> {
+  if (!GEOAPIFY_KEY) return []
   // Use circle filter around city center instead of just country
   const radiusKm = Math.round(city.radius / 1000)
   const params = new URLSearchParams({
