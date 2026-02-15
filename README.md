@@ -2,6 +2,8 @@
 
 > Offline-first Progressive Web App for tracking product prices and quality across stores. Built for Telegram Mini Apps with full dark mode support.
 
+### [Live Demo](https://shop-assist.sky-tehnol.uk/)
+
 <p align="center">
   <img src="docs/screenshots/dashboard.png" width="260" alt="Dashboard — light mode" />
   &nbsp;&nbsp;
