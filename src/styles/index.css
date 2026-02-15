@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: var(--tg-theme-bg-color);
+  --color-bg-secondary: var(--tg-theme-secondary-bg-color);
+  --color-surface: var(--tg-theme-section-bg-color);
+  --color-text: var(--tg-theme-text-color);
+  --color-text-hint: var(--tg-theme-hint-color);
+  --color-text-subtitle: var(--tg-theme-subtitle-text-color);
+  --color-primary: var(--tg-theme-button-color);
+  --color-primary-text: var(--tg-theme-accent-text-color);
+  --color-on-primary: var(--tg-theme-button-text-color);
+  --color-link: var(--tg-theme-link-color);
+  --color-section-header: var(--tg-theme-section-header-text-color);
+  --color-separator: var(--tg-theme-section-separator-color);
+  --color-destructive: var(--tg-theme-destructive-text-color);
+  --color-header-bg: var(--tg-theme-header-bg-color);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background-color: var(--color-bg-secondary);
+    color: var(--color-text);
+    line-height: 1.47;
+    font-size: 15px;
+    min-height: 100dvh;
+  }
+
+  button {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+}

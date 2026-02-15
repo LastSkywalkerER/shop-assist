@@ -1,0 +1,53 @@
+import { useState } from 'react'
+import { Input } from '../shared/Input'
+
+interface ProductFormProps {
+  onSave: (data: { name: string; manufacturer?: string; packageVolume?: string; category?: string }) => void
+  onCancel: () => void
+}
+
+export function ProductForm({ onSave, onCancel }: ProductFormProps) {
+  const [name, setName] = useState('')
+  const [manufacturer, setManufacturer] = useState('')
+  const [packageVolume, setPackageVolume] = useState('')
+  const [category, setCategory] = useState('')
+
+  const handleSubmit = () => {
+    if (!name.trim()) return
+    onSave({
+      name: name.trim(),
+      manufacturer: manufacturer.trim() || undefined,
+      packageVolume: packageVolume.trim() || undefined,
+      category: category.trim() || undefined,
+    })
+  }
+
+  return (
+    <div className="bg-surface rounded-2xl p-4 space-y-3">
+      <div className="text-[13px] text-section-header font-medium pl-1">
+        Новый продукт
+      </div>
+      <Input label="Название" value={name} onChange={(e) => setName(e.currentTarget.value)} placeholder="Молоко" />
+      <Input label="Производитель" value={manufacturer} onChange={(e) => setManufacturer(e.currentTarget.value)} placeholder="Савушкин" />
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="Объём" value={packageVolume} onChange={(e) => setPackageVolume(e.currentTarget.value)} placeholder="1л" />
+        <Input label="Категория" value={category} onChange={(e) => setCategory(e.currentTarget.value)} placeholder="Молочные" />
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={handleSubmit}
+          disabled={!name.trim()}
+          className="flex-1 bg-primary text-on-primary py-2.5 rounded-xl font-medium text-[15px] disabled:opacity-30 active:opacity-80 transition-opacity"
+        >
+          Создать
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-5 py-2.5 text-primary-text text-[15px] font-medium rounded-xl active:bg-primary/10 transition-colors"
+        >
+          Отмена
+        </button>
+      </div>
+    </div>
+  )
+}
