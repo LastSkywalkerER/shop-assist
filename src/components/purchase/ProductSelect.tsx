@@ -4,12 +4,13 @@ import { ProductForm } from './ProductForm'
 
 interface ProductSelectProps {
   products: ProductDocument[]
+  categories: string[]
   selected: ProductDocument | null
   onSelect: (product: ProductDocument) => void
   onCreate: (data: { name: string; manufacturer?: string; packageVolume?: string; category?: string }) => void
 }
 
-export function ProductSelect({ products, selected, onSelect, onCreate }: ProductSelectProps) {
+export function ProductSelect({ products, categories, selected, onSelect, onCreate }: ProductSelectProps) {
   const [query, setQuery] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
@@ -53,6 +54,7 @@ export function ProductSelect({ products, selected, onSelect, onCreate }: Produc
   if (showForm) {
     return (
       <ProductForm
+        categories={categories}
         onSave={(data) => {
           onCreate(data)
           setShowForm(false)

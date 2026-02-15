@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Input } from '../shared/Input'
+import { CategorySelect } from '../shared/CategorySelect'
 
 interface ProductFormProps {
+  categories: string[]
   onSave: (data: { name: string; manufacturer?: string; packageVolume?: string; category?: string }) => void
   onCancel: () => void
 }
 
-export function ProductForm({ onSave, onCancel }: ProductFormProps) {
+export function ProductForm({ categories, onSave, onCancel }: ProductFormProps) {
   const [name, setName] = useState('')
   const [manufacturer, setManufacturer] = useState('')
   const [packageVolume, setPackageVolume] = useState('')
@@ -31,7 +33,12 @@ export function ProductForm({ onSave, onCancel }: ProductFormProps) {
       <Input label="Производитель" value={manufacturer} onChange={(e) => setManufacturer(e.currentTarget.value)} placeholder="Савушкин" />
       <div className="grid grid-cols-2 gap-3">
         <Input label="Объём" value={packageVolume} onChange={(e) => setPackageVolume(e.currentTarget.value)} placeholder="1л" />
-        <Input label="Категория" value={category} onChange={(e) => setCategory(e.currentTarget.value)} placeholder="Молочные" />
+        <CategorySelect
+          categories={categories}
+          value={category}
+          onChange={setCategory}
+          inputClassName="w-full bg-surface rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
+        />
       </div>
       <div className="flex gap-2 pt-1">
         <button

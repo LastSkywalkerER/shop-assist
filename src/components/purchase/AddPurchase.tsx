@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type { ProductDocument, StoreDocument, PurchaseDocument } from '../../db/types'
@@ -24,6 +24,14 @@ export function AddPurchase() {
   const [notes, setNotes] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
   const [saving, setSaving] = useState(false)
+
+  const categories = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of products) {
+      if (p.category) set.add(p.category)
+    }
+    return Array.from(set).sort()
+  }, [products])
 
   const canSubmit = selectedProduct && selectedStore && price && parseFloat(price) > 0
 
@@ -109,6 +117,7 @@ export function AddPurchase() {
       {/* Product selector */}
       <ProductSelect
         products={products}
+        categories={categories}
         selected={selectedProduct}
         onSelect={setSelectedProduct}
         onCreate={handleCreateProduct}

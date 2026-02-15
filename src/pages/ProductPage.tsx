@@ -4,12 +4,14 @@ import { useRxCollection, useRxQuery } from '../db/hooks'
 import type { ProductDocument, StoreDocument, PurchaseDocument } from '../db/types'
 import { Rating } from '../components/shared/Rating'
 import { EditPurchase } from '../components/purchase/EditPurchase'
+import { EditProduct } from '../components/purchase/EditProduct'
 import { showBackButton } from '../telegram/backButton'
 
 export function ProductPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingProduct, setEditingProduct] = useState(false)
 
   useEffect(() => {
     return showBackButton(() => navigate('/'))
@@ -34,6 +36,14 @@ export function ProductPage() {
     [purchases, id],
   )
 
+  const categories = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of products) {
+      if (p.category) set.add(p.category)
+    }
+    return Array.from(set).sort()
+  }, [products])
+
   if (!product) {
     return (
       <div className="p-4 text-text-hint text-[15px]">Продукт не найден</div>
@@ -45,20 +55,39 @@ export function ProductPage() {
   return (
     <div className="pb-10">
       {/* Product header */}
-      <div className="p-4 pb-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-[20px] font-bold text-text">{product.name}</h2>
-          <button
-            onClick={() => navigate('/')}
-            className="text-primary-text text-[15px] font-medium active:opacity-60 transition-opacity"
-          >
-            Назад
-          </button>
+      {editingProduct && productsCol ? (
+        <div className="p-4 pb-2">
+          <EditProduct
+            product={product}
+            collection={productsCol}
+            categories={categories}
+            onDone={() => setEditingProduct(false)}
+          />
         </div>
-        {subtitle && (
-          <div className="text-[13px] text-text-hint mt-0.5">{subtitle}</div>
-        )}
-      </div>
+      ) : (
+        <div
+          className="p-4 pb-2 active:bg-bg-secondary/30 transition-colors cursor-pointer"
+          onClick={() => setEditingProduct(true)}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <h2 className="text-[20px] font-bold text-text truncate">{product.name}</h2>
+              <svg className="text-text-hint/40 shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+              </svg>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); navigate('/') }}
+              className="text-primary-text text-[15px] font-medium active:opacity-60 transition-opacity shrink-0 ml-2"
+            >
+              Назад
+            </button>
+          </div>
+          {subtitle && (
+            <div className="text-[13px] text-text-hint mt-0.5">{subtitle}</div>
+          )}
+        </div>
+      )}
 
       {/* Purchases header */}
       <div className="px-4 pt-3 pb-2">
