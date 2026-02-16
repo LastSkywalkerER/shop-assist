@@ -9,6 +9,8 @@ export interface ReceiptItem {
   manufacturer?: string
   packageVolume?: string
   category?: string
+  qualityRating?: number
+  notes?: string
   addToProducts?: boolean
 }
 
@@ -167,6 +169,8 @@ function ReceiptItemForm({ item, productCategories, onSave, onCancel }: ReceiptI
   const [manufacturer, setManufacturer] = useState(item?.manufacturer || '')
   const [packageVolume, setPackageVolume] = useState(item?.packageVolume || '')
   const [category, setCategory] = useState(item?.category || '')
+  const [qualityRating, setQualityRating] = useState(item?.qualityRating || 0)
+  const [notes, setNotes] = useState(item?.notes || '')
   const [addToProducts, setAddToProducts] = useState(item?.addToProducts || false)
 
   const handleSubmit = () => {
@@ -182,6 +186,8 @@ function ReceiptItemForm({ item, productCategories, onSave, onCancel }: ReceiptI
       manufacturer: manufacturer.trim() || undefined,
       packageVolume: packageVolume.trim() || undefined,
       category: category.trim() || undefined,
+      qualityRating: qualityRating > 0 ? qualityRating : undefined,
+      notes: notes.trim() || undefined,
       addToProducts,
     })
   }
@@ -236,6 +242,39 @@ function ReceiptItemForm({ item, productCategories, onSave, onCancel }: ReceiptI
         onChange={(e) => setAmount(e.currentTarget.value)}
         placeholder="3.50"
       />
+
+      {/* Quality Rating */}
+      <div>
+        <label className="block text-[13px] text-section-header font-medium mb-1.5 pl-1">
+          Оценка качества
+        </label>
+        <div className="flex gap-2 px-1">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <button
+              key={star}
+              type="button"
+              onClick={() => setQualityRating(qualityRating === star ? 0 : star)}
+              className="text-[24px] transition-all active:scale-110"
+            >
+              {star <= qualityRating ? '⭐' : '☆'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div>
+        <label className="block text-[13px] text-section-header font-medium mb-1.5 pl-1">
+          Комментарий
+        </label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.currentTarget.value)}
+          placeholder="Заметки о продукте..."
+          className="w-full bg-bg-secondary rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow resize-none"
+          rows={2}
+        />
+      </div>
 
       {/* Add to products checkbox */}
       <div className="flex items-center gap-3 px-1">

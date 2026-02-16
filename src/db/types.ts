@@ -47,6 +47,7 @@ export interface ExpenseDocument {
   amount: number
   date: string
   categoryId?: string
+  notes?: string
   createdAt: string
   updatedAt: string
 }
@@ -66,6 +67,8 @@ export interface ReceiptItemDocument {
   manufacturer?: string
   packageVolume?: string
   category?: string
+  qualityRating?: number
+  notes?: string
   convertedToPurchaseId?: string
   createdAt: string
   updatedAt: string

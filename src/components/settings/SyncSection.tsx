@@ -55,9 +55,20 @@ export function SyncSection() {
           </>
         ) : (
           <>
-            <div className="mb-4">
+            <div className="mb-4 flex items-center gap-3">
+              {user?.photo_url ? (
+                <img
+                  src={user.photo_url}
+                  alt="Avatar"
+                  className="w-10 h-10 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-[20px]">
+                  👤
+                </div>
+              )}
               <p className="text-[15px] text-text font-medium">
-                {user?.username ? `👤 @${user.username}` : `👤 ${user?.first_name}`}
+                {user?.username ? `@${user.username}` : user?.first_name}
               </p>
             </div>
 

@@ -36,6 +36,7 @@ export function EditExpense({
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryDocument | null>(
     expense.categoryId ? categories.find((c) => c.id === expense.categoryId) || null : null
   )
+  const [notes, setNotes] = useState(expense.notes || '')
   const [saving, setSaving] = useState(false)
   const [validationError, setValidationError] = useState('')
 
@@ -44,7 +45,8 @@ export function EditExpense({
     selectedStore?.id !== expense.storeId ||
     parseFloat(amount) !== expense.amount ||
     new Date(date).toISOString() !== expense.date ||
-    selectedCategory?.id !== expense.categoryId
+    selectedCategory?.id !== expense.categoryId ||
+    notes.trim() !== (expense.notes || '')
 
   const canSubmit = (name.trim() || selectedStore) && amount && parseFloat(amount) > 0 && hasChanges
 
@@ -68,6 +70,7 @@ export function EditExpense({
           amount: parseFloat(parseFloat(amount).toFixed(2)),
           date: new Date(date).toISOString(),
           categoryId: selectedCategory?.id,
+          notes: notes.trim() || undefined,
           updatedAt: new Date().toISOString(),
         })
       }
@@ -101,6 +104,19 @@ export function EditExpense({
         onSelect={setSelectedCategory}
         onCreate={onCreateCategory}
       />
+
+      <div>
+        <label className="block text-[13px] text-section-header font-medium mb-1.5 pl-1">
+          Комментарий
+        </label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.currentTarget.value)}
+          placeholder="Дополнительная информация о расходе..."
+          className="w-full bg-surface rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow resize-none"
+          rows={2}
+        />
+      </div>
 
       {validationError && (
         <div className="bg-destructive/10 border border-destructive/30 rounded-xl px-4 py-3 text-[13px] text-destructive">

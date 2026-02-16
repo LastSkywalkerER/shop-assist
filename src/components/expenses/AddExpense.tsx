@@ -49,6 +49,7 @@ export function AddExpense() {
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryDocument | null>(null)
+  const [notes, setNotes] = useState('')
   const [attachments, setAttachments] = useState<AttachmentFile[]>([])
   const [receiptItems, setReceiptItems] = useState<ReceiptItem[]>([])
   const [saving, setSaving] = useState(false)
@@ -119,6 +120,7 @@ export function AddExpense() {
         amount: parseFloat(parseFloat(amount).toFixed(2)),
         date: new Date(date).toISOString(),
         categoryId: selectedCategory?.id,
+        notes: notes.trim() || undefined,
         createdAt: now,
         updatedAt: now,
       })
@@ -262,6 +264,20 @@ export function AddExpense() {
         onSelect={setSelectedCategory}
         onCreate={handleCreateCategory}
       />
+
+      {/* Notes/Comment */}
+      <div>
+        <label className="block text-[13px] text-section-header font-medium mb-1.5 pl-1">
+          Комментарий
+        </label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.currentTarget.value)}
+          placeholder="Дополнительная информация о расходе..."
+          className="w-full bg-surface rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow resize-none"
+          rows={2}
+        />
+      </div>
 
       {/* File upload */}
       <FileUpload attachments={attachments} onChange={setAttachments} />
