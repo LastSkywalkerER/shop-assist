@@ -8,6 +8,7 @@ import { getDatabase, type ShopAssistDatabase } from './db/database'
 import { DatabaseContext } from './db/hooks'
 import { AuthProvider } from './contexts/AuthContext'
 import { SyncProvider } from './contexts/SyncContext'
+import { ToastProvider } from './contexts/ToastContext'
 
 const isTelegram = initTelegramApp()
 if (!isTelegram) {
@@ -34,13 +35,15 @@ function Root() {
 
   return (
     <StrictMode>
-      <AuthProvider>
-        <DatabaseContext.Provider value={db}>
-          <SyncProvider>
-            <App />
-          </SyncProvider>
-        </DatabaseContext.Provider>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <DatabaseContext.Provider value={db}>
+            <SyncProvider>
+              <App />
+            </SyncProvider>
+          </DatabaseContext.Provider>
+        </AuthProvider>
+      </ToastProvider>
     </StrictMode>
   )
 }

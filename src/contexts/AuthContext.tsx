@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
-import { loginWithTelegram, logout as authLogout, getCurrentSession, getStoredUser, getStoredRoomId } from '../lib/supabase/auth'
+import { retrieveLaunchParams } from '@telegram-apps/sdk-react'
+import { loginWithTelegram, loginWithMiniApp, logout as authLogout, getCurrentSession, getStoredUser, getStoredRoomId } from '../lib/supabase/auth'
 import type { User, TelegramAuthData } from '../lib/supabase/types'
 
 interface AuthContextType {
@@ -18,10 +19,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roomId, setRoomId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Проверить сохраненную сессию при монтировании
+  // Проверить сохраненную сессию или авто-авторизоваться через Mini App
   useEffect(() => {
     const initAuth = async () => {
       try {
+        // Сначала проверить сохраненную сессию
         const session = await getCurrentSession()
         if (session) {
           const storedUser = getStoredUser()
@@ -30,7 +32,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (storedUser && storedRoomId) {
             setUser(storedUser)
             setRoomId(storedRoomId)
+            setIsLoading(false)
+            return
           }
+        }
+
+        // Если нет сессии, попробовать авто-авторизацию через Mini App
+        try {
+          const launchParams = retrieveLaunchParams()
+          const initDataRaw = (launchParams as any).initDataRaw
+          const initData = (launchParams as any).initData
+
+          if (initDataRaw && initData?.user) {
+            // Автоматическая авторизация через Mini App
+            const response = await loginWithMiniApp(initDataRaw)
+            setUser(response.user)
+            setRoomId(response.room_id)
+          }
+        } catch (miniAppError) {
+          // Не в Mini App или нет initData - это нормально для web версии
+          console.log('Not running in Mini App or no initData')
         }
       } catch (error) {
         console.error('Failed to restore session:', error)

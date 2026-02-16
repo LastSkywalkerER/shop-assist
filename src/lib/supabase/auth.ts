@@ -34,6 +34,37 @@ export async function loginWithTelegram(authData: TelegramAuthData): Promise<Aut
   return data
 }
 
+export async function loginWithMiniApp(initDataRaw: string): Promise<AuthResponse> {
+  const response = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ initDataRaw }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || 'Mini App authentication failed')
+  }
+
+  const data: AuthResponse = await response.json()
+
+  // Установить session в Supabase client
+  if (data.access_token && data.refresh_token) {
+    await supabase.auth.setSession({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+    })
+  }
+
+  // Сохранить данные в localStorage
+  localStorage.setItem('auth_user', JSON.stringify(data.user))
+  localStorage.setItem('auth_room_id', data.room_id)
+
+  return data
+}
+
 export async function logout(): Promise<void> {
   await supabase.auth.signOut()
   localStorage.removeItem('auth_user')

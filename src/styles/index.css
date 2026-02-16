@@ -15,6 +15,19 @@
   --color-separator: var(--tg-theme-section-separator-color);
   --color-destructive: var(--tg-theme-destructive-text-color);
   --color-header-bg: var(--tg-theme-header-bg-color);
+
+  --animate-slide-down: slide-down 0.3s ease-out;
+
+  @keyframes slide-down {
+    from {
+      transform: translate(-50%, -100%);
+      opacity: 0;
+    }
+    to {
+      transform: translate(-50%, 0);
+      opacity: 1;
+    }
+  }
 }
 
 @layer base {

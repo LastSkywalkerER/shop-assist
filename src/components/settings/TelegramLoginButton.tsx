@@ -1,18 +1,21 @@
 import { useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useToast } from '../../contexts/ToastContext'
 import type { TelegramAuthData } from '../../lib/supabase/types'
 
 export function TelegramLoginButton() {
   const { login } = useAuth()
+  const { showToast } = useToast()
 
   useEffect(() => {
     // Создать глобальную функцию для callback
     (window as any).onTelegramAuth = async (user: TelegramAuthData) => {
       try {
         await login(user)
+        showToast('Успешная авторизация!', 'success')
       } catch (error) {
         console.error('Login failed:', error)
-        alert('Ошибка авторизации. Попробуйте еще раз.')
+        showToast('Ошибка авторизации. Попробуйте еще раз.', 'error')
       }
     }
 
