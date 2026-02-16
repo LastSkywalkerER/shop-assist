@@ -40,18 +40,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Если нет сессии, попробовать авто-авторизацию через Mini App
         try {
           const launchParams = retrieveLaunchParams()
+          console.log('🔍 Launch params:', launchParams)
+
           const initDataRaw = (launchParams as any).initDataRaw
           const initData = (launchParams as any).initData
 
+          console.log('🔍 initDataRaw:', initDataRaw ? 'present' : 'missing')
+          console.log('🔍 initData:', initData)
+
           if (initDataRaw && initData?.user) {
+            console.log('✅ Mini App detected, auto-login starting...')
             // Автоматическая авторизация через Mini App
             const response = await loginWithMiniApp(initDataRaw)
+            console.log('✅ Auto-login successful:', response.user)
             setUser(response.user)
             setRoomId(response.room_id)
+          } else {
+            console.log('ℹ️ Not in Mini App or no user data')
           }
         } catch (miniAppError) {
           // Не в Mini App или нет initData - это нормально для web версии
-          console.log('Not running in Mini App or no initData')
+          console.log('ℹ️ Not running in Mini App or no initData:', miniAppError)
         }
       } catch (error) {
         console.error('Failed to restore session:', error)
