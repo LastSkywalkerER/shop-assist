@@ -14,14 +14,16 @@ export function transformRxDBToSupabase(
   doc: any,
   roomId: string
 ): SupabaseRow {
+  // Исключить camelCase поля перед spread
+  const { createdAt, updatedAt, _deleted: deleted, ...rest } = doc
+
   return {
     id: doc.id,
     room_id: roomId,
-    // RxDB использует ISO string, Supabase timestamptz - совместимо
-    created_at: doc.createdAt || doc.created_at,
-    updated_at: doc.updatedAt || doc.updated_at,
+    created_at: createdAt || doc.created_at,
+    updated_at: updatedAt || doc.updated_at,
     _deleted: doc._deleted || false,
-    ...doc,
+    ...rest,
   }
 }
 

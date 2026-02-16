@@ -39,24 +39,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Если нет сессии, попробовать авто-авторизацию через Mini App
         try {
-          const launchParams = retrieveLaunchParams()
-          console.log('🔍 Launch params:', launchParams)
+          // Попробовать несколько способов получить initData
+          let initDataRawValue: string | undefined
+          let hasUserData = false
 
-          const initDataRaw = (launchParams as any).initDataRaw
-          const initData = (launchParams as any).initData
+          // Способ 1: через retrieveLaunchParams
+          try {
+            const launchParams = retrieveLaunchParams() as Record<string, unknown>
+            console.log('🔍 Launch params:', launchParams)
+            initDataRawValue = launchParams.initDataRaw as string | undefined
+            hasUserData = !!(launchParams.initData as { user?: unknown })?.user
+            console.log('🔍 Method 1 - retrieveLaunchParams:', { initDataRaw: !!initDataRawValue, hasUser: hasUserData })
+          } catch (e) {
+            console.log('🔍 Method 1 failed:', e)
+          }
 
-          console.log('🔍 initDataRaw:', initDataRaw ? 'present' : 'missing')
-          console.log('🔍 initData:', initData)
+          // Способ 2: через window.Telegram.WebApp
+          if (!initDataRawValue && typeof window !== 'undefined') {
+            const windowTelegram = (window as { Telegram?: { WebApp?: Record<string, unknown> } }).Telegram
+            const webApp = windowTelegram?.WebApp
+            if (webApp) {
+              initDataRawValue = webApp.initData as string | undefined
+              hasUserData = !!(webApp.initDataUnsafe as { user?: unknown })?.user
+              console.log('🔍 Method 2 - window.Telegram.WebApp:', { initDataRaw: !!initDataRawValue, hasUser: hasUserData })
+            }
+          }
 
-          if (initDataRaw && initData?.user) {
+          if (initDataRawValue && hasUserData) {
             console.log('✅ Mini App detected, auto-login starting...')
+            console.log('🔍 initDataRaw length:', initDataRawValue.length)
             // Автоматическая авторизация через Mini App
-            const response = await loginWithMiniApp(initDataRaw)
+            const response = await loginWithMiniApp(initDataRawValue)
             console.log('✅ Auto-login successful:', response.user)
             setUser(response.user)
             setRoomId(response.room_id)
           } else {
-            console.log('ℹ️ Not in Mini App or no user data')
+            console.log('ℹ️ Not in Mini App or no user data', { initDataRaw: !!initDataRawValue, hasUser: hasUserData })
           }
         } catch (miniAppError) {
           // Не в Mini App или нет initData - это нормально для web версии
