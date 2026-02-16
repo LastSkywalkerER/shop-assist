@@ -1,11 +1,20 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
-import type { ExpenseDocument, StoreDocument, ExpenseCategoryDocument } from '../../db/types'
+import type {
+  ExpenseDocument,
+  StoreDocument,
+  ExpenseCategoryDocument,
+  ReceiptDocument,
+  ReceiptItemDocument,
+  ExpenseAttachmentDocument,
+} from '../../db/types'
 import { ExpenseNameAutocomplete } from './ExpenseNameAutocomplete'
 import { StoreSelect } from '../purchase/StoreSelect'
 import { ExpenseCategorySelect } from './ExpenseCategorySelect'
 import { Input } from '../shared/Input'
+import { FileUpload, type AttachmentFile } from './FileUpload'
+import { ReceiptItemsManager, type ReceiptItem } from './ReceiptItemsManager'
 
 export function AddExpense() {
   const navigate = useNavigate()
@@ -13,6 +22,9 @@ export function AddExpense() {
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const storesCol = useRxCollection<StoreDocument>('stores')
   const categoriesCol = useRxCollection<ExpenseCategoryDocument>('expenseCategories')
+  const receiptsCol = useRxCollection<ReceiptDocument>('receipts')
+  const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
+  const attachmentsCol = useRxCollection<ExpenseAttachmentDocument>('expenseAttachments')
 
   const expenses = useRxQuery(expensesCol)
   const stores = useRxQuery(storesCol)
@@ -23,6 +35,8 @@ export function AddExpense() {
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryDocument | null>(null)
+  const [attachments, setAttachments] = useState<AttachmentFile[]>([])
+  const [receiptItems, setReceiptItems] = useState<ReceiptItem[]>([])
   const [saving, setSaving] = useState(false)
   const [validationError, setValidationError] = useState('')
 
@@ -81,8 +95,11 @@ export function AddExpense() {
     setValidationError('')
     try {
       const now = new Date().toISOString()
+      const expenseId = crypto.randomUUID()
+
+      // 1. Insert expense
       await expensesCol.insert({
-        id: crypto.randomUUID(),
+        id: expenseId,
         name: name.trim() || undefined,
         storeId: selectedStore?.id,
         amount: parseFloat(parseFloat(amount).toFixed(2)),
@@ -91,6 +108,51 @@ export function AddExpense() {
         createdAt: now,
         updatedAt: now,
       })
+
+      // 2. Lazy create receipt if needed (has attachments or items)
+      const needsReceipt = attachments.length > 0 || receiptItems.length > 0
+      if (needsReceipt && receiptsCol) {
+        const receiptId = crypto.randomUUID()
+
+        // Create receipt
+        await receiptsCol.insert({
+          id: receiptId,
+          expenseId,
+          createdAt: now,
+          updatedAt: now,
+        })
+
+        // 3. Insert attachments
+        if (attachments.length > 0 && attachmentsCol) {
+          for (const attachment of attachments) {
+            await attachmentsCol.insert({
+              id: attachment.id,
+              receiptId,
+              fileName: attachment.fileName,
+              mimeType: attachment.mimeType,
+              dataUrl: attachment.dataUrl,
+              size: attachment.size,
+              createdAt: now,
+              updatedAt: now,
+            })
+          }
+        }
+
+        // 4. Insert receipt items
+        if (receiptItems.length > 0 && receiptItemsCol) {
+          for (const item of receiptItems) {
+            await receiptItemsCol.insert({
+              id: item.id,
+              receiptId,
+              name: item.name,
+              amount: item.amount,
+              createdAt: now,
+              updatedAt: now,
+            })
+          }
+        }
+      }
+
       navigate('/expenses')
     } catch (err) {
       console.error('Failed to save expense:', err)
@@ -140,6 +202,12 @@ export function AddExpense() {
         onSelect={setSelectedCategory}
         onCreate={handleCreateCategory}
       />
+
+      {/* File upload */}
+      <FileUpload attachments={attachments} onChange={setAttachments} />
+
+      {/* Receipt items */}
+      <ReceiptItemsManager items={receiptItems} onChange={setReceiptItems} />
 
       {/* Validation error */}
       {validationError && (

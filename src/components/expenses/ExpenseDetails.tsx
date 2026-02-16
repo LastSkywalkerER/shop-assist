@@ -11,6 +11,8 @@ import type {
 } from '../../db/types'
 import { ConfirmModal } from '../shared/ConfirmModal'
 import { EditExpense } from './EditExpense'
+import { FileUpload, type AttachmentFile } from './FileUpload'
+import { ReceiptItemsManager, type ReceiptItem } from './ReceiptItemsManager'
 import { showBackButton } from '../../telegram/backButton'
 
 export function ExpenseDetails() {
@@ -18,6 +20,8 @@ export function ExpenseDetails() {
   const navigate = useNavigate()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [localAttachments, setLocalAttachments] = useState<AttachmentFile[]>([])
+  const [localReceiptItems, setLocalReceiptItems] = useState<ReceiptItem[]>([])
 
   useEffect(() => {
     return showBackButton(() => navigate('/expenses'))
@@ -41,6 +45,29 @@ export function ExpenseDetails() {
   const receipt = useMemo(() => receipts.find((r) => r.expenseId === id), [receipts, id])
   const expenseReceiptItems = useMemo(() => (receipt ? receiptItems.filter((i) => i.receiptId === receipt.id) : []), [receipt, receiptItems])
   const expenseAttachments = useMemo(() => (receipt ? attachments.filter((a) => a.receiptId === receipt.id) : []), [receipt, attachments])
+
+  // Sync local state with DB data
+  useEffect(() => {
+    setLocalAttachments(
+      expenseAttachments.map((a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        mimeType: a.mimeType,
+        dataUrl: a.dataUrl,
+        size: a.size,
+      }))
+    )
+  }, [expenseAttachments])
+
+  useEffect(() => {
+    setLocalReceiptItems(
+      expenseReceiptItems.map((i) => ({
+        id: i.id,
+        name: i.name,
+        amount: i.amount,
+      }))
+    )
+  }, [expenseReceiptItems])
 
   const handleCreateStore = async (data: { name: string; type?: 'market' | 'store'; address?: string }) => {
     if (!storesCol) return
@@ -73,6 +100,133 @@ export function ExpenseDetails() {
       updatedAt: now,
     }
     await categoriesCol.insert(newCategory)
+  }
+
+  const handleAttachmentsChange = async (newAttachments: AttachmentFile[]) => {
+    if (!id || !receiptsCol || !attachmentsCol) return
+
+    const now = new Date().toISOString()
+
+    // Ensure receipt exists if we have attachments or items
+    let currentReceipt = receipt
+    if (!currentReceipt && (newAttachments.length > 0 || localReceiptItems.length > 0)) {
+      const receiptId = crypto.randomUUID()
+      await receiptsCol.insert({
+        id: receiptId,
+        expenseId: id,
+        createdAt: now,
+        updatedAt: now,
+      })
+      // Re-query to get the new receipt (will happen via reactive query)
+      return
+    }
+
+    if (!currentReceipt) return
+
+    // Find added and removed attachments
+    const oldIds = new Set(localAttachments.map((a) => a.id))
+    const newIds = new Set(newAttachments.map((a) => a.id))
+
+    // Add new attachments
+    for (const attachment of newAttachments) {
+      if (!oldIds.has(attachment.id)) {
+        await attachmentsCol.insert({
+          id: attachment.id,
+          receiptId: currentReceipt.id,
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          dataUrl: attachment.dataUrl,
+          size: attachment.size,
+          createdAt: now,
+          updatedAt: now,
+        })
+      }
+    }
+
+    // Remove deleted attachments
+    for (const attachment of localAttachments) {
+      if (!newIds.has(attachment.id)) {
+        const doc = await attachmentsCol.findOne(attachment.id).exec()
+        if (doc) await doc.remove()
+      }
+    }
+
+    // Delete receipt if empty (no attachments and no items)
+    if (newAttachments.length === 0 && localReceiptItems.length === 0) {
+      const receiptDoc = await receiptsCol.findOne(currentReceipt.id).exec()
+      if (receiptDoc) await receiptDoc.remove()
+    }
+
+    setLocalAttachments(newAttachments)
+  }
+
+  const handleReceiptItemsChange = async (newItems: ReceiptItem[]) => {
+    if (!id || !receiptsCol || !receiptItemsCol) return
+
+    const now = new Date().toISOString()
+
+    // Ensure receipt exists if we have items or attachments
+    let currentReceipt = receipt
+    if (!currentReceipt && (newItems.length > 0 || localAttachments.length > 0)) {
+      const receiptId = crypto.randomUUID()
+      await receiptsCol.insert({
+        id: receiptId,
+        expenseId: id,
+        createdAt: now,
+        updatedAt: now,
+      })
+      // Re-query to get the new receipt (will happen via reactive query)
+      return
+    }
+
+    if (!currentReceipt) return
+
+    // Find added, updated, and removed items
+    const oldMap = new Map(localReceiptItems.map((i) => [i.id, i]))
+    const newMap = new Map(newItems.map((i) => [i.id, i]))
+
+    // Add new items
+    for (const item of newItems) {
+      if (!oldMap.has(item.id)) {
+        await receiptItemsCol.insert({
+          id: item.id,
+          receiptId: currentReceipt.id,
+          name: item.name,
+          amount: item.amount,
+          createdAt: now,
+          updatedAt: now,
+        })
+      } else {
+        // Update existing item if changed
+        const oldItem = oldMap.get(item.id)!
+        if (oldItem.name !== item.name || oldItem.amount !== item.amount) {
+          const doc = await receiptItemsCol.findOne(item.id).exec()
+          if (doc) {
+            await doc.patch({
+              name: item.name,
+              amount: item.amount,
+              updatedAt: now,
+            })
+          }
+        }
+      }
+    }
+
+    // Remove deleted items
+    for (const item of localReceiptItems) {
+      if (!newMap.has(item.id)) {
+        const doc = await receiptItemsCol.findOne(item.id).exec()
+        if (doc) await doc.remove()
+      }
+    }
+
+    // Delete receipt if empty (no items and no attachments)
+    if (newItems.length === 0 && localAttachments.length === 0) {
+      const receiptDoc = await receiptsCol.findOne(currentReceipt.id).exec()
+      if (receiptDoc) await receiptDoc.remove()
+    }
+
+    setLocalReceiptItems(newItems)
   }
 
   const handleDelete = async () => {
@@ -141,22 +295,15 @@ export function ExpenseDetails() {
         </div>
       )}
 
-      {/* Receipt info */}
-      {(expenseReceiptItems.length > 0 || expenseAttachments.length > 0) && (
-        <div className="mx-4 mt-2 bg-surface rounded-2xl p-3">
-          <div className="text-[13px] font-medium text-section-header mb-2">Чек</div>
-          {expenseAttachments.length > 0 && (
-            <div className="mb-2">
-              <span className="text-[13px] text-text-hint">📎 {expenseAttachments.length} вложений</span>
-            </div>
-          )}
-          {expenseReceiptItems.length > 0 && (
-            <div>
-              <span className="text-[13px] text-text-hint">{expenseReceiptItems.length} позиций чека</span>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Receipt attachments */}
+      <div className="px-4 mt-4">
+        <FileUpload attachments={localAttachments} onChange={handleAttachmentsChange} />
+      </div>
+
+      {/* Receipt items */}
+      <div className="px-4 mt-4">
+        <ReceiptItemsManager items={localReceiptItems} onChange={handleReceiptItemsChange} />
+      </div>
 
       {/* Delete button */}
       <div className="mx-4 mt-4">
