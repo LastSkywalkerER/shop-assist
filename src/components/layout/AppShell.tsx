@@ -9,7 +9,7 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { needRefresh, offlineReady, applyUpdate, checkForUpdate, dismissUpdate } = useUpdatePrompt()
+  const { needRefresh, offlineReady, applyUpdate, dismissUpdate } = useUpdatePrompt()
   const { city, setCity } = useCity()
 
   return (
@@ -20,7 +20,7 @@ export function AppShell({ children }: AppShellProps) {
         onUpdate={applyUpdate}
         onDismiss={dismissUpdate}
       />
-      <Header onCheckUpdate={checkForUpdate} city={city} onCityChange={setCity} />
+      <Header city={city} onCityChange={setCity} />
       <main className="flex-1 flex flex-col">
         {children}
       </main>

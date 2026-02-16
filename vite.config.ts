@@ -19,6 +19,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'prompt',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      devOptions: {
+        enabled: true,
+        type: 'module',
+      },
       manifest: {
         name: 'Shop Assist',
         short_name: 'ShopAssist',

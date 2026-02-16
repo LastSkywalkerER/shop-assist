@@ -6,6 +6,8 @@ import { initTelegramApp } from './telegram/init'
 import { applyFallbackTheme } from './telegram/theme'
 import { getDatabase, type ShopAssistDatabase } from './db/database'
 import { DatabaseContext } from './db/hooks'
+import { AuthProvider } from './contexts/AuthContext'
+import { SyncProvider } from './contexts/SyncContext'
 
 const isTelegram = initTelegramApp()
 if (!isTelegram) {
@@ -32,9 +34,13 @@ function Root() {
 
   return (
     <StrictMode>
-      <DatabaseContext.Provider value={db}>
-        <App />
-      </DatabaseContext.Provider>
+      <AuthProvider>
+        <DatabaseContext.Provider value={db}>
+          <SyncProvider>
+            <App />
+          </SyncProvider>
+        </DatabaseContext.Provider>
+      </AuthProvider>
     </StrictMode>
   )
 }

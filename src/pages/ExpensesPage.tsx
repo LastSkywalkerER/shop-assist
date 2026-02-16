@@ -5,9 +5,11 @@ import { TabBar } from '../components/layout/TabBar'
 export function ExpensesPage() {
   const navigate = useNavigate()
 
-  const handleTabChange = (tab: 'products' | 'expenses') => {
+  const handleTabChange = (tab: 'products' | 'expenses' | 'settings') => {
     if (tab === 'products') {
       navigate('/')
+    } else if (tab === 'settings') {
+      navigate('/settings')
     }
   }
 

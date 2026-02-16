@@ -8,6 +8,7 @@ import { StoresPage } from './pages/StoresPage'
 import { ExpensesPage } from './pages/ExpensesPage'
 import { AddExpensePage } from './pages/AddExpensePage'
 import { ExpenseDetailsPage } from './pages/ExpenseDetailsPage'
+import { SettingsPage } from './pages/SettingsPage'
 
 export function App() {
   return (
@@ -22,6 +23,7 @@ export function App() {
             <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/expenses/add" element={<AddExpensePage />} />
             <Route path="/expenses/:id" element={<ExpenseDetailsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </AppShell>
       </MemoryRouter>
