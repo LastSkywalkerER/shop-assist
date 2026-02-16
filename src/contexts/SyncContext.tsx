@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
-import type { RxReplicationState } from 'rxdb'
+import type { RxReplicationState } from 'rxdb/plugins/replication'
 import { useDatabase } from '../db/hooks'
 import { useAuth } from './AuthContext'
 import { setupCollectionReplication, stopReplication } from '../lib/sync/replication'
@@ -34,7 +34,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [isSyncEnabled, setIsSyncEnabled] = useState(false)
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
-  const [replications, setReplications] = useState<RxReplicationState<any, any>[]>([])
+  const [replications, setReplications] = useState<Array<RxReplicationState<any, { updated_at: string }>>>([])
 
   // Проверить сохраненное состояние синхронизации при монтировании
   useEffect(() => {
@@ -61,7 +61,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       setIsSyncing(true)
       setSyncError(null)
 
-      const replicationStates: RxReplicationState<any, any>[] = []
+      const replicationStates: Array<RxReplicationState<any, { updated_at: string }>> = []
 
       // Настроить replication для всех коллекций
       for (const collectionName of COLLECTION_NAMES) {
@@ -76,14 +76,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         replicationStates.push(replicationState)
 
         // Обновить lastSyncTime при активности
-        replicationState.active$.subscribe((active) => {
+        replicationState.active$.subscribe((active: boolean) => {
           if (active) {
             setLastSyncTime(new Date())
           }
         })
 
         // Обработка ошибок
-        replicationState.error$.subscribe((error) => {
+        replicationState.error$.subscribe((error: any) => {
           if (error) {
             console.error(`Replication error for ${collectionName}:`, error)
             setSyncError(`Ошибка синхронизации: ${error.message}`)

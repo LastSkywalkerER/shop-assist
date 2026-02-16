@@ -1,5 +1,5 @@
-import { replicateRxCollection } from 'rxdb/plugins/replication'
-import type { RxCollection, RxReplicationState } from 'rxdb'
+import { replicateRxCollection, type RxReplicationState } from 'rxdb/plugins/replication'
+import type { RxCollection } from 'rxdb'
 import { supabase } from '../supabase/client'
 import { transformRxDBToSupabase, transformSupabaseToRxDB, getTableName } from './transformers'
 
@@ -8,9 +8,13 @@ export interface ReplicationConfig {
   roomId: string
 }
 
+interface CheckpointType {
+  updated_at: string
+}
+
 export async function setupCollectionReplication(
   config: ReplicationConfig
-): Promise<RxReplicationState<any, any>> {
+): Promise<RxReplicationState<any, CheckpointType>> {
   const { collection, roomId } = config
   const tableName = getTableName(collection.name)
 
@@ -18,7 +22,7 @@ export async function setupCollectionReplication(
     collection,
     replicationIdentifier: `supabase-${collection.name}`,
     pull: {
-      async handler(checkpoint, batchSize) {
+      async handler(checkpoint: CheckpointType | undefined, batchSize: number) {
         const lastUpdated = checkpoint?.updated_at || '1970-01-01T00:00:00.000Z'
 
         try {
@@ -67,6 +71,8 @@ export async function setupCollectionReplication(
             console.error(`Push error for ${tableName}:`, error)
             throw error
           }
+
+          return []
         } catch (error) {
           console.error(`Push failed for ${tableName}:`, error)
           throw error
@@ -99,7 +105,7 @@ export async function setupCollectionReplication(
   return replicationState
 }
 
-export async function stopReplication(replicationState: RxReplicationState<any, any>) {
+export async function stopReplication(replicationState: RxReplicationState<any, CheckpointType>) {
   // Отписаться от Realtime
   const channel = (replicationState as any).__channel
   if (channel) {

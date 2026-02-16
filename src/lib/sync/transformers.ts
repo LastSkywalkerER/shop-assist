@@ -1,5 +1,3 @@
-import type { RxDocument } from 'rxdb'
-
 export interface SupabaseRow {
   id: string
   room_id: string
@@ -13,18 +11,17 @@ export interface SupabaseRow {
  * Конвертация RxDB документа в формат Supabase
  */
 export function transformRxDBToSupabase(
-  doc: RxDocument,
+  doc: any,
   roomId: string
 ): SupabaseRow {
-  const data = doc.toJSON()
-
   return {
-    ...data,
+    id: doc.id,
     room_id: roomId,
     // RxDB использует ISO string, Supabase timestamptz - совместимо
-    created_at: data.createdAt,
-    updated_at: data.updatedAt,
+    created_at: doc.createdAt || doc.created_at,
+    updated_at: doc.updatedAt || doc.updated_at,
     _deleted: doc._deleted || false,
+    ...doc,
   }
 }
 
