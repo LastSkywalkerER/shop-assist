@@ -9,6 +9,13 @@ import { DatabaseContext } from './db/hooks'
 import { AuthProvider } from './contexts/AuthContext'
 import { SyncProvider } from './contexts/SyncContext'
 import { ToastProvider } from './contexts/ToastContext'
+import eruda from 'eruda'
+
+// Инициализация Eruda (мобильный отладчик) в dev режиме или в Mini App
+if (import.meta.env.DEV || window.location.search.includes('debug=1')) {
+  eruda.init()
+  console.log('🐛 Eruda debugger enabled')
+}
 
 const isTelegram = initTelegramApp()
 if (!isTelegram) {
