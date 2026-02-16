@@ -32,3 +32,49 @@ export interface PurchaseDocument {
   createdAt: string
   updatedAt: string
 }
+
+export interface ExpenseCategoryDocument {
+  id: string
+  name: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ExpenseDocument {
+  id: string
+  name?: string
+  storeId?: string
+  amount: number
+  date: string
+  categoryId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ReceiptDocument {
+  id: string
+  expenseId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ReceiptItemDocument {
+  id: string
+  receiptId: string
+  name: string
+  amount: number
+  convertedToPurchaseId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ExpenseAttachmentDocument {
+  id: string
+  receiptId: string
+  fileName: string
+  mimeType: string
+  dataUrl: string
+  size: number
+  createdAt: string
+  updatedAt: string
+}

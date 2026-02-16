@@ -5,6 +5,9 @@ import { DashboardPage } from './pages/DashboardPage'
 import { AddPurchasePage } from './pages/AddPurchasePage'
 import { ProductPage } from './pages/ProductPage'
 import { StoresPage } from './pages/StoresPage'
+import { ExpensesPage } from './pages/ExpensesPage'
+import { AddExpensePage } from './pages/AddExpensePage'
+import { ExpenseDetailsPage } from './pages/ExpenseDetailsPage'
 
 export function App() {
   return (
@@ -16,6 +19,9 @@ export function App() {
             <Route path="/add" element={<AddPurchasePage />} />
             <Route path="/product/:id" element={<ProductPage />} />
             <Route path="/stores" element={<StoresPage />} />
+            <Route path="/expenses" element={<ExpensesPage />} />
+            <Route path="/expenses/add" element={<AddExpensePage />} />
+            <Route path="/expenses/:id" element={<ExpenseDetailsPage />} />
           </Routes>
         </AppShell>
       </MemoryRouter>

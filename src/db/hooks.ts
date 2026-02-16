@@ -8,7 +8,9 @@ export function useDatabase(): ShopAssistDatabase | null {
   return useContext(DatabaseContext)
 }
 
-export function useRxCollection<T>(name: 'products' | 'stores' | 'purchases'): RxCollection<T> | null {
+export function useRxCollection<T>(
+  name: 'products' | 'stores' | 'purchases' | 'expenseCategories' | 'expenses' | 'receipts' | 'receiptItems' | 'expenseAttachments'
+): RxCollection<T> | null {
   const db = useDatabase()
   return (db?.[name] as RxCollection<T> | undefined) ?? null
 }
