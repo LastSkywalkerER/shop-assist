@@ -239,13 +239,29 @@ function ReceiptItemForm({ item, productCategories, onSave, onCancel }: ReceiptI
 
       {/* Add to products checkbox */}
       <div className="flex items-center gap-3 px-1">
-        <label className="flex items-center gap-2.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={addToProducts}
-            onChange={(e) => setAddToProducts(e.target.checked)}
-            className="w-5 h-5 rounded border-2 border-separator text-primary focus:ring-2 focus:ring-primary/30 transition-all cursor-pointer"
-          />
+        <label className="flex items-center gap-2.5 cursor-pointer" onClick={() => setAddToProducts(!addToProducts)}>
+          <div className="w-5 h-5 shrink-0 flex items-center justify-center">
+            <div
+              className={`w-4 h-4 rounded border-2 transition-all ${
+                addToProducts ? 'bg-primary border-primary' : 'border-separator'
+              }`}
+            >
+              {addToProducts && (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="white"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-full h-full"
+                >
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </div>
+          </div>
           <span className="text-[15px] text-text">Добавить в продукты</span>
         </label>
       </div>
