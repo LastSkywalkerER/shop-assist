@@ -8,6 +8,8 @@ import type {
   ReceiptDocument,
   ReceiptItemDocument,
   ExpenseAttachmentDocument,
+  ProductDocument,
+  PurchaseDocument,
 } from '../../db/types'
 import { ConfirmModal } from '../shared/ConfirmModal'
 import { EditExpense } from './EditExpense'
@@ -33,6 +35,8 @@ export function ExpenseDetails() {
   const receiptsCol = useRxCollection<ReceiptDocument>('receipts')
   const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
   const attachmentsCol = useRxCollection<ExpenseAttachmentDocument>('expenseAttachments')
+  const productsCol = useRxCollection<ProductDocument>('products')
+  const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
 
   const expenses = useRxQuery(expensesCol)
   const stores = useRxQuery(storesCol)
@@ -40,6 +44,16 @@ export function ExpenseDetails() {
   const receipts = useRxQuery(receiptsCol)
   const receiptItems = useRxQuery(receiptItemsCol)
   const attachments = useRxQuery(attachmentsCol)
+  const products = useRxQuery(productsCol)
+
+  // Extract product categories
+  const productCategories = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of products) {
+      if (p.category) set.add(p.category)
+    }
+    return Array.from(set).sort()
+  }, [products])
 
   const expense = useMemo(() => expenses.find((e) => e.id === id), [expenses, id])
   const receipt = useMemo(() => receipts.find((r) => r.expenseId === id), [receipts, id])
@@ -65,6 +79,10 @@ export function ExpenseDetails() {
         id: i.id,
         name: i.name,
         amount: i.amount,
+        manufacturer: i.manufacturer,
+        packageVolume: i.packageVolume,
+        category: i.category,
+        addToProducts: !!i.convertedToPurchaseId,
       }))
     )
   }, [expenseReceiptItems])
@@ -161,9 +179,10 @@ export function ExpenseDetails() {
   }
 
   const handleReceiptItemsChange = async (newItems: ReceiptItem[]) => {
-    if (!id || !receiptsCol || !receiptItemsCol) return
+    if (!id || !receiptsCol || !receiptItemsCol || !expense) return
 
     const now = new Date().toISOString()
+    const store = stores.find((s) => s.id === expense.storeId)
 
     // Ensure receipt exists if we have items or attachments
     let currentReceipt = receipt
@@ -185,26 +204,126 @@ export function ExpenseDetails() {
     const oldMap = new Map(localReceiptItems.map((i) => [i.id, i]))
     const newMap = new Map(newItems.map((i) => [i.id, i]))
 
-    // Add new items
+    // Add new items or update existing
     for (const item of newItems) {
-      if (!oldMap.has(item.id)) {
+      const oldItem = oldMap.get(item.id)
+
+      if (!oldItem) {
+        // New item - insert
+        let convertedToPurchaseId: string | undefined
+
+        // Create product and purchase if requested
+        if (item.addToProducts && productsCol && purchasesCol && store) {
+          // Find or create product
+          let product = products.find((p) => {
+            if (p.name.toLowerCase() !== item.name.toLowerCase()) return false
+            if (item.manufacturer && p.manufacturer?.toLowerCase() !== item.manufacturer.toLowerCase()) return false
+            if (item.packageVolume && p.packageVolume !== item.packageVolume) return false
+            return true
+          })
+
+          if (!product) {
+            const productId = crypto.randomUUID()
+            await productsCol.insert({
+              id: productId,
+              name: item.name,
+              manufacturer: item.manufacturer,
+              packageVolume: item.packageVolume,
+              category: item.category,
+              createdAt: now,
+              updatedAt: now,
+            })
+            product = { id: productId, name: item.name, createdAt: now, updatedAt: now } as ProductDocument
+          }
+
+          // Create purchase
+          const purchaseId = crypto.randomUUID()
+          await purchasesCol.insert({
+            id: purchaseId,
+            productId: product.id,
+            storeId: store.id,
+            priceByn: item.amount,
+            purchaseDate: expense.date,
+            createdAt: now,
+            updatedAt: now,
+          })
+
+          convertedToPurchaseId = purchaseId
+        }
+
         await receiptItemsCol.insert({
           id: item.id,
           receiptId: currentReceipt.id,
           name: item.name,
           amount: item.amount,
+          manufacturer: item.manufacturer,
+          packageVolume: item.packageVolume,
+          category: item.category,
+          convertedToPurchaseId,
           createdAt: now,
           updatedAt: now,
         })
       } else {
-        // Update existing item if changed
-        const oldItem = oldMap.get(item.id)!
-        if (oldItem.name !== item.name || oldItem.amount !== item.amount) {
+        // Existing item - check if changed
+        const hasChanges =
+          oldItem.name !== item.name ||
+          oldItem.amount !== item.amount ||
+          oldItem.manufacturer !== item.manufacturer ||
+          oldItem.packageVolume !== item.packageVolume ||
+          oldItem.category !== item.category ||
+          oldItem.addToProducts !== item.addToProducts
+
+        if (hasChanges) {
           const doc = await receiptItemsCol.findOne(item.id).exec()
           if (doc) {
+            let convertedToPurchaseId = doc.convertedToPurchaseId
+
+            // Create product and purchase if newly requested
+            if (item.addToProducts && !oldItem.addToProducts && productsCol && purchasesCol && store) {
+              // Find or create product
+              let product = products.find((p) => {
+                if (p.name.toLowerCase() !== item.name.toLowerCase()) return false
+                if (item.manufacturer && p.manufacturer?.toLowerCase() !== item.manufacturer.toLowerCase()) return false
+                if (item.packageVolume && p.packageVolume !== item.packageVolume) return false
+                return true
+              })
+
+              if (!product) {
+                const productId = crypto.randomUUID()
+                await productsCol.insert({
+                  id: productId,
+                  name: item.name,
+                  manufacturer: item.manufacturer,
+                  packageVolume: item.packageVolume,
+                  category: item.category,
+                  createdAt: now,
+                  updatedAt: now,
+                })
+                product = { id: productId, name: item.name, createdAt: now, updatedAt: now } as ProductDocument
+              }
+
+              // Create purchase
+              const purchaseId = crypto.randomUUID()
+              await purchasesCol.insert({
+                id: purchaseId,
+                productId: product.id,
+                storeId: store.id,
+                priceByn: item.amount,
+                purchaseDate: expense.date,
+                createdAt: now,
+                updatedAt: now,
+              })
+
+              convertedToPurchaseId = purchaseId
+            }
+
             await doc.patch({
               name: item.name,
               amount: item.amount,
+              manufacturer: item.manufacturer,
+              packageVolume: item.packageVolume,
+              category: item.category,
+              convertedToPurchaseId,
               updatedAt: now,
             })
           }
@@ -302,7 +421,7 @@ export function ExpenseDetails() {
 
       {/* Receipt items */}
       <div className="px-4 mt-4">
-        <ReceiptItemsManager items={localReceiptItems} onChange={handleReceiptItemsChange} />
+        <ReceiptItemsManager items={localReceiptItems} onChange={handleReceiptItemsChange} productCategories={productCategories} />
       </div>
 
       {/* Delete button */}

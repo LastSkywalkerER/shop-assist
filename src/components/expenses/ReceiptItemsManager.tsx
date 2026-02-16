@@ -1,51 +1,36 @@
 import { useState } from 'react'
 import { Input } from '../shared/Input'
+import { CategorySelect } from '../shared/CategorySelect'
 
 export interface ReceiptItem {
   id: string
   name: string
   amount: number
+  manufacturer?: string
+  packageVolume?: string
+  category?: string
+  addToProducts?: boolean
 }
 
 interface ReceiptItemsManagerProps {
   items: ReceiptItem[]
   onChange: (items: ReceiptItem[]) => void
+  productCategories: string[]
 }
 
-export function ReceiptItemsManager({ items, onChange }: ReceiptItemsManagerProps) {
+export function ReceiptItemsManager({ items, onChange, productCategories }: ReceiptItemsManagerProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [newItemName, setNewItemName] = useState('')
-  const [newItemAmount, setNewItemAmount] = useState('')
   const [showAddForm, setShowAddForm] = useState(false)
 
   const totalAmount = items.reduce((sum, item) => sum + item.amount, 0)
 
-  const handleAdd = () => {
-    const name = newItemName.trim()
-    const amount = parseFloat(newItemAmount)
-
-    if (!name || !amount || amount <= 0) return
-
-    const newItem: ReceiptItem = {
-      id: crypto.randomUUID(),
-      name,
-      amount: parseFloat(amount.toFixed(2)),
-    }
-
-    onChange([...items, newItem])
-    setNewItemName('')
-    setNewItemAmount('')
+  const handleAdd = (item: ReceiptItem) => {
+    onChange([...items, item])
     setShowAddForm(false)
   }
 
-  const handleUpdate = (id: string, name: string, amount: number) => {
-    onChange(
-      items.map((item) =>
-        item.id === id
-          ? { ...item, name: name.trim(), amount: parseFloat(amount.toFixed(2)) }
-          : item
-      )
-    )
+  const handleUpdate = (id: string, updatedItem: ReceiptItem) => {
+    onChange(items.map((item) => (item.id === id ? updatedItem : item)))
     setEditingId(null)
   }
 
@@ -73,14 +58,17 @@ export function ReceiptItemsManager({ items, onChange }: ReceiptItemsManagerProp
           {items.map((item) => {
             if (editingId === item.id) {
               return (
-                <ReceiptItemEditCard
+                <ReceiptItemForm
                   key={item.id}
                   item={item}
-                  onSave={(name, amount) => handleUpdate(item.id, name, amount)}
+                  productCategories={productCategories}
+                  onSave={(updatedItem) => handleUpdate(item.id, updatedItem)}
                   onCancel={() => setEditingId(null)}
                 />
               )
             }
+
+            const subtitle = [item.manufacturer, item.packageVolume, item.category].filter(Boolean).join(' · ')
 
             return (
               <div
@@ -91,11 +79,19 @@ export function ReceiptItemsManager({ items, onChange }: ReceiptItemsManagerProp
                   className="flex-1 min-w-0 cursor-pointer"
                   onClick={() => setEditingId(item.id)}
                 >
-                  <div className="text-[14px] font-medium text-text truncate">
-                    {item.name}
+                  <div className="flex items-center gap-2">
+                    <div className="text-[14px] font-medium text-text truncate">
+                      {item.name}
+                    </div>
+                    {item.addToProducts && (
+                      <span className="text-[11px] px-1.5 py-0.5 bg-primary/10 text-primary-text rounded">
+                        В продукты
+                      </span>
+                    )}
                   </div>
                   <div className="text-[12px] text-text-hint mt-0.5">
                     {item.amount.toFixed(2)} BYN
+                    {subtitle && ` · ${subtitle}`}
                   </div>
                 </div>
                 <button
@@ -128,49 +124,11 @@ export function ReceiptItemsManager({ items, onChange }: ReceiptItemsManagerProp
 
       {/* Add form */}
       {showAddForm ? (
-        <div className="bg-surface rounded-2xl p-3 space-y-3">
-          <div className="text-[13px] text-section-header font-medium">
-            Новая позиция
-          </div>
-          <Input
-            label="Название"
-            value={newItemName}
-            onChange={(e) => setNewItemName(e.currentTarget.value)}
-            placeholder="Молоко"
-            autoFocus
-          />
-          <Input
-            label="Сумма (BYN)"
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0"
-            value={newItemAmount}
-            onChange={(e) => setNewItemAmount(e.currentTarget.value)}
-            placeholder="3.50"
-          />
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleAdd}
-              disabled={!newItemName.trim() || !newItemAmount || parseFloat(newItemAmount) <= 0}
-              className="flex-1 bg-primary text-on-primary py-2.5 rounded-xl font-medium text-[15px] disabled:opacity-30 active:opacity-80 transition-opacity"
-            >
-              Добавить
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowAddForm(false)
-                setNewItemName('')
-                setNewItemAmount('')
-              }}
-              className="px-5 py-2.5 text-primary-text text-[15px] font-medium rounded-xl active:bg-primary/10 transition-colors"
-            >
-              Отмена
-            </button>
-          </div>
-        </div>
+        <ReceiptItemForm
+          productCategories={productCategories}
+          onSave={handleAdd}
+          onCancel={() => setShowAddForm(false)}
+        />
       ) : (
         <button
           type="button"
@@ -196,30 +154,45 @@ export function ReceiptItemsManager({ items, onChange }: ReceiptItemsManagerProp
   )
 }
 
-interface ReceiptItemEditCardProps {
-  item: ReceiptItem
-  onSave: (name: string, amount: number) => void
+interface ReceiptItemFormProps {
+  item?: ReceiptItem
+  productCategories: string[]
+  onSave: (item: ReceiptItem) => void
   onCancel: () => void
 }
 
-function ReceiptItemEditCard({ item, onSave, onCancel }: ReceiptItemEditCardProps) {
-  const [name, setName] = useState(item.name)
-  const [amount, setAmount] = useState(item.amount.toString())
+function ReceiptItemForm({ item, productCategories, onSave, onCancel }: ReceiptItemFormProps) {
+  const [name, setName] = useState(item?.name || '')
+  const [amount, setAmount] = useState(item?.amount.toString() || '')
+  const [manufacturer, setManufacturer] = useState(item?.manufacturer || '')
+  const [packageVolume, setPackageVolume] = useState(item?.packageVolume || '')
+  const [category, setCategory] = useState(item?.category || '')
+  const [addToProducts, setAddToProducts] = useState(item?.addToProducts || false)
 
-  const handleSave = () => {
+  const handleSubmit = () => {
     const trimmedName = name.trim()
     const parsedAmount = parseFloat(amount)
 
     if (!trimmedName || !parsedAmount || parsedAmount <= 0) return
 
-    onSave(trimmedName, parsedAmount)
+    onSave({
+      id: item?.id || crypto.randomUUID(),
+      name: trimmedName,
+      amount: parseFloat(parsedAmount.toFixed(2)),
+      manufacturer: manufacturer.trim() || undefined,
+      packageVolume: packageVolume.trim() || undefined,
+      category: category.trim() || undefined,
+      addToProducts,
+    })
   }
 
   return (
     <div className="bg-surface rounded-2xl p-3 space-y-3">
       <div className="text-[13px] text-section-header font-medium">
-        Редактирование
+        {item ? 'Редактирование позиции' : 'Новая позиция'}
       </div>
+
+      {/* Name */}
       <Input
         label="Название"
         value={name}
@@ -227,6 +200,32 @@ function ReceiptItemEditCard({ item, onSave, onCancel }: ReceiptItemEditCardProp
         placeholder="Молоко"
         autoFocus
       />
+
+      {/* Manufacturer */}
+      <Input
+        label="Производитель"
+        value={manufacturer}
+        onChange={(e) => setManufacturer(e.currentTarget.value)}
+        placeholder="Савушкин"
+      />
+
+      {/* Package Volume & Category */}
+      <div className="grid grid-cols-2 gap-3">
+        <Input
+          label="Объём"
+          value={packageVolume}
+          onChange={(e) => setPackageVolume(e.currentTarget.value)}
+          placeholder="1л"
+        />
+        <CategorySelect
+          categories={productCategories}
+          value={category}
+          onChange={setCategory}
+          inputClassName="w-full bg-surface rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
+        />
+      </div>
+
+      {/* Amount */}
       <Input
         label="Сумма (BYN)"
         type="number"
@@ -237,14 +236,29 @@ function ReceiptItemEditCard({ item, onSave, onCancel }: ReceiptItemEditCardProp
         onChange={(e) => setAmount(e.currentTarget.value)}
         placeholder="3.50"
       />
-      <div className="flex gap-2">
+
+      {/* Add to products checkbox */}
+      <div className="flex items-center gap-3 px-1">
+        <label className="flex items-center gap-2.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={addToProducts}
+            onChange={(e) => setAddToProducts(e.target.checked)}
+            className="w-5 h-5 rounded border-2 border-separator text-primary focus:ring-2 focus:ring-primary/30 transition-all cursor-pointer"
+          />
+          <span className="text-[15px] text-text">Добавить в продукты</span>
+        </label>
+      </div>
+
+      {/* Buttons */}
+      <div className="flex gap-2 pt-1">
         <button
           type="button"
-          onClick={handleSave}
+          onClick={handleSubmit}
           disabled={!name.trim() || !amount || parseFloat(amount) <= 0}
           className="flex-1 bg-primary text-on-primary py-2.5 rounded-xl font-medium text-[15px] disabled:opacity-30 active:opacity-80 transition-opacity"
         >
-          Сохранить
+          {item ? 'Сохранить' : 'Добавить'}
         </button>
         <button
           type="button"

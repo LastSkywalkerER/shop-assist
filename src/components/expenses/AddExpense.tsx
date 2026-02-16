@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type {
@@ -8,6 +8,8 @@ import type {
   ReceiptDocument,
   ReceiptItemDocument,
   ExpenseAttachmentDocument,
+  ProductDocument,
+  PurchaseDocument,
 } from '../../db/types'
 import { ExpenseNameAutocomplete } from './ExpenseNameAutocomplete'
 import { StoreSelect } from '../purchase/StoreSelect'
@@ -25,10 +27,22 @@ export function AddExpense() {
   const receiptsCol = useRxCollection<ReceiptDocument>('receipts')
   const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
   const attachmentsCol = useRxCollection<ExpenseAttachmentDocument>('expenseAttachments')
+  const productsCol = useRxCollection<ProductDocument>('products')
+  const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
 
   const expenses = useRxQuery(expensesCol)
   const stores = useRxQuery(storesCol)
   const categories = useRxQuery(categoriesCol)
+  const products = useRxQuery(productsCol)
+
+  // Extract product categories
+  const productCategories = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of products) {
+      if (p.category) set.add(p.category)
+    }
+    return Array.from(set).sort()
+  }, [products])
 
   const [name, setName] = useState('')
   const [selectedStore, setSelectedStore] = useState<StoreDocument | null>(null)
@@ -138,14 +152,60 @@ export function AddExpense() {
           }
         }
 
-        // 4. Insert receipt items
+        // 4. Insert receipt items and create products if needed
         if (receiptItems.length > 0 && receiptItemsCol) {
           for (const item of receiptItems) {
+            let convertedToPurchaseId: string | undefined
+
+            // Create product and purchase if requested
+            if (item.addToProducts && productsCol && purchasesCol && selectedStore) {
+              // Find or create product
+              let product = products.find((p) => {
+                if (p.name.toLowerCase() !== item.name.toLowerCase()) return false
+                if (item.manufacturer && p.manufacturer?.toLowerCase() !== item.manufacturer.toLowerCase()) return false
+                if (item.packageVolume && p.packageVolume !== item.packageVolume) return false
+                return true
+              })
+
+              if (!product) {
+                const productId = crypto.randomUUID()
+                await productsCol.insert({
+                  id: productId,
+                  name: item.name,
+                  manufacturer: item.manufacturer,
+                  packageVolume: item.packageVolume,
+                  category: item.category,
+                  createdAt: now,
+                  updatedAt: now,
+                })
+                product = { id: productId, name: item.name, createdAt: now, updatedAt: now } as ProductDocument
+              }
+
+              // Create purchase
+              const purchaseId = crypto.randomUUID()
+              await purchasesCol.insert({
+                id: purchaseId,
+                productId: product.id,
+                storeId: selectedStore.id,
+                priceByn: item.amount,
+                purchaseDate: new Date(date).toISOString(),
+                createdAt: now,
+                updatedAt: now,
+              })
+
+              convertedToPurchaseId = purchaseId
+            }
+
+            // Insert receipt item
             await receiptItemsCol.insert({
               id: item.id,
               receiptId,
               name: item.name,
               amount: item.amount,
+              manufacturer: item.manufacturer,
+              packageVolume: item.packageVolume,
+              category: item.category,
+              convertedToPurchaseId,
               createdAt: now,
               updatedAt: now,
             })
@@ -207,7 +267,7 @@ export function AddExpense() {
       <FileUpload attachments={attachments} onChange={setAttachments} />
 
       {/* Receipt items */}
-      <ReceiptItemsManager items={receiptItems} onChange={setReceiptItems} />
+      <ReceiptItemsManager items={receiptItems} onChange={setReceiptItems} productCategories={productCategories} />
 
       {/* Validation error */}
       {validationError && (

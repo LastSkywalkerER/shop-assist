@@ -63,6 +63,9 @@ export interface ReceiptItemDocument {
   receiptId: string
   name: string
   amount: number
+  manufacturer?: string
+  packageVolume?: string
+  category?: string
   convertedToPurchaseId?: string
   createdAt: string
   updatedAt: string

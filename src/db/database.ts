@@ -90,7 +90,16 @@ async function createDb(): Promise<ShopAssistDatabase> {
     },
     receiptItems: {
       schema: receiptItemSchema,
-      migrationStrategies: {},
+      migrationStrategies: {
+        1: (oldDoc: any) => {
+          return {
+            ...oldDoc,
+            manufacturer: undefined,
+            packageVolume: undefined,
+            category: undefined,
+          }
+        },
+      },
     },
     expenseAttachments: {
       schema: expenseAttachmentSchema,
