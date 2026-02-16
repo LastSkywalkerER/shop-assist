@@ -82,6 +82,8 @@ export function ExpenseDetails() {
         manufacturer: i.manufacturer,
         packageVolume: i.packageVolume,
         category: i.category,
+        qualityRating: i.qualityRating,
+        notes: i.notes,
         addToProducts: !!i.convertedToPurchaseId,
       }))
     )
@@ -243,7 +245,9 @@ export function ExpenseDetails() {
             productId: product.id,
             storeId: store.id,
             priceByn: item.amount,
+            qualityRating: item.qualityRating,
             purchaseDate: expense.date,
+            notes: item.notes,
             createdAt: now,
             updatedAt: now,
           })
@@ -259,6 +263,8 @@ export function ExpenseDetails() {
           manufacturer: item.manufacturer,
           packageVolume: item.packageVolume,
           category: item.category,
+          qualityRating: item.qualityRating,
+          notes: item.notes,
           convertedToPurchaseId,
           createdAt: now,
           updatedAt: now,
@@ -271,6 +277,8 @@ export function ExpenseDetails() {
           oldItem.manufacturer !== item.manufacturer ||
           oldItem.packageVolume !== item.packageVolume ||
           oldItem.category !== item.category ||
+          oldItem.qualityRating !== item.qualityRating ||
+          oldItem.notes !== item.notes ||
           oldItem.addToProducts !== item.addToProducts
 
         if (hasChanges) {
@@ -309,7 +317,9 @@ export function ExpenseDetails() {
                 productId: product.id,
                 storeId: store.id,
                 priceByn: item.amount,
+                qualityRating: item.qualityRating,
                 purchaseDate: expense.date,
+                notes: item.notes,
                 createdAt: now,
                 updatedAt: now,
               })
@@ -323,6 +333,8 @@ export function ExpenseDetails() {
               manufacturer: item.manufacturer,
               packageVolume: item.packageVolume,
               category: item.category,
+              qualityRating: item.qualityRating,
+              notes: item.notes,
               convertedToPurchaseId,
               updatedAt: now,
             })

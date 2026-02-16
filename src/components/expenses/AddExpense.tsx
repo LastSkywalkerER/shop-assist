@@ -190,7 +190,9 @@ export function AddExpense() {
                 productId: product.id,
                 storeId: selectedStore.id,
                 priceByn: item.amount,
+                qualityRating: item.qualityRating,
                 purchaseDate: new Date(date).toISOString(),
+                notes: item.notes,
                 createdAt: now,
                 updatedAt: now,
               })
@@ -207,6 +209,8 @@ export function AddExpense() {
               manufacturer: item.manufacturer,
               packageVolume: item.packageVolume,
               category: item.category,
+              qualityRating: item.qualityRating,
+              notes: item.notes,
               convertedToPurchaseId,
               createdAt: now,
               updatedAt: now,
