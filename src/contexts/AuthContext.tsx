@@ -39,6 +39,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Если нет сессии, попробовать авто-авторизацию через Mini App
         try {
+          // Подождать немного, чтобы Telegram SDK успел загрузиться
+          await new Promise(resolve => setTimeout(resolve, 300))
+
           // Попробовать несколько способов получить initData
           let initDataRawValue: string | undefined
           let hasUserData = false
@@ -62,6 +65,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               initDataRawValue = webApp.initData as string | undefined
               hasUserData = !!(webApp.initDataUnsafe as { user?: unknown })?.user
               console.log('🔍 Method 2 - window.Telegram.WebApp:', { initDataRaw: !!initDataRawValue, hasUser: hasUserData })
+            }
+          }
+
+          // Способ 3: напрямую из window.__telegram__initParams
+          if (!initDataRawValue && typeof window !== 'undefined') {
+            const initParams = (window as Window & { __telegram__initParams?: { tgWebAppData?: string } }).__telegram__initParams
+            if (initParams?.tgWebAppData) {
+              initDataRawValue = initParams.tgWebAppData
+              hasUserData = true
+              console.log('🔍 Method 3 - __telegram__initParams:', { initDataRaw: !!initDataRawValue })
             }
           }
 
