@@ -170,7 +170,7 @@ export function ProductPage() {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="text-[15px] font-semibold text-primary-text tabular-nums">
-                      {purchase.priceByn.toFixed(2)} BYN
+                      {purchase.price.toFixed(2)} {purchase.currency}
                     </span>
                     <button
                       type="button"

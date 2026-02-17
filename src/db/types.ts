@@ -25,7 +25,8 @@ export interface PurchaseDocument {
   id: string
   productId: string
   storeId: string
-  priceByn: number
+  price: number
+  currency: string
   qualityRating?: number
   purchaseDate: string
   notes?: string
@@ -45,6 +46,7 @@ export interface ExpenseDocument {
   name?: string
   storeId?: string
   amount: number
+  currency: string
   date: string
   categoryId?: string
   notes?: string
@@ -64,6 +66,7 @@ export interface ReceiptItemDocument {
   receiptId: string
   name: string
   amount: number
+  currency: string
   manufacturer?: string
   packageVolume?: string
   category?: string

@@ -5,6 +5,7 @@ export interface StorePurchaseInfo {
   storeName: string
   bestPrice: number
   lastPrice: number
+  currency: string
   avgRating: number | null
   count: number
 }
@@ -55,7 +56,7 @@ export function ProductRow({ data }: ProductRowProps) {
             <div key={s.storeName} className="flex items-center gap-2 min-h-[22px]">
               <span className="text-[12px] text-text-subtitle truncate min-w-0 flex-shrink">{s.storeName}</span>
               <span className="text-[13px] text-primary-text font-semibold tabular-nums whitespace-nowrap">
-                {s.bestPrice.toFixed(2)}
+                {s.bestPrice.toFixed(2)} {s.currency}
               </span>
               {s.lastPrice !== s.bestPrice && (
                 <span className="text-[11px] text-text-hint tabular-nums whitespace-nowrap">

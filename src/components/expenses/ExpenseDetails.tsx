@@ -15,6 +15,7 @@ import { ConfirmModal } from '../shared/ConfirmModal'
 import { EditExpense } from './EditExpense'
 import { FileUpload, type AttachmentFile } from './FileUpload'
 import { ReceiptItemsManager, type ReceiptItem } from './ReceiptItemsManager'
+import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { showBackButton } from '../../telegram/backButton'
 
 export function ExpenseDetails() {
@@ -79,6 +80,7 @@ export function ExpenseDetails() {
         id: i.id,
         name: i.name,
         amount: i.amount,
+        currency: i.currency || DEFAULT_CURRENCY,
         manufacturer: i.manufacturer,
         packageVolume: i.packageVolume,
         category: i.category,
@@ -244,7 +246,8 @@ export function ExpenseDetails() {
             id: purchaseId,
             productId: product.id,
             storeId: store.id,
-            priceByn: item.amount,
+            price: item.amount,
+            currency: item.currency || DEFAULT_CURRENCY,
             qualityRating: item.qualityRating,
             purchaseDate: expense.date,
             notes: item.notes,
@@ -260,6 +263,7 @@ export function ExpenseDetails() {
           receiptId: currentReceipt.id,
           name: item.name,
           amount: item.amount,
+          currency: item.currency || DEFAULT_CURRENCY,
           manufacturer: item.manufacturer,
           packageVolume: item.packageVolume,
           category: item.category,
@@ -316,7 +320,8 @@ export function ExpenseDetails() {
                 id: purchaseId,
                 productId: product.id,
                 storeId: store.id,
-                priceByn: item.amount,
+                price: item.amount,
+            currency: item.currency || DEFAULT_CURRENCY,
                 qualityRating: item.qualityRating,
                 purchaseDate: expense.date,
                 notes: item.notes,
@@ -330,6 +335,7 @@ export function ExpenseDetails() {
             await doc.patch({
               name: item.name,
               amount: item.amount,
+              currency: item.currency || DEFAULT_CURRENCY,
               manufacturer: item.manufacturer,
               packageVolume: item.packageVolume,
               category: item.category,

@@ -5,6 +5,8 @@ import { ExpenseNameAutocomplete } from './ExpenseNameAutocomplete'
 import { StoreSelect } from '../purchase/StoreSelect'
 import { ExpenseCategorySelect } from './ExpenseCategorySelect'
 import { Input } from '../shared/Input'
+import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
+import { DEFAULT_CURRENCY } from '../../config/currencies'
 
 interface EditExpenseProps {
   expense: ExpenseDocument
@@ -32,6 +34,7 @@ export function EditExpense({
     expense.storeId ? stores.find((s) => s.id === expense.storeId) || null : null
   )
   const [amount, setAmount] = useState(expense.amount.toString())
+  const [currency, setCurrency] = useState(expense.currency || DEFAULT_CURRENCY)
   const [date, setDate] = useState(expense.date.split('T')[0])
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryDocument | null>(
     expense.categoryId ? categories.find((c) => c.id === expense.categoryId) || null : null
@@ -45,6 +48,7 @@ export function EditExpense({
     selectedStore?.id !== expense.storeId ||
     parseFloat(amount) !== expense.amount ||
     new Date(date).toISOString() !== expense.date ||
+    currency !== (expense.currency || DEFAULT_CURRENCY) ||
     selectedCategory?.id !== expense.categoryId ||
     notes.trim() !== (expense.notes || '')
 
@@ -68,6 +72,7 @@ export function EditExpense({
           name: name.trim() || undefined,
           storeId: selectedStore?.id,
           amount: parseFloat(parseFloat(amount).toFixed(2)),
+          currency,
           date: new Date(date).toISOString(),
           categoryId: selectedCategory?.id,
           notes: notes.trim() || undefined,
@@ -87,14 +92,13 @@ export function EditExpense({
       <ExpenseNameAutocomplete expenses={expenses} value={name} onChange={setName} />
       <StoreSelect stores={stores} selected={selectedStore} onSelect={setSelectedStore} onCreate={onCreateStore} />
       <div className="grid grid-cols-2 gap-3">
-        <Input
-          label="Сумма (BYN)"
-          type="number"
-          inputMode="decimal"
-          step="0.01"
-          min="0"
-          value={amount}
-          onChange={(e) => setAmount(e.currentTarget.value)}
+        <CurrencyAmountInput
+          label="Сумма"
+          amount={amount}
+          currency={currency}
+          onAmountChange={setAmount}
+          onCurrencyChange={setCurrency}
+          placeholder="45.50"
         />
         <Input label="Дата" type="date" value={date} onChange={(e) => setDate(e.currentTarget.value)} />
       </div>

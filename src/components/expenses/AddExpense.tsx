@@ -15,6 +15,8 @@ import { ExpenseNameAutocomplete } from './ExpenseNameAutocomplete'
 import { StoreSelect } from '../purchase/StoreSelect'
 import { ExpenseCategorySelect } from './ExpenseCategorySelect'
 import { Input } from '../shared/Input'
+import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
+import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { FileUpload, type AttachmentFile } from './FileUpload'
 import { ReceiptItemsManager, type ReceiptItem } from './ReceiptItemsManager'
 
@@ -47,6 +49,7 @@ export function AddExpense() {
   const [name, setName] = useState('')
   const [selectedStore, setSelectedStore] = useState<StoreDocument | null>(null)
   const [amount, setAmount] = useState('')
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY)
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryDocument | null>(null)
   const [notes, setNotes] = useState('')
@@ -118,6 +121,7 @@ export function AddExpense() {
         name: name.trim() || undefined,
         storeId: selectedStore?.id,
         amount: parseFloat(parseFloat(amount).toFixed(2)),
+        currency,
         date: new Date(date).toISOString(),
         categoryId: selectedCategory?.id,
         notes: notes.trim() || undefined,
@@ -189,7 +193,8 @@ export function AddExpense() {
                 id: purchaseId,
                 productId: product.id,
                 storeId: selectedStore.id,
-                priceByn: item.amount,
+                price: item.amount,
+                currency: item.currency || DEFAULT_CURRENCY,
                 qualityRating: item.qualityRating,
                 purchaseDate: new Date(date).toISOString(),
                 notes: item.notes,
@@ -206,6 +211,7 @@ export function AddExpense() {
               receiptId,
               name: item.name,
               amount: item.amount,
+              currency: item.currency || DEFAULT_CURRENCY,
               manufacturer: item.manufacturer,
               packageVolume: item.packageVolume,
               category: item.category,
@@ -248,15 +254,14 @@ export function AddExpense() {
 
       {/* Amount & Date row */}
       <div className="grid grid-cols-2 gap-3">
-        <Input
-          label="Сумма (BYN)"
-          type="number"
-          inputMode="decimal"
-          step="0.01"
-          min="0"
-          value={amount}
-          onChange={(e) => setAmount(e.currentTarget.value)}
+        <CurrencyAmountInput
+          label="Сумма"
+          amount={amount}
+          currency={currency}
+          onAmountChange={setAmount}
+          onCurrencyChange={setCurrency}
           placeholder="45.50"
+          required
         />
         <Input label="Дата" type="date" value={date} onChange={(e) => setDate(e.currentTarget.value)} />
       </div>

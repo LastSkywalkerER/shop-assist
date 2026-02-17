@@ -5,6 +5,7 @@ export interface ExpenseRowData {
   name?: string
   storeName?: string
   amount: number
+  currency?: string
   date: string
   categoryName?: string
   hasAttachments: boolean
@@ -106,7 +107,7 @@ export function ExpenseRow({ data, selectionMode, selected, onToggleSelect, onLo
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <span className="text-[13px] text-primary-text font-semibold tabular-nums whitespace-nowrap">
-            {data.amount.toFixed(2)} BYN
+            {data.amount.toFixed(2)} {data.currency || 'BYN'}
           </span>
           <svg className="text-text-hint/40" width="6" height="10" viewBox="0 0 6 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M1 1l4 4-4 4" />

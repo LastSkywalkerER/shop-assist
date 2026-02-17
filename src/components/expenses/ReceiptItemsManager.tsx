@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { Input } from '../shared/Input'
+import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
+import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { CategorySelect } from '../shared/CategorySelect'
 
 export interface ReceiptItem {
   id: string
   name: string
   amount: number
+  currency?: string
   manufacturer?: string
   packageVolume?: string
   category?: string
@@ -49,7 +52,7 @@ export function ReceiptItemsManager({ items, onChange, productCategories }: Rece
         </label>
         {items.length > 0 && (
           <span className="text-[13px] text-text-hint">
-            Итого: {totalAmount.toFixed(2)} BYN
+            Итого: {totalAmount.toFixed(2)}
           </span>
         )}
       </div>
@@ -92,7 +95,7 @@ export function ReceiptItemsManager({ items, onChange, productCategories }: Rece
                     )}
                   </div>
                   <div className="text-[12px] text-text-hint mt-0.5">
-                    {item.amount.toFixed(2)} BYN
+                    {item.amount.toFixed(2)} {item.currency || DEFAULT_CURRENCY}
                     {subtitle && ` · ${subtitle}`}
                   </div>
                 </div>
@@ -166,6 +169,7 @@ interface ReceiptItemFormProps {
 function ReceiptItemForm({ item, productCategories, onSave, onCancel }: ReceiptItemFormProps) {
   const [name, setName] = useState(item?.name || '')
   const [amount, setAmount] = useState(item?.amount.toString() || '')
+  const [currency, setCurrency] = useState(item?.currency || DEFAULT_CURRENCY)
   const [manufacturer, setManufacturer] = useState(item?.manufacturer || '')
   const [packageVolume, setPackageVolume] = useState(item?.packageVolume || '')
   const [category, setCategory] = useState(item?.category || '')
@@ -183,6 +187,7 @@ function ReceiptItemForm({ item, productCategories, onSave, onCancel }: ReceiptI
       id: item?.id || crypto.randomUUID(),
       name: trimmedName,
       amount: parseFloat(parsedAmount.toFixed(2)),
+      currency,
       manufacturer: manufacturer.trim() || undefined,
       packageVolume: packageVolume.trim() || undefined,
       category: category.trim() || undefined,
@@ -232,14 +237,12 @@ function ReceiptItemForm({ item, productCategories, onSave, onCancel }: ReceiptI
       </div>
 
       {/* Amount */}
-      <Input
-        label="Сумма (BYN)"
-        type="number"
-        inputMode="decimal"
-        step="0.01"
-        min="0"
-        value={amount}
-        onChange={(e) => setAmount(e.currentTarget.value)}
+      <CurrencyAmountInput
+        label="Сумма"
+        amount={amount}
+        currency={currency}
+        onAmountChange={setAmount}
+        onCurrencyChange={setCurrency}
         placeholder="3.50"
       />
 

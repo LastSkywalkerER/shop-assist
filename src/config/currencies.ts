@@ -1,0 +1,19 @@
+export interface Currency {
+  code: string
+  symbol: string
+}
+
+export const CURRENCIES: Currency[] = [
+  { code: 'BYN', symbol: 'Br' },
+  { code: 'USD', symbol: '$' },
+  { code: 'EUR', symbol: '€' },
+  { code: 'RUB', symbol: '₽' },
+  { code: 'PLN', symbol: 'zł' },
+  { code: 'UAH', symbol: '₴' },
+]
+
+export const DEFAULT_CURRENCY = 'BYN'
+
+export function getCurrencySymbol(code: string): string {
+  return CURRENCIES.find(c => c.code === code)?.symbol || code
+}

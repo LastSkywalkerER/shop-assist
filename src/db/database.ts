@@ -74,7 +74,14 @@ async function createDb(): Promise<ShopAssistDatabase> {
     },
     purchases: {
       schema: purchaseSchema,
-      migrationStrategies: {},
+      migrationStrategies: {
+        1: (oldDoc: any) => ({
+          ...oldDoc,
+          price: oldDoc.priceByn,
+          currency: 'BYN',
+          priceByn: undefined,
+        }),
+      },
     },
     expenseCategories: {
       schema: expenseCategorySchema,
@@ -83,12 +90,14 @@ async function createDb(): Promise<ShopAssistDatabase> {
     expenses: {
       schema: expenseSchema,
       migrationStrategies: {
-        1: (oldDoc: any) => {
-          return {
-            ...oldDoc,
-            notes: undefined,
-          }
-        },
+        1: (oldDoc: any) => ({
+          ...oldDoc,
+          notes: undefined,
+        }),
+        2: (oldDoc: any) => ({
+          ...oldDoc,
+          currency: 'BYN',
+        }),
       },
     },
     receipts: {
@@ -106,13 +115,15 @@ async function createDb(): Promise<ShopAssistDatabase> {
             category: undefined,
           }
         },
-        2: (oldDoc: any) => {
-          return {
-            ...oldDoc,
-            qualityRating: undefined,
-            notes: undefined,
-          }
-        },
+        2: (oldDoc: any) => ({
+          ...oldDoc,
+          qualityRating: undefined,
+          notes: undefined,
+        }),
+        3: (oldDoc: any) => ({
+          ...oldDoc,
+          currency: 'BYN',
+        }),
       },
     },
     expenseAttachments: {

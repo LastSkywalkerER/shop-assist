@@ -6,6 +6,8 @@ import { ProductSelect } from './ProductSelect'
 import { StoreSelect } from './StoreSelect'
 import { Input } from '../shared/Input'
 import { Rating } from '../shared/Rating'
+import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
+import { DEFAULT_CURRENCY } from '../../config/currencies'
 
 export function AddPurchase() {
   const navigate = useNavigate()
@@ -20,6 +22,7 @@ export function AddPurchase() {
   const [selectedProduct, setSelectedProduct] = useState<ProductDocument | null>(null)
   const [selectedStore, setSelectedStore] = useState<StoreDocument | null>(null)
   const [price, setPrice] = useState('')
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY)
   const [rating, setRating] = useState<number | undefined>(undefined)
   const [notes, setNotes] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
@@ -86,7 +89,8 @@ export function AddPurchase() {
         id: crypto.randomUUID(),
         productId: selectedProduct.id,
         storeId: selectedStore.id,
-        priceByn: parseFloat(parseFloat(price).toFixed(2)),
+        price: parseFloat(parseFloat(price).toFixed(2)),
+        currency,
         qualityRating: rating || undefined,
         notes: notes.trim() || undefined,
         purchaseDate: new Date(date).toISOString(),
@@ -133,15 +137,14 @@ export function AddPurchase() {
 
       {/* Price & Date row */}
       <div className="grid grid-cols-2 gap-3">
-        <Input
-          label="Цена (BYN)"
-          type="number"
-          inputMode="decimal"
-          step="0.01"
-          min="0"
-          value={price}
-          onChange={(e) => setPrice(e.currentTarget.value)}
+        <CurrencyAmountInput
+          label="Цена"
+          amount={price}
+          currency={currency}
+          onAmountChange={setPrice}
+          onCurrencyChange={setCurrency}
           placeholder="3.49"
+          required
         />
         <Input
           label="Дата"

@@ -65,17 +65,17 @@ export function Dashboard() {
         const store = storeMap.get(storeId)
         const storeName = store?.name ?? 'Неизвестный'
 
-        let best = storePurchases[0].priceByn
+        let best = storePurchases[0].price
         let lastDate = storePurchases[0].purchaseDate
-        let lastPrice = storePurchases[0].priceByn
+        let lastPrice = storePurchases[0].price
         let ratingSum = 0
         let ratingCount = 0
 
         for (const p of storePurchases) {
-          if (p.priceByn < best) best = p.priceByn
+          if (p.price < best) best = p.price
           if (p.purchaseDate > lastDate) {
             lastDate = p.purchaseDate
-            lastPrice = p.priceByn
+            lastPrice = p.price
           }
           if (p.qualityRating != null) {
             ratingSum += p.qualityRating
@@ -87,6 +87,7 @@ export function Dashboard() {
           storeName,
           bestPrice: best,
           lastPrice,
+          currency: storePurchases[0].currency || 'BYN',
           avgRating: ratingCount > 0 ? ratingSum / ratingCount : null,
           count: storePurchases.length,
         })
