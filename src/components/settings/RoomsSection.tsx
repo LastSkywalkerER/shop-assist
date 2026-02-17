@@ -11,10 +11,14 @@ const ROLE_LABELS: Record<string, string> = {
 export function RoomsSection() {
   const { rooms, roomId, currentRoom, switchRoom, isAuthenticated, inviteResult, clearInviteResult } = useAuth()
   const [isCreatingInvite, setIsCreatingInvite] = useState(false)
-  const [inviteLink, setInviteLink] = useState<string | null>(null)
+  const [inviteCode, setInviteCode] = useState<string | null>(null)
+  const [deepLink, setDeepLink] = useState<string | null>(null)
   const [isSwitching, setIsSwitching] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+
+  // Web link uses page origin so it's accessible from any browser
+  const webLink = inviteCode ? `${window.location.origin}?invite=${inviteCode}` : null
 
   if (!isAuthenticated) return null
 
@@ -37,7 +41,8 @@ export function RoomsSection() {
     setError(null)
     try {
       const result = await createInvite(roomId)
-      setInviteLink(result.deep_link)
+      setInviteCode(result.invite.invite_code)
+      setDeepLink(result.deep_link)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create invite')
     } finally {
@@ -46,15 +51,14 @@ export function RoomsSection() {
   }
 
   const handleCopyLink = async () => {
-    if (!inviteLink) return
+    if (!webLink) return
     try {
-      await navigator.clipboard.writeText(inviteLink)
+      await navigator.clipboard.writeText(webLink)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // Fallback for environments without clipboard API
       const input = document.createElement('input')
-      input.value = inviteLink
+      input.value = webLink
       document.body.appendChild(input)
       input.select()
       document.execCommand('copy')
@@ -65,9 +69,9 @@ export function RoomsSection() {
   }
 
   const handleShareTelegram = () => {
-    if (!inviteLink || !currentRoom) return
+    if (!deepLink || !currentRoom) return
     const text = `Join my room "${currentRoom.name}" in Shop Assist!`
-    const url = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(text)}`
+    const url = `https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(text)}`
     window.open(url, '_blank')
   }
 
@@ -141,7 +145,7 @@ export function RoomsSection() {
           Share your current room to let others see and edit your data
         </p>
 
-        {!inviteLink ? (
+        {!inviteCode ? (
           <button
             onClick={handleCreateInvite}
             disabled={isCreatingInvite}
@@ -152,7 +156,7 @@ export function RoomsSection() {
         ) : (
           <div className="space-y-2">
             <div className="flex items-center gap-2 p-2 bg-bg-secondary rounded-lg">
-              <span className="text-[12px] text-text-hint truncate flex-1">{inviteLink}</span>
+              <span className="text-[12px] text-text-hint truncate flex-1">{webLink}</span>
               <button
                 onClick={handleCopyLink}
                 className="shrink-0 px-3 py-1 rounded-md bg-primary/10 text-primary-text text-[13px] font-medium active:bg-primary/20"

@@ -4,11 +4,33 @@ import type { TelegramAuthData, AuthResponse, SwitchRoomResponse, InviteResponse
 const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 
 async function getAuthHeader(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession()
-  if (!data.session) throw new Error('Not authenticated')
+  let { data } = await supabase.auth.getSession()
+
+  if (data.session) {
+    // Check if token expires within 60 seconds, refresh proactively
+    try {
+      const payload = JSON.parse(atob(data.session.access_token.split('.')[1]))
+      if (payload.exp * 1000 - Date.now() < 60_000) {
+        const { data: refreshed } = await supabase.auth.refreshSession()
+        if (refreshed.session) data = refreshed
+      }
+    } catch {
+      // If we can't parse, try refreshing anyway
+      const { data: refreshed } = await supabase.auth.refreshSession()
+      if (refreshed.session) data = refreshed
+    }
+  }
+
+  if (!data.session) {
+    // Last resort: try refreshing
+    const { data: refreshed } = await supabase.auth.refreshSession()
+    if (!refreshed.session) throw new Error('Not authenticated')
+    data = refreshed
+  }
+
   return {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${data.session.access_token}`,
+    'Authorization': `Bearer ${data.session!.access_token}`,
   }
 }
 
@@ -105,14 +127,19 @@ export async function acceptInvite(inviteCode: string): Promise<AcceptInviteResp
 }
 
 export async function fetchUserRooms(): Promise<RoomWithRole[]> {
-  const { data } = await supabase.auth.getSession()
-  if (!data.session) return []
+  // Ensure fresh session
+  let { data: { session } } = await supabase.auth.getSession()
+  if (!session) {
+    const { data: refreshed } = await supabase.auth.refreshSession()
+    session = refreshed.session
+  }
+  if (!session) return []
 
   const { data: user } = await supabase
     .from('users')
     .select('id')
-    .eq('auth_user_id', data.session.user.id)
-    .single()
+    .eq('auth_user_id', session.user.id)
+    .maybeSingle()
 
   if (!user) return []
 

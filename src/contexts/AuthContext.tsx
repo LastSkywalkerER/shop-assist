@@ -10,6 +10,7 @@ import {
   getStoredRooms,
   switchRoom as apiSwitchRoom,
   fetchUserRooms,
+  acceptInvite,
 } from '../lib/supabase/auth'
 import type { User, TelegramAuthData, RoomWithRole, InviteResult } from '../lib/supabase/types'
 
@@ -29,6 +30,50 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
+
+/** Try to get Mini App initDataRaw from all available sources (all synchronous). */
+function getMiniAppInitData(): string | null {
+  // Method 1: @telegram-apps/sdk-react
+  try {
+    const launchParams = retrieveLaunchParams() as Record<string, unknown>
+    const raw = launchParams.initDataRaw as string | undefined
+    const hasUser = !!(launchParams.initData as { user?: unknown })?.user
+    if (raw && hasUser) return raw
+  } catch { /* not available */ }
+
+  // Method 2: window.Telegram.WebApp
+  if (typeof window !== 'undefined') {
+    const webApp = (window as { Telegram?: { WebApp?: Record<string, unknown> } }).Telegram?.WebApp
+    if (webApp) {
+      const raw = webApp.initData as string | undefined
+      const hasUser = !!(webApp.initDataUnsafe as { user?: unknown })?.user
+      if (raw && hasUser) return raw
+    }
+  }
+
+  // Method 3: window.__telegram__initParams
+  if (typeof window !== 'undefined') {
+    const initParams = (window as Window & { __telegram__initParams?: { tgWebAppData?: string } }).__telegram__initParams
+    if (initParams?.tgWebAppData) return initParams.tgWebAppData
+  }
+
+  return null
+}
+
+/** Extract invite code from URL query param (?invite=CODE) and clean the URL. */
+function extractInviteFromUrl(): string | null {
+  try {
+    const url = new URL(window.location.href)
+    const code = url.searchParams.get('invite')
+    if (code) {
+      // Clean invite param from URL without reload
+      url.searchParams.delete('invite')
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash)
+      return code
+    }
+  } catch { /* ignore */ }
+  return null
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -50,6 +95,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    const urlInviteCode = extractInviteFromUrl()
+
+    const handleUrlInvite = async (code: string) => {
+      try {
+        const result = await acceptInvite(code)
+        setInviteResult({
+          status: result.room_id ? 'joined' : 'already_member',
+          room_id: result.room_id,
+          room_name: result.room_name,
+          role: result.role,
+        })
+        // Refresh rooms after accepting invite
+        const freshRooms = await fetchUserRooms()
+        setRooms(freshRooms)
+        localStorage.setItem('auth_rooms', JSON.stringify(freshRooms))
+      } catch (e) {
+        console.error('Failed to accept invite from URL:', e)
+      }
+    }
+
     const initAuth = async () => {
       try {
         const session = await getCurrentSession()
@@ -63,50 +128,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setRoomId(storedRoomId)
             setRooms(storedRooms)
             setIsLoading(false)
-            // Refresh rooms in background
-            fetchUserRooms().then(fresh => {
-              setRooms(fresh)
-              localStorage.setItem('auth_rooms', JSON.stringify(fresh))
-            }).catch(() => {})
+            // Handle URL invite if present
+            if (urlInviteCode) {
+              handleUrlInvite(urlInviteCode)
+            } else {
+              // Refresh rooms in background
+              fetchUserRooms().then(fresh => {
+                setRooms(fresh)
+                localStorage.setItem('auth_rooms', JSON.stringify(fresh))
+              }).catch(() => {})
+            }
             return
           }
         }
 
-        // Try Mini App auto-login
+        // Try Mini App auto-login (all sources are synchronous, no delay needed)
         try {
-          await new Promise(resolve => setTimeout(resolve, 300))
+          const initData = getMiniAppInitData()
 
-          let initDataRawValue: string | undefined
-          let hasUserData = false
-
-          try {
-            const launchParams = retrieveLaunchParams() as Record<string, unknown>
-            initDataRawValue = launchParams.initDataRaw as string | undefined
-            hasUserData = !!(launchParams.initData as { user?: unknown })?.user
-          } catch (e) {
-            console.log('Method 1 failed:', e)
-          }
-
-          if (!initDataRawValue && typeof window !== 'undefined') {
-            const windowTelegram = (window as { Telegram?: { WebApp?: Record<string, unknown> } }).Telegram
-            const webApp = windowTelegram?.WebApp
-            if (webApp) {
-              initDataRawValue = webApp.initData as string | undefined
-              hasUserData = !!(webApp.initDataUnsafe as { user?: unknown })?.user
-            }
-          }
-
-          if (!initDataRawValue && typeof window !== 'undefined') {
-            const initParams = (window as Window & { __telegram__initParams?: { tgWebAppData?: string } }).__telegram__initParams
-            if (initParams?.tgWebAppData) {
-              initDataRawValue = initParams.tgWebAppData
-              hasUserData = true
-            }
-          }
-
-          if (initDataRawValue && hasUserData) {
+          if (initData) {
             console.log('Mini App detected, auto-login starting...')
-            const response = await loginWithMiniApp(initDataRawValue)
+            const response = await loginWithMiniApp(initData)
             setUser(response.user)
             setRoomId(response.room_id)
             setRooms(response.rooms || [])
