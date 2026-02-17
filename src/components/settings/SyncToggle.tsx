@@ -21,12 +21,11 @@ export function SyncToggle({ enabled, disabled, onChange }: SyncToggleProps) {
           ${disabled ? 'bg-bg-secondary cursor-not-allowed' : 'bg-bg-secondary cursor-pointer'}
           peer-checked:bg-primary
           peer-disabled:opacity-50
-        `}>
-          <div className={`
-            absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform
-            peer-checked:translate-x-5
-          `} />
-        </div>
+        `} />
+        <div className={`
+          absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform
+          ${enabled ? 'translate-x-5' : 'translate-x-0'}
+        `} />
       </div>
     </label>
   )

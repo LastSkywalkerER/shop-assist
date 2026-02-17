@@ -36,13 +36,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [syncError, setSyncError] = useState<string | null>(null)
   const [replications, setReplications] = useState<Array<RxReplicationState<any, { updated_at: string }>>>([])
 
-  // Проверить сохраненное состояние синхронизации при монтировании
+  // Auto-enable sync when authenticated (unless explicitly disabled)
   useEffect(() => {
-    const savedSyncEnabled = localStorage.getItem('sync_enabled') === 'true'
-    setIsSyncEnabled(savedSyncEnabled)
+    const savedValue = localStorage.getItem('sync_enabled')
+    const syncEnabled = savedValue !== 'false'
+    setIsSyncEnabled(syncEnabled)
 
-    // Автоматически запустить синхронизацию если была включена
-    if (savedSyncEnabled && isAuthenticated && roomId && db) {
+    if (syncEnabled && isAuthenticated && roomId && db) {
+      localStorage.setItem('sync_enabled', 'true')
       startSync()
     }
   }, [isAuthenticated, roomId, db])
