@@ -56,6 +56,14 @@ export async function setupCollectionReplication(
     push: {
       async handler(changeRows) {
         try {
+          // Guard: skip push if JWT room_id no longer matches this replication's room.
+          // This prevents RLS errors during room switching (JWT updates before replication stops).
+          const session = await supabase.auth.getSession()
+          const jwtRoomId = session.data.session?.user?.user_metadata?.room_id
+          if (jwtRoomId && jwtRoomId !== roomId) {
+            return []
+          }
+
           const rows = changeRows.map(change => {
             const doc = change.newDocumentState
             return transformRxDBToSupabase(doc as any, roomId)
