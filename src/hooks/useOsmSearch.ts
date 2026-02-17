@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { City } from '../config/cities'
 
+// Convert center + radius (meters) to a lon/lat viewbox string
+function cityViewbox(city: City): string {
+  const r = city.regionRadius || city.radius
+  const latDelta = r / 111_320
+  const lonDelta = r / (111_320 * Math.cos((city.lat * Math.PI) / 180))
+  return `${city.lon - lonDelta},${city.lat + latDelta},${city.lon + lonDelta},${city.lat - latDelta}`
+}
+
 export interface OsmResult {
   osmId: string
   name: string
@@ -39,13 +47,15 @@ async function searchNominatim(
   signal: AbortSignal,
 ): Promise<OsmResult[]> {
   const params = new URLSearchParams({
-    q: `${apiQuery} ${city.name}`,
+    q: apiQuery,
     format: 'json',
     addressdetails: '1',
     namedetails: '1',
     limit: '15',
     'accept-language': 'ru',
     countrycodes: 'by',
+    viewbox: cityViewbox(city),
+    bounded: '1',
   })
 
   const resp = await fetch(
@@ -95,8 +105,8 @@ async function searchOverpass(
   signal: AbortSignal,
 ): Promise<OsmResult[]> {
   const escaped = escapeRegex(nameQuery)
-  // Use smaller radius (half of city radius, max 10km) and only nodes for speed
-  const radius = Math.min(city.radius, 10000)
+  // Use moderate radius for Overpass (max 40km to avoid timeouts)
+  const radius = Math.min(city.regionRadius || city.radius, 40000)
 
   const query = `[out:json][timeout:5];
 (
@@ -167,11 +177,10 @@ async function searchPhoton(
 ): Promise<OsmResult[]> {
   const params = new URLSearchParams({
     q: apiQuery,
-    lang: 'ru',
     limit: '15',
     lat: String(city.lat),
     lon: String(city.lon),
-    location_bias_scale: '0.6',
+    location_bias_scale: '0.2',
   })
 
   const resp = await fetch(`https://photon.komoot.io/api/?${params}`, { signal })
@@ -217,8 +226,9 @@ async function searchGeoapify(
   signal: AbortSignal,
 ): Promise<OsmResult[]> {
   if (!GEOAPIFY_KEY) return []
-  // Use circle filter around city center instead of just country
-  const radiusKm = Math.round(city.radius / 1000)
+  // Use circle filter around city center covering the whole oblast
+  const regionRadius = city.regionRadius || city.radius
+  const radiusKm = Math.round(regionRadius / 1000)
   const params = new URLSearchParams({
     text: apiQuery,
     lang: 'ru',

@@ -1,10 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../db/hooks'
-import type { StoreDocument, PurchaseDocument } from '../db/types'
+import type { StoreDocument, PurchaseDocument, ExpenseDocument } from '../db/types'
 import { Input } from '../components/shared/Input'
 import { ConfirmModal } from '../components/shared/ConfirmModal'
 import { showBackButton } from '../telegram/backButton'
+
+function pluralize(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 19) return `${n} ${many}`
+  if (mod10 === 1) return `${n} ${one}`
+  if (mod10 >= 2 && mod10 <= 4) return `${n} ${few}`
+  return `${n} ${many}`
+}
 
 export function StoresPage() {
   const navigate = useNavigate()
@@ -17,19 +26,28 @@ export function StoresPage() {
 
   const storesCol = useRxCollection<StoreDocument>('stores')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
+  const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const stores = useRxQuery(storesCol)
   const purchases = useRxQuery(purchasesCol)
+  const expenses = useRxQuery(expensesCol)
 
   const purchaseCountMap = new Map<string, number>()
   for (const p of purchases) {
     purchaseCountMap.set(p.storeId, (purchaseCountMap.get(p.storeId) ?? 0) + 1)
   }
 
+  const expenseCountMap = new Map<string, number>()
+  for (const e of expenses) {
+    if (e.storeId) {
+      expenseCountMap.set(e.storeId, (expenseCountMap.get(e.storeId) ?? 0) + 1)
+    }
+  }
+
   const sorted = [...stores].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
 
   const handleDeleteRequest = (store: StoreDocument) => {
-    const count = purchaseCountMap.get(store.id) ?? 0
-    if (count > 0) {
+    const total = (purchaseCountMap.get(store.id) ?? 0) + (expenseCountMap.get(store.id) ?? 0)
+    if (total > 0) {
       setDeleteTarget(store)
     } else {
       doDelete(store)
@@ -68,7 +86,8 @@ export function StoresPage() {
       ) : (
         <div className="mx-4 flex flex-col gap-3">
           {sorted.map((store) => {
-            const count = purchaseCountMap.get(store.id) ?? 0
+            const pCount = purchaseCountMap.get(store.id) ?? 0
+            const eCount = expenseCountMap.get(store.id) ?? 0
 
             if (editingId === store.id && storesCol) {
               return (
@@ -92,7 +111,12 @@ export function StoresPage() {
                       </div>
                     )}
                     <div className="text-[11px] text-text-hint/60 mt-1">
-                      {count > 0 ? `${count} покупок` : 'Нет покупок'}
+                      {pCount === 0 && eCount === 0
+                        ? 'Нет записей'
+                        : [
+                            pCount > 0 ? pluralize(pCount, 'продукт', 'продукта', 'продуктов') : null,
+                            eCount > 0 ? pluralize(eCount, 'расход', 'расхода', 'расходов') : null,
+                          ].filter(Boolean).join(', ')}
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -127,7 +151,10 @@ export function StoresPage() {
       {deleteTarget && (
         <ConfirmModal
           title="Удалить магазин?"
-          message={`У магазина «${deleteTarget.name}» есть ${purchaseCountMap.get(deleteTarget.id) ?? 0} покупок. Они останутся, но без привязки к магазину.`}
+          message={`У магазина «${deleteTarget.name}» есть ${[
+            (purchaseCountMap.get(deleteTarget.id) ?? 0) > 0 ? pluralize(purchaseCountMap.get(deleteTarget.id)!, 'продукт', 'продукта', 'продуктов') : null,
+            (expenseCountMap.get(deleteTarget.id) ?? 0) > 0 ? pluralize(expenseCountMap.get(deleteTarget.id)!, 'расход', 'расхода', 'расходов') : null,
+          ].filter(Boolean).join(' и ')}. Они останутся, но без привязки к магазину.`}
           confirmLabel="Удалить"
           destructive
           onConfirm={() => doDelete(deleteTarget)}
