@@ -36,7 +36,7 @@ export function transformRxDBToSupabase(
 
   // Конвертировать все поля из camelCase в snake_case
   for (const [key, value] of Object.entries(doc)) {
-    if (key === 'id' || key === '_deleted') continue
+    if (key === 'id' || key === '_deleted' || value === undefined) continue
 
     const snakeKey = camelToSnake(key)
     result[snakeKey] = value
