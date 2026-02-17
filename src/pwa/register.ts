@@ -25,8 +25,11 @@ export function applyUpdate() {
   updateSWFn?.(true)
 }
 
-export function checkForUpdate() {
-  navigator.serviceWorker?.getRegistration().then((reg) => {
-    reg?.update()
-  })
+export async function checkForUpdate() {
+  // Удаляем все кэши, чтобы браузер не отдал старый SW
+  const cacheNames = await caches.keys()
+  await Promise.all(cacheNames.map((name) => caches.delete(name)))
+
+  const reg = await navigator.serviceWorker?.getRegistration()
+  await reg?.update()
 }

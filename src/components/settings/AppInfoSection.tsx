@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useUpdatePrompt } from '../../pwa/useUpdatePrompt'
 import { getDatabaseVersion } from '../../db/version'
 import packageJson from '../../../package.json'
@@ -7,6 +7,11 @@ export function AppInfoSection() {
   const { checkForUpdate, needRefresh } = useUpdatePrompt()
   const [isChecking, setIsChecking] = useState(false)
   const [checkMessage, setCheckMessage] = useState<string | null>(null)
+  const needRefreshRef = useRef(needRefresh)
+
+  useEffect(() => {
+    needRefreshRef.current = needRefresh
+  }, [needRefresh])
 
   // Версии из package.json и RxDB schemas
   const appVersion = packageJson.version
@@ -19,15 +24,14 @@ export function AppInfoSection() {
     try {
       await checkForUpdate()
 
-      // Даем время на проверку
+      // Даем время SW обработать обновление
       setTimeout(() => {
         setIsChecking(false)
-        if (!needRefresh) {
+        if (!needRefreshRef.current) {
           setCheckMessage('✅ У вас установлена последняя версия')
-          // Убрать сообщение через 3 секунды
           setTimeout(() => setCheckMessage(null), 3000)
         }
-      }, 1000)
+      }, 2000)
     } catch (error) {
       setIsChecking(false)
       setCheckMessage('❌ Ошибка проверки обновлений')
