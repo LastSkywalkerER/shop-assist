@@ -37,9 +37,46 @@ export interface TelegramAuthData {
   hash: string
 }
 
+export interface RoomWithRole extends Room {
+  role: 'owner' | 'editor' | 'viewer'
+}
+
+export interface InviteResult {
+  status: 'joined' | 'already_member' | 'expired' | 'not_found'
+  room_id?: string
+  room_name?: string
+  role?: string
+}
+
 export interface AuthResponse {
   user: User
   room_id: string
+  rooms: RoomWithRole[]
   access_token: string
   refresh_token: string
+  invite_result?: InviteResult | null
+}
+
+export interface SwitchRoomResponse {
+  room: Room
+  role: string
+  access_token: string
+  refresh_token: string
+}
+
+export interface InviteResponse {
+  invite: {
+    id: string
+    room_id: string
+    invite_code: string
+    role: string
+  }
+  deep_link: string
+}
+
+export interface AcceptInviteResponse {
+  message: string
+  room_id: string
+  room_name?: string
+  role?: string
 }

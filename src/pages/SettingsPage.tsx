@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { TabBar } from '../components/layout/TabBar'
 import { AppInfoSection } from '../components/settings/AppInfoSection'
 import { SyncSection } from '../components/settings/SyncSection'
+import { RoomsSection } from '../components/settings/RoomsSection'
 
 export function SettingsPage() {
   const navigate = useNavigate()
@@ -18,6 +19,7 @@ export function SettingsPage() {
     <>
       <div className="px-4 pb-20">
         <SyncSection />
+        <RoomsSection />
         <AppInfoSection />
       </div>
       <TabBar activeTab="settings" onTabChange={handleTabChange} />

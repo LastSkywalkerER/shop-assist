@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CITIES, type City } from '../../config/cities'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface HeaderProps {
   city: City
@@ -9,6 +10,7 @@ interface HeaderProps {
 
 export function Header({ city, onCityChange }: HeaderProps) {
   const navigate = useNavigate()
+  const { currentRoom, isAuthenticated } = useAuth()
   const [showCities, setShowCities] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -25,8 +27,14 @@ export function Header({ city, onCityChange }: HeaderProps) {
   return (
     <header className="bg-header-bg backdrop-blur-lg sticky top-0 z-10 border-b border-separator/30">
       <div className="px-4 h-11 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-[17px] font-semibold text-text">Shop Assist</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[17px] font-semibold text-text shrink-0">Shop Assist</span>
+          {/* Room name */}
+          {isAuthenticated && currentRoom && !currentRoom.is_personal && (
+            <span className="text-[12px] px-2 py-0.5 rounded-full bg-primary/10 text-primary-text font-medium truncate max-w-[100px]">
+              {currentRoom.name}
+            </span>
+          )}
           {/* City selector */}
           <div className="relative" ref={dropdownRef}>
             <button
@@ -68,7 +76,7 @@ export function Header({ city, onCityChange }: HeaderProps) {
           <button
             onClick={() => navigate('/stores')}
             className="w-8 h-8 flex items-center justify-center rounded-full text-primary-text active:bg-primary/10 transition-colors"
-            title="Магазины"
+            title="Stores"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 7l4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" />

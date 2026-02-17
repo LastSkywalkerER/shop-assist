@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import type { RxReplicationState } from 'rxdb/plugins/replication'
 import { useDatabase } from '../db/hooks'
 import { useAuth } from './AuthContext'
@@ -34,28 +34,30 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [isSyncEnabled, setIsSyncEnabled] = useState(false)
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
-  const [replications, setReplications] = useState<Array<RxReplicationState<any, { updated_at: string }>>>([])
+  const replicationsRef = useRef<Array<RxReplicationState<any, { updated_at: string }>>>([])
+  const prevRoomIdRef = useRef<string | null>(null)
 
-  // Auto-enable sync when authenticated (unless explicitly disabled)
-  useEffect(() => {
-    const savedValue = localStorage.getItem('sync_enabled')
-    const syncEnabled = savedValue !== 'false'
-    setIsSyncEnabled(syncEnabled)
-
-    if (syncEnabled && isAuthenticated && roomId && db) {
-      localStorage.setItem('sync_enabled', 'true')
-      startSync()
+  const stopSyncInternal = useCallback(async () => {
+    try {
+      for (const replicationState of replicationsRef.current) {
+        await stopReplication(replicationState)
+      }
+      replicationsRef.current = []
+      setIsSyncing(false)
+    } catch (error) {
+      console.error('Failed to stop sync:', error)
+      setSyncError(error instanceof Error ? error.message : 'Failed to stop sync')
     }
-  }, [isAuthenticated, roomId, db])
+  }, [])
 
-  const startSync = async () => {
+  const startSyncInternal = useCallback(async () => {
     if (!db || !roomId || !isAuthenticated) {
-      setSyncError('Необходима авторизация для синхронизации')
+      setSyncError('Authentication required for sync')
       return
     }
 
-    if (isSyncing) {
-      return
+    if (replicationsRef.current.length > 0) {
+      await stopSyncInternal()
     }
 
     try {
@@ -64,7 +66,6 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
       const replicationStates: Array<RxReplicationState<any, { updated_at: string }>> = []
 
-      // Настроить replication для всех коллекций
       for (const collectionName of COLLECTION_NAMES) {
         const collection = db[collectionName as keyof typeof db]
         if (!collection) continue
@@ -76,45 +77,81 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
         replicationStates.push(replicationState)
 
-        // Обновить lastSyncTime при активности
         replicationState.active$.subscribe((active: boolean) => {
           if (active) {
             setLastSyncTime(new Date())
           }
         })
 
-        // Обработка ошибок
         replicationState.error$.subscribe((error: any) => {
           if (error) {
             console.error(`Replication error for ${collectionName}:`, error)
-            setSyncError(`Ошибка синхронизации: ${error.message}`)
+            setSyncError(`Sync error: ${error.message}`)
           }
         })
       }
 
-      setReplications(replicationStates)
-      console.log(`✅ Синхронизация запущена для ${replicationStates.length} коллекций`)
+      replicationsRef.current = replicationStates
+      console.log(`Sync started for ${replicationStates.length} collections`)
     } catch (error) {
       console.error('Failed to start sync:', error)
-      setSyncError(error instanceof Error ? error.message : 'Ошибка запуска синхронизации')
+      setSyncError(error instanceof Error ? error.message : 'Failed to start sync')
       setIsSyncing(false)
     }
+  }, [db, roomId, isAuthenticated, stopSyncInternal])
+
+  // Handle room switching: stop sync, clear local data, restart
+  useEffect(() => {
+    if (!roomId || !db || !isAuthenticated) return
+
+    const handleRoomChange = async () => {
+      const prevRoomId = prevRoomIdRef.current
+      prevRoomIdRef.current = roomId
+
+      if (prevRoomId && prevRoomId !== roomId) {
+        console.log(`Room switched: ${prevRoomId} -> ${roomId}`)
+        await stopSyncInternal()
+
+        // Clear all local collections for fresh sync from new room
+        for (const collectionName of COLLECTION_NAMES) {
+          const collection = db[collectionName as keyof typeof db]
+          if (!collection) continue
+          try {
+            const docs = await collection.find().exec()
+            await Promise.all(docs.map((d: any) => d.remove()))
+          } catch (e) {
+            console.error(`Failed to clear ${collectionName}:`, e)
+          }
+        }
+
+        if (isSyncEnabled) {
+          await startSyncInternal()
+        }
+      }
+    }
+
+    handleRoomChange()
+  }, [roomId, db, isAuthenticated])
+
+  // Auto-enable sync when authenticated
+  useEffect(() => {
+    const savedValue = localStorage.getItem('sync_enabled')
+    const syncEnabled = savedValue !== 'false'
+    setIsSyncEnabled(syncEnabled)
+
+    if (syncEnabled && isAuthenticated && roomId && db) {
+      localStorage.setItem('sync_enabled', 'true')
+      prevRoomIdRef.current = roomId
+      startSyncInternal()
+    }
+  }, [isAuthenticated, db])
+
+  const startSync = async () => {
+    await startSyncInternal()
   }
 
   const stopSync = async () => {
-    try {
-      // Остановить все replication states
-      for (const replicationState of replications) {
-        await stopReplication(replicationState)
-      }
-
-      setReplications([])
-      setIsSyncing(false)
-      console.log('✅ Синхронизация остановлена')
-    } catch (error) {
-      console.error('Failed to stop sync:', error)
-      setSyncError(error instanceof Error ? error.message : 'Ошибка остановки синхронизации')
-    }
+    await stopSyncInternal()
   }
 
   const toggleSync = async (enabled: boolean) => {
@@ -122,9 +159,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('sync_enabled', enabled.toString())
 
     if (enabled) {
-      await startSync()
+      await startSyncInternal()
     } else {
-      await stopSync()
+      await stopSyncInternal()
     }
   }
 

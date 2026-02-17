@@ -1,14 +1,21 @@
 import { supabase } from './client'
-import type { TelegramAuthData, AuthResponse } from './types'
+import type { TelegramAuthData, AuthResponse, SwitchRoomResponse, InviteResponse, AcceptInviteResponse, RoomWithRole } from './types'
 
-const EDGE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`
+const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
+
+async function getAuthHeader(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession()
+  if (!data.session) throw new Error('Not authenticated')
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${data.session.access_token}`,
+  }
+}
 
 export async function loginWithTelegram(authData: TelegramAuthData): Promise<AuthResponse> {
-  const response = await fetch(EDGE_FUNCTION_URL, {
+  const response = await fetch(`${FUNCTIONS_URL}/telegram-auth`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(authData),
   })
 
@@ -18,28 +25,14 @@ export async function loginWithTelegram(authData: TelegramAuthData): Promise<Aut
   }
 
   const data: AuthResponse = await response.json()
-
-  // Установить session в Supabase client
-  if (data.access_token && data.refresh_token) {
-    await supabase.auth.setSession({
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-    })
-  }
-
-  // Сохранить данные в localStorage
-  localStorage.setItem('auth_user', JSON.stringify(data.user))
-  localStorage.setItem('auth_room_id', data.room_id)
-
+  await setSessionAndStore(data)
   return data
 }
 
 export async function loginWithMiniApp(initDataRaw: string): Promise<AuthResponse> {
-  const response = await fetch(EDGE_FUNCTION_URL, {
+  const response = await fetch(`${FUNCTIONS_URL}/telegram-auth`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ initDataRaw }),
   })
 
@@ -49,8 +42,25 @@ export async function loginWithMiniApp(initDataRaw: string): Promise<AuthRespons
   }
 
   const data: AuthResponse = await response.json()
+  await setSessionAndStore(data)
+  return data
+}
 
-  // Установить session в Supabase client
+export async function switchRoom(roomId: string): Promise<SwitchRoomResponse> {
+  const headers = await getAuthHeader()
+  const response = await fetch(`${FUNCTIONS_URL}/switch-room`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ room_id: roomId }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || 'Failed to switch room')
+  }
+
+  const data: SwitchRoomResponse = await response.json()
+
   if (data.access_token && data.refresh_token) {
     await supabase.auth.setSession({
       access_token: data.access_token,
@@ -58,17 +68,84 @@ export async function loginWithMiniApp(initDataRaw: string): Promise<AuthRespons
     })
   }
 
-  // Сохранить данные в localStorage
+  localStorage.setItem('auth_room_id', roomId)
+  return data
+}
+
+export async function createInvite(roomId: string): Promise<InviteResponse> {
+  const headers = await getAuthHeader()
+  const response = await fetch(`${FUNCTIONS_URL}/room-invite`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ action: 'create', room_id: roomId }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || 'Failed to create invite')
+  }
+
+  return response.json()
+}
+
+export async function acceptInvite(inviteCode: string): Promise<AcceptInviteResponse> {
+  const headers = await getAuthHeader()
+  const response = await fetch(`${FUNCTIONS_URL}/room-invite`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ action: 'accept', invite_code: inviteCode }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || 'Failed to accept invite')
+  }
+
+  return response.json()
+}
+
+export async function fetchUserRooms(): Promise<RoomWithRole[]> {
+  const { data } = await supabase.auth.getSession()
+  if (!data.session) return []
+
+  const { data: user } = await supabase
+    .from('users')
+    .select('id')
+    .eq('auth_user_id', data.session.user.id)
+    .single()
+
+  if (!user) return []
+
+  const { data: memberships } = await supabase
+    .from('room_memberships')
+    .select('room_id, role, rooms(id, name, is_personal, owner_id, created_at, updated_at)')
+    .eq('user_id', user.id)
+
+  return (memberships || []).map((m: any) => ({
+    ...m.rooms,
+    role: m.role,
+  }))
+}
+
+async function setSessionAndStore(data: AuthResponse) {
+  if (data.access_token && data.refresh_token) {
+    await supabase.auth.setSession({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+    })
+  }
   localStorage.setItem('auth_user', JSON.stringify(data.user))
   localStorage.setItem('auth_room_id', data.room_id)
-
-  return data
+  if (data.rooms) {
+    localStorage.setItem('auth_rooms', JSON.stringify(data.rooms))
+  }
 }
 
 export async function logout(): Promise<void> {
   await supabase.auth.signOut()
   localStorage.removeItem('auth_user')
   localStorage.removeItem('auth_room_id')
+  localStorage.removeItem('auth_rooms')
 }
 
 export async function getCurrentSession() {
@@ -83,4 +160,9 @@ export function getStoredUser() {
 
 export function getStoredRoomId(): string | null {
   return localStorage.getItem('auth_room_id')
+}
+
+export function getStoredRooms(): RoomWithRole[] {
+  const roomsJson = localStorage.getItem('auth_rooms')
+  return roomsJson ? JSON.parse(roomsJson) : []
 }
