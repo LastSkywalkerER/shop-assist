@@ -75,6 +75,35 @@ function extractInviteFromUrl(): string | null {
   return null
 }
 
+/** Extract invite code from Telegram Mini App start_param (inv_CODE). */
+function extractInviteFromStartParam(): string | null {
+  try {
+    // Method 1: @telegram-apps/sdk-react
+    const launchParams = retrieveLaunchParams() as Record<string, unknown>
+    const startParam = launchParams.startParam as string | undefined
+    if (startParam?.startsWith('inv_')) return startParam.slice(4)
+  } catch { /* not available */ }
+
+  try {
+    // Method 2: window.Telegram.WebApp initDataUnsafe
+    const webApp = (window as { Telegram?: { WebApp?: Record<string, unknown> } }).Telegram?.WebApp
+    const startParam = (webApp?.initDataUnsafe as { start_param?: string } | undefined)?.start_param
+    if (startParam?.startsWith('inv_')) return startParam.slice(4)
+  } catch { /* ignore */ }
+
+  try {
+    // Method 3: parse start_param from raw initData string
+    const initData = getMiniAppInitData()
+    if (initData) {
+      const params = new URLSearchParams(initData)
+      const startParam = params.get('start_param')
+      if (startParam?.startsWith('inv_')) return startParam.slice(4)
+    }
+  } catch { /* ignore */ }
+
+  return null
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [roomId, setRoomId] = useState<string | null>(null)
@@ -95,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    const urlInviteCode = extractInviteFromUrl()
+    const urlInviteCode = extractInviteFromUrl() || extractInviteFromStartParam()
 
     const handleUrlInvite = async (code: string) => {
       try {

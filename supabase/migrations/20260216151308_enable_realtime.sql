@@ -1,5 +1,4 @@
--- Enable Realtime for all sync tables
-
+-- Enable Supabase Realtime for all sync tables and rooms
 ALTER PUBLICATION supabase_realtime ADD TABLE products_sync;
 ALTER PUBLICATION supabase_realtime ADD TABLE stores_sync;
 ALTER PUBLICATION supabase_realtime ADD TABLE purchases_sync;
