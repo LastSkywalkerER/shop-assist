@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useToast } from '../../contexts/ToastContext'
 import { createInvite } from '../../lib/supabase/auth'
 
 const ROLE_LABELS: Record<string, string> = {
@@ -10,26 +11,40 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function RoomsSection() {
   const { rooms, roomId, currentRoom, switchRoom, isAuthenticated, inviteResult, clearInviteResult } = useAuth()
+  const { showToast } = useToast()
   const [isCreatingInvite, setIsCreatingInvite] = useState(false)
   const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [deepLink, setDeepLink] = useState<string | null>(null)
   const [isSwitching, setIsSwitching] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
   // Web link uses page origin so it's accessible from any browser
   const webLink = inviteCode ? `${window.location.origin}?invite=${inviteCode}` : null
+
+  // Show invite result as toast
+  useEffect(() => {
+    if (!inviteResult) return
+    if (inviteResult.status === 'joined') {
+      showToast(`Joined room "${inviteResult.room_name}"`, 'success')
+    } else if (inviteResult.status === 'already_member') {
+      showToast(`Already in room "${inviteResult.room_name}"`, 'info')
+    } else if (inviteResult.status === 'expired') {
+      showToast('Invite link has expired', 'error')
+    } else if (inviteResult.status === 'not_found') {
+      showToast('Invite link is invalid', 'error')
+    }
+    clearInviteResult()
+  }, [inviteResult])
 
   if (!isAuthenticated) return null
 
   const handleSwitchRoom = async (newRoomId: string) => {
     if (newRoomId === roomId || isSwitching) return
     setIsSwitching(newRoomId)
-    setError(null)
     try {
       await switchRoom(newRoomId)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to switch room')
+      showToast(e instanceof Error ? e.message : 'Failed to switch room', 'error')
     } finally {
       setIsSwitching(null)
     }
@@ -38,13 +53,12 @@ export function RoomsSection() {
   const handleCreateInvite = async () => {
     if (!roomId || isCreatingInvite) return
     setIsCreatingInvite(true)
-    setError(null)
     try {
       const result = await createInvite(roomId)
       setInviteCode(result.invite.invite_code)
       setDeepLink(result.deep_link)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create invite')
+      showToast(e instanceof Error ? e.message : 'Failed to create invite', 'error')
     } finally {
       setIsCreatingInvite(false)
     }
@@ -54,8 +68,6 @@ export function RoomsSection() {
     if (!webLink) return
     try {
       await navigator.clipboard.writeText(webLink)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
     } catch {
       const input = document.createElement('input')
       input.value = webLink
@@ -63,9 +75,10 @@ export function RoomsSection() {
       input.select()
       document.execCommand('copy')
       document.body.removeChild(input)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
     }
+    setCopied(true)
+    showToast('Link copied!', 'success')
+    setTimeout(() => setCopied(false), 2000)
   }
 
   const handleShareTelegram = () => {
@@ -78,25 +91,6 @@ export function RoomsSection() {
   return (
     <section className="mb-6">
       <h2 className="text-[20px] font-semibold text-text mb-4">Rooms</h2>
-
-      {/* Invite result notification */}
-      {inviteResult && (
-        <div className={`mb-3 px-3 py-2 rounded-lg flex items-center justify-between ${
-          inviteResult.status === 'joined' ? 'bg-green-500/10' :
-          inviteResult.status === 'already_member' ? 'bg-blue-500/10' :
-          'bg-red-500/10'
-        }`}>
-          <p className="text-[13px]">
-            {inviteResult.status === 'joined' && `Joined room "${inviteResult.room_name}"`}
-            {inviteResult.status === 'already_member' && `Already in room "${inviteResult.room_name}"`}
-            {inviteResult.status === 'expired' && 'Invite link has expired'}
-            {inviteResult.status === 'not_found' && 'Invite link is invalid'}
-          </p>
-          <button onClick={clearInviteResult} className="text-text-hint text-[13px] ml-2">
-            &times;
-          </button>
-        </div>
-      )}
 
       <div className="bg-surface rounded-xl border border-separator/30 overflow-hidden">
         {rooms.map((room, i) => (
@@ -176,12 +170,6 @@ export function RoomsSection() {
           </div>
         )}
       </div>
-
-      {error && (
-        <div className="mt-3 px-3 py-2 bg-red-500/10 rounded-lg">
-          <p className="text-[13px] text-red-500">{error}</p>
-        </div>
-      )}
     </section>
   )
 }

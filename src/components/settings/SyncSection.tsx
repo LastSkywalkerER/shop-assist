@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useSync } from '../../contexts/SyncContext'
+import { useToast } from '../../contexts/ToastContext'
 import { TelegramLoginButton } from './TelegramLoginButton'
 import { SyncToggle } from './SyncToggle'
 
@@ -21,13 +23,18 @@ function formatRelativeTime(date: Date): string {
 export function SyncSection() {
   const { user, isAuthenticated, logout } = useAuth()
   const { isSyncEnabled, isSyncing, lastSyncTime, syncError, toggleSync } = useSync()
+  const { showToast } = useToast()
+
+  useEffect(() => {
+    if (syncError) showToast(syncError, 'error')
+  }, [syncError])
 
   const handleLogout = async () => {
     try {
       await logout()
     } catch (error) {
       console.error('Logout failed:', error)
-      alert('Ошибка при выходе')
+      showToast('Ошибка при выходе', 'error')
     }
   }
 
@@ -36,7 +43,7 @@ export function SyncSection() {
       await toggleSync(enabled)
     } catch (error) {
       console.error('Toggle sync failed:', error)
-      alert('Ошибка переключения синхронизации')
+      showToast('Ошибка переключения синхронизации', 'error')
     }
   }
 
@@ -78,13 +85,7 @@ export function SyncSection() {
               onChange={handleToggleSync}
             />
 
-            {syncError && (
-              <div className="mt-3 px-3 py-2 bg-red-500/10 rounded-lg">
-                <p className="text-[13px] text-red-500">❌ {syncError}</p>
-              </div>
-            )}
-
-            {isSyncing && !syncError && (
+            {isSyncing && (
               <p className="text-[13px] text-text-hint mt-3">
                 {lastSyncTime
                   ? `📊 Последняя синхронизация: ${formatRelativeTime(lastSyncTime)}`
