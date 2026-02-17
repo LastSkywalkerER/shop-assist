@@ -93,19 +93,33 @@ export async function setupCollectionReplication(
         filter: `room_id=eq.${roomId}`,
       },
       () => {
-        // Перезапустить pull при изменениях
         replicationState.reSync()
       }
     )
-    .subscribe()
+    .subscribe((status) => {
+      // Re-sync on (re)connect so missed changes are pulled
+      if (status === 'SUBSCRIBED') {
+        replicationState.reSync()
+      }
+    })
 
-  // Сохранить channel для очистки
+  // Fallback polling every 30s in case Realtime misses events
+  const pollInterval = setInterval(() => {
+    replicationState.reSync()
+  }, 30_000)
+
+  // Сохранить channel и timer для очистки
   ;(replicationState as any).__channel = channel
+  ;(replicationState as any).__pollInterval = pollInterval
 
   return replicationState
 }
 
 export async function stopReplication(replicationState: RxReplicationState<any, CheckpointType>) {
+  // Остановить fallback polling
+  const pollInterval = (replicationState as any).__pollInterval
+  if (pollInterval) clearInterval(pollInterval)
+
   // Отписаться от Realtime
   const channel = (replicationState as any).__channel
   if (channel) {
