@@ -38,15 +38,17 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const prevRoomIdRef = useRef<string | null>(null)
 
   const stopSyncInternal = useCallback(async () => {
-    try {
-      for (const replicationState of replicationsRef.current) {
+    // Clear ref immediately so startSyncInternal cannot see stale replications
+    // even if individual cancel calls fail below.
+    const toStop = replicationsRef.current
+    replicationsRef.current = []
+    setIsSyncing(false)
+    for (const replicationState of toStop) {
+      try {
         await stopReplication(replicationState)
+      } catch (error) {
+        console.error('Failed to stop replication:', error)
       }
-      replicationsRef.current = []
-      setIsSyncing(false)
-    } catch (error) {
-      console.error('Failed to stop sync:', error)
-      setSyncError(error instanceof Error ? error.message : 'Failed to stop sync')
     }
   }, [])
 

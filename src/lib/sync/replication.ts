@@ -76,6 +76,21 @@ export async function setupCollectionReplication(
             })
 
           if (error) {
+            if (error.code === '42501') {
+              // Batch RLS violation: likely stale deletion events from a room switch
+              // (old room's document IDs exist in Supabase under a different room_id).
+              // Retry row-by-row so valid rows are still pushed; silently skip RLS failures.
+              for (const row of rows) {
+                const { error: rowError } = await supabase
+                  .from(tableName)
+                  .upsert([row], { onConflict: 'id' })
+                if (rowError && rowError.code !== '42501') {
+                  console.error(`Push error for ${tableName}:`, rowError)
+                  throw rowError
+                }
+              }
+              return []
+            }
             console.error(`Push error for ${tableName}:`, error)
             throw error
           }
