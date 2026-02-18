@@ -4,22 +4,18 @@ import { CategorySelect } from '../shared/CategorySelect'
 
 interface ProductFormProps {
   categories: string[]
-  onSave: (data: { name: string; manufacturer?: string; packageVolume?: string; category?: string }) => void
+  onSave: (data: { name: string; category?: string }) => void
   onCancel: () => void
 }
 
 export function ProductForm({ categories, onSave, onCancel }: ProductFormProps) {
   const [name, setName] = useState('')
-  const [manufacturer, setManufacturer] = useState('')
-  const [packageVolume, setPackageVolume] = useState('')
   const [category, setCategory] = useState('')
 
   const handleSubmit = () => {
     if (!name.trim()) return
     onSave({
       name: name.trim(),
-      manufacturer: manufacturer.trim() || undefined,
-      packageVolume: packageVolume.trim() || undefined,
       category: category.trim() || undefined,
     })
   }
@@ -30,16 +26,12 @@ export function ProductForm({ categories, onSave, onCancel }: ProductFormProps) 
         Новый продукт
       </div>
       <Input label="Название" value={name} onChange={(e) => setName(e.currentTarget.value)} placeholder="Молоко" />
-      <Input label="Производитель" value={manufacturer} onChange={(e) => setManufacturer(e.currentTarget.value)} placeholder="Савушкин" />
-      <div className="grid grid-cols-2 gap-3">
-        <Input label="Объём" value={packageVolume} onChange={(e) => setPackageVolume(e.currentTarget.value)} placeholder="1л" />
-        <CategorySelect
-          categories={categories}
-          value={category}
-          onChange={setCategory}
-          inputClassName="w-full bg-surface rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
-        />
-      </div>
+      <CategorySelect
+        categories={categories}
+        value={category}
+        onChange={setCategory}
+        inputClassName="w-full bg-surface rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
+      />
       <div className="flex gap-2 pt-1">
         <button
           onClick={handleSubmit}

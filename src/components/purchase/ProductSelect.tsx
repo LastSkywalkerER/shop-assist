@@ -7,7 +7,7 @@ interface ProductSelectProps {
   categories: string[]
   selected: ProductDocument | null
   onSelect: (product: ProductDocument) => void
-  onCreate: (data: { name: string; manufacturer?: string; packageVolume?: string; category?: string }) => void
+  onCreate: (data: { name: string; category?: string }) => void
 }
 
 export function ProductSelect({ products, categories, selected, onSelect, onCreate }: ProductSelectProps) {
@@ -30,7 +30,7 @@ export function ProductSelect({ products, categories, selected, onSelect, onCrea
     if (!query.trim()) return products
     const words = query.trim().toLowerCase().split(/\s+/)
     return products.filter((p) => {
-      const searchable = [p.name, p.manufacturer, p.packageVolume, p.category]
+      const searchable = [p.name, p.category]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
@@ -72,10 +72,8 @@ export function ProductSelect({ products, categories, selected, onSelect, onCrea
         <div className="bg-surface rounded-xl px-4 py-3 flex items-center justify-between ring-2 ring-primary/20">
           <div className="flex-1 min-w-0">
             <span className="text-[15px] font-medium text-text">{selected.name}</span>
-            {(selected.manufacturer || selected.packageVolume) && (
-              <span className="text-[13px] text-text-hint ml-1.5">
-                {[selected.manufacturer, selected.packageVolume].filter(Boolean).join(' · ')}
-              </span>
+            {selected.category && (
+              <span className="text-[13px] text-text-hint ml-1.5">{selected.category}</span>
             )}
           </div>
           <button
@@ -121,10 +119,8 @@ export function ProductSelect({ products, categories, selected, onSelect, onCrea
                   className="w-full text-left px-4 py-2.5 active:bg-bg-secondary transition-colors border-b border-separator/20 last:border-b-0"
                 >
                   <div className="text-[15px] text-text">{p.name}</div>
-                  {(p.manufacturer || p.packageVolume) && (
-                    <div className="text-[12px] text-text-hint mt-0.5">
-                      {[p.manufacturer, p.packageVolume].filter(Boolean).join(' · ')}
-                    </div>
+                  {p.category && (
+                    <div className="text-[12px] text-text-hint mt-0.5">{p.category}</div>
                   )}
                 </button>
               ))}

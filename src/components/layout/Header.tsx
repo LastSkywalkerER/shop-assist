@@ -28,7 +28,12 @@ export function Header({ city, onCityChange }: HeaderProps) {
     <header className="bg-header-bg backdrop-blur-lg sticky top-0 z-10 border-b border-separator/30">
       <div className="px-4 h-11 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[17px] font-semibold text-text shrink-0">Shop Assist</span>
+          <button
+            onClick={() => navigate('/')}
+            className="text-[17px] font-semibold text-text shrink-0 active:opacity-60 transition-opacity"
+          >
+            Shop Assist
+          </button>
           {/* Room name */}
           {isAuthenticated && currentRoom && !currentRoom.is_personal && (
             <span className="text-[12px] px-2 py-0.5 rounded-full bg-primary/10 text-primary-text font-medium truncate max-w-[100px]">

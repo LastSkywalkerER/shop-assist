@@ -41,16 +41,22 @@ export function Dashboard() {
 
     const query = search.toLowerCase()
     const filtered = products.filter((p) => {
+      const prods = purchasesByProduct.get(p.id) ?? []
+      const latestPurchase = prods.sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate))[0]
       const matchesSearch =
         !query ||
         p.name.toLowerCase().includes(query) ||
-        (p.manufacturer?.toLowerCase().includes(query) ?? false)
+        (latestPurchase?.manufacturer?.toLowerCase().includes(query) ?? false)
       const matchesCategory = !selectedCategory || p.category === selectedCategory
       return matchesSearch && matchesCategory
     })
 
     return filtered.map((product): ProductRowData => {
       const prods = purchasesByProduct.get(product.id) ?? []
+
+      // Most recent purchase for subtitle info
+      const sortedProds = [...prods].sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate))
+      const latestPurchase = sortedProds[0]
 
       // Group by store
       const byStore = new Map<string, PurchaseDocument[]>()
@@ -99,8 +105,9 @@ export function Dashboard() {
       return {
         productId: product.id,
         productName: product.name,
-        packageVolume: product.packageVolume,
-        manufacturer: product.manufacturer,
+        manufacturer: latestPurchase?.manufacturer,
+        packageVolume: latestPurchase?.packageVolume,
+        variety: latestPurchase?.variety,
         category: product.category,
         stores: storeInfos,
         purchaseCount: prods.length,
@@ -109,17 +116,21 @@ export function Dashboard() {
   }, [products, stores, purchases, search, selectedCategory])
 
   return (
-    <>
-      <SearchBar value={search} onChange={setSearch} />
-      {categories.length > 0 && (
-        <CategoryFilter
-          categories={categories}
-          selected={selectedCategory}
-          onSelect={setSelectedCategory}
-        />
-      )}
-      <ProductTable data={tableData} />
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="shrink-0">
+        <SearchBar value={search} onChange={setSearch} />
+        {categories.length > 0 && (
+          <CategoryFilter
+            categories={categories}
+            selected={selectedCategory}
+            onSelect={setSelectedCategory}
+          />
+        )}
+      </div>
+      <div className="overflow-y-auto flex-1 pb-20">
+        <ProductTable data={tableData} />
+      </div>
       <FAB onClick={() => navigate('/add')} />
-    </>
+    </div>
   )
 }

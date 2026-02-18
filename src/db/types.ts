@@ -1,8 +1,6 @@
 export interface ProductDocument {
   id: string
   name: string
-  manufacturer?: string
-  packageVolume?: string
   barcode?: string
   category?: string
   notes?: string
@@ -29,6 +27,9 @@ export interface PurchaseDocument {
   currency: string
   qualityRating?: number
   purchaseDate: string
+  manufacturer?: string
+  packageVolume?: string
+  variety?: string
   notes?: string
   createdAt: string
   updatedAt: string
@@ -69,6 +70,7 @@ export interface ReceiptItemDocument {
   currency: string
   manufacturer?: string
   packageVolume?: string
+  variety?: string
   category?: string
   qualityRating?: number
   notes?: string

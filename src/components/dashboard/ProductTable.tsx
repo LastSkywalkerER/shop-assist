@@ -20,7 +20,7 @@ export function ProductTable({ data }: ProductTableProps) {
   }
 
   return (
-    <div className="mx-4 mt-2 mb-20 flex flex-col gap-3">
+    <div className="mx-4 mt-2 flex flex-col gap-3">
       {data.map((row) => (
         <ProductRow key={row.productId} data={row} />
       ))}

@@ -66,7 +66,14 @@ async function createDb(): Promise<ShopAssistDatabase> {
   await db.addCollections({
     products: {
       schema: productSchema,
-      migrationStrategies: {},
+      migrationStrategies: {
+        1: (oldDoc: any) => {
+          const doc = { ...oldDoc }
+          delete doc.manufacturer
+          delete doc.packageVolume
+          return doc
+        },
+      },
     },
     stores: {
       schema: storeSchema,
@@ -80,6 +87,12 @@ async function createDb(): Promise<ShopAssistDatabase> {
           price: oldDoc.priceByn,
           currency: 'BYN',
           priceByn: undefined,
+        }),
+        2: (oldDoc: any) => ({
+          ...oldDoc,
+          manufacturer: undefined,
+          packageVolume: undefined,
+          variety: undefined,
         }),
       },
     },
@@ -123,6 +136,10 @@ async function createDb(): Promise<ShopAssistDatabase> {
         3: (oldDoc: any) => ({
           ...oldDoc,
           currency: 'BYN',
+        }),
+        4: (oldDoc: any) => ({
+          ...oldDoc,
+          variety: undefined,
         }),
       },
     },

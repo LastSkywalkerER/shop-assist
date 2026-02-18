@@ -13,8 +13,9 @@ export interface StorePurchaseInfo {
 export interface ProductRowData {
   productId: string
   productName: string
-  packageVolume?: string
   manufacturer?: string
+  packageVolume?: string
+  variety?: string
   category?: string
   stores: StorePurchaseInfo[]
   purchaseCount: number
@@ -26,7 +27,7 @@ interface ProductRowProps {
 
 export function ProductRow({ data }: ProductRowProps) {
   const navigate = useNavigate()
-  const subtitle = [data.manufacturer, data.packageVolume].filter(Boolean).join(' · ')
+  const subtitle = [data.manufacturer, data.packageVolume, data.variety].filter(Boolean).join(' · ')
 
   return (
     <div

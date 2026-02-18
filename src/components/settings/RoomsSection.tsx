@@ -133,8 +133,8 @@ export function RoomsSection() {
         ))}
       </div>
 
-      {/* Share / Invite */}
-      <div className="mt-4 bg-surface rounded-xl p-4 border border-separator/30">
+      {/* Share / Invite — only for room owners */}
+      {currentRoom?.role === 'owner' && <div className="mt-4 bg-surface rounded-xl p-4 border border-separator/30">
         <p className="text-[13px] text-text-hint mb-3">
           Share your current room to let others see and edit your data
         </p>
@@ -169,7 +169,7 @@ export function RoomsSection() {
             </button>
           </div>
         )}
-      </div>
+      </div>}
     </section>
   )
 }

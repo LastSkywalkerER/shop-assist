@@ -36,6 +36,7 @@ export function AddExpense() {
   const stores = useRxQuery(storesCol)
   const categories = useRxQuery(categoriesCol)
   const products = useRxQuery(productsCol)
+  const purchases = useRxQuery(purchasesCol)
 
   // Extract product categories
   const productCategories = useMemo(() => {
@@ -164,45 +165,64 @@ export function AddExpense() {
             let convertedToPurchaseId: string | undefined
 
             // Create product and purchase if requested
-            if (item.addToProducts && productsCol && purchasesCol && selectedStore) {
-              // Find or create product
-              let product = products.find((p) => {
-                if (p.name.toLowerCase() !== item.name.toLowerCase()) return false
-                if (item.manufacturer && p.manufacturer?.toLowerCase() !== item.manufacturer.toLowerCase()) return false
-                if (item.packageVolume && p.packageVolume !== item.packageVolume) return false
-                return true
-              })
+            if (item.addToProducts && productsCol && purchasesCol) {
+              if (item.existingPurchaseId) {
+                // Link to existing purchase and update it with form data
+                convertedToPurchaseId = item.existingPurchaseId
+                const purchaseDoc = await purchasesCol.findOne(item.existingPurchaseId).exec()
+                if (purchaseDoc) {
+                  await purchaseDoc.patch({
+                    price: item.amount,
+                    currency: item.currency || DEFAULT_CURRENCY,
+                    manufacturer: item.manufacturer,
+                    packageVolume: item.packageVolume,
+                    variety: item.variety,
+                    qualityRating: item.qualityRating,
+                    notes: item.notes,
+                    updatedAt: now,
+                  })
+                }
+                if (!selectedStore) {
+                  const existingPurchase = purchases.find((p) => p.id === item.existingPurchaseId)
+                  const purchaseStore = existingPurchase ? stores.find((s) => s.id === existingPurchase.storeId) : null
+                  if (purchaseStore) setSelectedStore(purchaseStore)
+                }
+              } else if (selectedStore) {
+                // Find or create product
+                let product = products.find((p) => p.name.toLowerCase() === item.name.toLowerCase())
 
-              if (!product) {
-                const productId = crypto.randomUUID()
-                await productsCol.insert({
-                  id: productId,
-                  name: item.name,
+                if (!product) {
+                  const productId = crypto.randomUUID()
+                  await productsCol.insert({
+                    id: productId,
+                    name: item.name,
+                    category: item.category,
+                    createdAt: now,
+                    updatedAt: now,
+                  })
+                  product = { id: productId, name: item.name, createdAt: now, updatedAt: now } as ProductDocument
+                }
+
+                // Create purchase
+                const purchaseId = crypto.randomUUID()
+                await purchasesCol.insert({
+                  id: purchaseId,
+                  productId: product.id,
+                  storeId: selectedStore.id,
+                  price: item.amount,
+                  currency: item.currency || DEFAULT_CURRENCY,
                   manufacturer: item.manufacturer,
                   packageVolume: item.packageVolume,
-                  category: item.category,
+                  variety: item.variety,
+                  qualityRating: item.qualityRating,
+                  purchaseDate: new Date(date).toISOString(),
+                  notes: item.notes,
                   createdAt: now,
                   updatedAt: now,
                 })
-                product = { id: productId, name: item.name, createdAt: now, updatedAt: now } as ProductDocument
+
+                convertedToPurchaseId = purchaseId
               }
-
-              // Create purchase
-              const purchaseId = crypto.randomUUID()
-              await purchasesCol.insert({
-                id: purchaseId,
-                productId: product.id,
-                storeId: selectedStore.id,
-                price: item.amount,
-                currency: item.currency || DEFAULT_CURRENCY,
-                qualityRating: item.qualityRating,
-                purchaseDate: new Date(date).toISOString(),
-                notes: item.notes,
-                createdAt: now,
-                updatedAt: now,
-              })
-
-              convertedToPurchaseId = purchaseId
             }
 
             // Insert receipt item
@@ -214,6 +234,7 @@ export function AddExpense() {
               currency: item.currency || DEFAULT_CURRENCY,
               manufacturer: item.manufacturer,
               packageVolume: item.packageVolume,
+              variety: item.variety,
               category: item.category,
               qualityRating: item.qualityRating,
               notes: item.notes,
@@ -292,7 +313,15 @@ export function AddExpense() {
       <FileUpload attachments={attachments} onChange={setAttachments} />
 
       {/* Receipt items */}
-      <ReceiptItemsManager items={receiptItems} onChange={setReceiptItems} productCategories={productCategories} />
+      <ReceiptItemsManager
+        items={receiptItems}
+        onChange={setReceiptItems}
+        productCategories={productCategories}
+        products={products}
+        purchases={purchases}
+        stores={stores}
+        expenseStoreId={selectedStore?.id}
+      />
 
       {/* Validation error */}
       {validationError && (

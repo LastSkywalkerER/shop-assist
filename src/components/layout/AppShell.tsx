@@ -13,7 +13,7 @@ export function AppShell({ children }: AppShellProps) {
   const { city, setCity } = useCity()
 
   return (
-    <div className="min-h-dvh flex flex-col bg-bg-secondary">
+    <div className="h-dvh flex flex-col bg-bg-secondary">
       <UpdatePrompt
         needRefresh={needRefresh}
         offlineReady={offlineReady}
@@ -21,7 +21,7 @@ export function AppShell({ children }: AppShellProps) {
         onDismiss={dismissUpdate}
       />
       <Header city={city} onCityChange={setCity} />
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col min-h-0">
         {children}
       </main>
     </div>

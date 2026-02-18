@@ -77,7 +77,7 @@ export function ProductPage() {
     )
   }
 
-  const subtitle = [product.manufacturer, product.packageVolume, product.category].filter(Boolean).join(' · ')
+  const subtitle = [product.category].filter(Boolean).join(' · ')
 
   return (
     <div className="pb-10">
@@ -190,7 +190,14 @@ export function ProductPage() {
                   </div>
                 </div>
 
-                {/* Row 2: date + rating */}
+                {/* Row 2: manufacturer / volume / variety */}
+                {(purchase.manufacturer || purchase.packageVolume || purchase.variety) && (
+                  <div className="mt-1 text-[12px] text-text-hint">
+                    {[purchase.manufacturer, purchase.packageVolume, purchase.variety].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+
+                {/* Row 3: date + rating */}
                 <div className="flex items-center justify-between mt-1.5">
                   <span className="text-[12px] text-text-hint">{dateStr}</span>
                   {purchase.qualityRating ? (
@@ -200,7 +207,7 @@ export function ProductPage() {
                   )}
                 </div>
 
-                {/* Row 3: comment */}
+                {/* Row 4: comment */}
                 {purchase.notes && (
                   <div className="mt-1.5 text-[13px] text-text-subtitle leading-snug">
                     {purchase.notes}

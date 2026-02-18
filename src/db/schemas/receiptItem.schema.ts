@@ -2,7 +2,7 @@ import type { RxJsonSchema } from 'rxdb'
 import type { ReceiptItemDocument } from '../types'
 
 export const receiptItemSchema: RxJsonSchema<ReceiptItemDocument> = {
-  version: 3,
+  version: 4,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -13,6 +13,7 @@ export const receiptItemSchema: RxJsonSchema<ReceiptItemDocument> = {
     currency: { type: 'string', maxLength: 10 },
     manufacturer: { type: 'string', maxLength: 200 },
     packageVolume: { type: 'string', maxLength: 50 },
+    variety: { type: 'string', maxLength: 100 },
     category: { type: 'string', maxLength: 100 },
     qualityRating: { type: 'number', minimum: 1, maximum: 5 },
     notes: { type: 'string', maxLength: 500 },

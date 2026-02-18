@@ -23,6 +23,9 @@ export function AddPurchase() {
   const [selectedStore, setSelectedStore] = useState<StoreDocument | null>(null)
   const [price, setPrice] = useState('')
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY)
+  const [manufacturer, setManufacturer] = useState('')
+  const [packageVolume, setPackageVolume] = useState('')
+  const [variety, setVariety] = useState('')
   const [rating, setRating] = useState<number | undefined>(undefined)
   const [notes, setNotes] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
@@ -38,14 +41,12 @@ export function AddPurchase() {
 
   const canSubmit = selectedProduct && selectedStore && price && parseFloat(price) > 0
 
-  const handleCreateProduct = async (data: { name: string; manufacturer?: string; packageVolume?: string; category?: string }) => {
+  const handleCreateProduct = async (data: { name: string; category?: string }) => {
     if (!productsCol) return
     const now = new Date().toISOString()
     const product: ProductDocument = {
       id: crypto.randomUUID(),
       name: data.name,
-      manufacturer: data.manufacturer,
-      packageVolume: data.packageVolume,
       category: data.category,
       createdAt: now,
       updatedAt: now,
@@ -56,7 +57,6 @@ export function AddPurchase() {
 
   const handleCreateStore = async (data: { name: string; type?: 'market' | 'store'; address?: string }) => {
     if (!storesCol) return
-    // Dedup: find existing store with same name (case-insensitive) and same address
     const nameLower = data.name.toLowerCase()
     const existing = stores.find((s) => {
       if (s.name.toLowerCase() !== nameLower) return false
@@ -91,6 +91,9 @@ export function AddPurchase() {
         storeId: selectedStore.id,
         price: parseFloat(parseFloat(price).toFixed(2)),
         currency,
+        manufacturer: manufacturer.trim() || undefined,
+        packageVolume: packageVolume.trim() || undefined,
+        variety: variety.trim() || undefined,
         qualityRating: rating || undefined,
         notes: notes.trim() || undefined,
         purchaseDate: new Date(date).toISOString(),
@@ -153,6 +156,30 @@ export function AddPurchase() {
           onChange={(e) => setDate(e.currentTarget.value)}
         />
       </div>
+
+      {/* Manufacturer & Package Volume */}
+      <div className="grid grid-cols-2 gap-3">
+        <Input
+          label="Производитель"
+          value={manufacturer}
+          onChange={(e) => setManufacturer(e.currentTarget.value)}
+          placeholder="Савушкин"
+        />
+        <Input
+          label="Объём / вес"
+          value={packageVolume}
+          onChange={(e) => setPackageVolume(e.currentTarget.value)}
+          placeholder="1л"
+        />
+      </div>
+
+      {/* Variety */}
+      <Input
+        label="Разновидность"
+        value={variety}
+        onChange={(e) => setVariety(e.currentTarget.value)}
+        placeholder="Классическое"
+      />
 
       {/* Quality rating */}
       <div className="flex flex-col gap-2">

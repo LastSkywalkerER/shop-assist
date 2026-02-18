@@ -24,7 +24,7 @@ export function ExpenseTable({ data, selectionMode, selectedIds, onToggleSelect,
   }
 
   return (
-    <div className="mx-4 mt-2 mb-20 flex flex-col gap-3">
+    <div className="mx-4 mt-2 flex flex-col gap-3">
       {data.map((row) => (
         <ExpenseRow
           key={row.expenseId}

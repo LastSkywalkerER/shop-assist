@@ -12,8 +12,6 @@ interface EditProductProps {
 
 export function EditProduct({ product, collection, categories, onDone }: EditProductProps) {
   const [name, setName] = useState(product.name)
-  const [manufacturer, setManufacturer] = useState(product.manufacturer ?? '')
-  const [packageVolume, setPackageVolume] = useState(product.packageVolume ?? '')
   const [category, setCategory] = useState(product.category ?? '')
   const [saving, setSaving] = useState(false)
 
@@ -25,8 +23,6 @@ export function EditProduct({ product, collection, categories, onDone }: EditPro
       if (doc) {
         await doc.patch({
           name: name.trim(),
-          manufacturer: manufacturer.trim() || undefined,
-          packageVolume: packageVolume.trim() || undefined,
           category: category.trim() || undefined,
           updatedAt: new Date().toISOString(),
         })
@@ -41,8 +37,6 @@ export function EditProduct({ product, collection, categories, onDone }: EditPro
 
   const hasChanges =
     name.trim() !== product.name ||
-    (manufacturer.trim() || '') !== (product.manufacturer ?? '') ||
-    (packageVolume.trim() || '') !== (product.packageVolume ?? '') ||
     (category.trim() || '') !== (product.category ?? '')
 
   return (
@@ -53,26 +47,12 @@ export function EditProduct({ product, collection, categories, onDone }: EditPro
         placeholder="Название"
         className="w-full bg-bg-secondary rounded-xl px-3 py-2 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
       />
-      <input
-        value={manufacturer}
-        onChange={(e) => setManufacturer(e.target.value)}
-        placeholder="Производитель"
-        className="w-full bg-bg-secondary rounded-xl px-3 py-2 text-[14px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
+      <CategorySelect
+        categories={categories}
+        value={category}
+        onChange={setCategory}
+        label=""
       />
-      <div className="grid grid-cols-2 gap-2">
-        <input
-          value={packageVolume}
-          onChange={(e) => setPackageVolume(e.target.value)}
-          placeholder="Объём"
-          className="bg-bg-secondary rounded-xl px-3 py-2 text-[14px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
-        />
-        <CategorySelect
-          categories={categories}
-          value={category}
-          onChange={setCategory}
-          label=""
-        />
-      </div>
       <div className="flex gap-2">
         <button
           onClick={handleSave}

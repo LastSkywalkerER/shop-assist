@@ -155,22 +155,26 @@ export function ExpensesDashboard() {
   }
 
   return (
-    <>
-      <SearchBar value={search} onChange={setSearch} />
-      {categories.length > 0 && (
-        <ExpenseCategoryFilter
-          categories={categories}
-          selected={selectedCategoryId}
-          onSelect={setSelectedCategoryId}
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="shrink-0">
+        <SearchBar value={search} onChange={setSearch} />
+        {categories.length > 0 && (
+          <ExpenseCategoryFilter
+            categories={categories}
+            selected={selectedCategoryId}
+            onSelect={setSelectedCategoryId}
+          />
+        )}
+      </div>
+      <div className="overflow-y-auto flex-1 pb-20">
+        <ExpenseTable
+          data={tableData}
+          selectionMode={selectionMode}
+          selectedIds={selectedIds}
+          onToggleSelect={handleToggleSelect}
+          onLongPress={handleLongPress}
         />
-      )}
-      <ExpenseTable
-        data={tableData}
-        selectionMode={selectionMode}
-        selectedIds={selectedIds}
-        onToggleSelect={handleToggleSelect}
-        onLongPress={handleLongPress}
-      />
+      </div>
 
       {/* FAB and delete button */}
       {selectionMode ? (
@@ -219,6 +223,6 @@ export function ExpensesDashboard() {
           onCancel={() => setConfirmDelete(false)}
         />
       )}
-    </>
+    </div>
   )
 }
