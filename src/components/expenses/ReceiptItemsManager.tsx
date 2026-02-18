@@ -237,12 +237,13 @@ function ReceiptItemForm({ item, productCategories, products, purchases, stores,
     setName(product.name)
     setCategory(product.category || '')
     if (purchase) {
+      setAmount(purchase.price.toFixed(2))
+      setCurrency(purchase.currency || DEFAULT_CURRENCY)
       setManufacturer(purchase.manufacturer || '')
       setPackageVolume(purchase.packageVolume || '')
       setVariety(purchase.variety || '')
       setQualityRating(purchase.qualityRating ?? 0)
       setNotes(purchase.notes || '')
-      setCurrency(purchase.currency || DEFAULT_CURRENCY)
       setExistingPurchaseId(purchase.id)
     } else {
       setExistingPurchaseId(undefined)
