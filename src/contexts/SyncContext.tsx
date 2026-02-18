@@ -114,6 +114,12 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         console.log(`Room switched: ${prevRoomId} -> ${roomId}`)
         await stopSyncInternal()
 
+        // Bump the clear epoch for the new room so its replicationIdentifier changes.
+        // This forces a fresh checkpoint (pull from epoch) after local data is wiped,
+        // preventing the stale checkpoint from skipping already-known data.
+        const prevEpoch = parseInt(localStorage.getItem(`room_sync_clear_${roomId}`) ?? '0')
+        localStorage.setItem(`room_sync_clear_${roomId}`, (prevEpoch + 1).toString())
+
         // Clear all local collections for fresh sync from new room
         for (const collectionName of COLLECTION_NAMES) {
           const collection = db[collectionName as keyof typeof db]

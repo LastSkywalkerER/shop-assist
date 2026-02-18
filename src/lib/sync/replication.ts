@@ -20,7 +20,7 @@ export async function setupCollectionReplication(
 
   const replicationState = replicateRxCollection({
     collection,
-    replicationIdentifier: `supabase-${collection.name}-${roomId}`,
+    replicationIdentifier: `supabase-${collection.name}-${roomId}-v${localStorage.getItem(`room_sync_clear_${roomId}`) ?? '0'}`,
     pull: {
       async handler(checkpoint: CheckpointType | undefined, batchSize: number) {
         const lastUpdated = checkpoint?.updated_at || '1970-01-01T00:00:00.000Z'
