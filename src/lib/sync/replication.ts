@@ -20,7 +20,7 @@ export async function setupCollectionReplication(
 
   const replicationState = replicateRxCollection({
     collection,
-    replicationIdentifier: `supabase-${collection.name}`,
+    replicationIdentifier: `supabase-${collection.name}-${roomId}`,
     pull: {
       async handler(checkpoint: CheckpointType | undefined, batchSize: number) {
         const lastUpdated = checkpoint?.updated_at || '1970-01-01T00:00:00.000Z'
@@ -60,7 +60,7 @@ export async function setupCollectionReplication(
           // This prevents RLS errors during room switching (JWT updates before replication stops).
           const session = await supabase.auth.getSession()
           const jwtRoomId = session.data.session?.user?.user_metadata?.room_id
-          if (jwtRoomId && jwtRoomId !== roomId) {
+          if (!jwtRoomId || jwtRoomId !== roomId) {
             return []
           }
 
