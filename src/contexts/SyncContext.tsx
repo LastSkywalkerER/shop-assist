@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback, ty
 import type { RxReplicationState } from 'rxdb/plugins/replication'
 import { useDatabase } from '../db/hooks'
 import { useAuth } from './AuthContext'
-import { setupCollectionReplication, stopReplication } from '../lib/sync/replication'
+import { setupCollectionReplication, stopReplication, suppressPushDeletions } from '../lib/sync/replication'
 
 interface SyncContextType {
   isSyncing: boolean
@@ -113,6 +113,11 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       if (prevRoomId && prevRoomId !== roomId) {
         console.log(`Room switched: ${prevRoomId} -> ${roomId}`)
         await stopSyncInternal()
+
+        // Suppress _deleted pushes so that d.remove() deletion events below
+        // don't get pushed to Supabase and corrupt real server data.
+        // 30s is more than enough for the initial pull to complete.
+        suppressPushDeletions(30_000)
 
         // Bump the clear epoch for the new room so its replicationIdentifier changes.
         // This forces a fresh checkpoint (pull from epoch) after local data is wiped,

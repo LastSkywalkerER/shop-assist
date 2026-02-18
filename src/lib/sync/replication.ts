@@ -12,6 +12,16 @@ interface CheckpointType {
   updated_at: string
 }
 
+// Suppress pushing _deleted documents for a period after room-switch clears.
+// d.remove() in the room-switch handler creates deletion change events that the
+// new replication would push to Supabase — corrupting real server data by setting
+// _deleted=true on records that actually belong to the target room.
+let pushDeletionsSuppressedUntil = 0
+
+export function suppressPushDeletions(durationMs: number) {
+  pushDeletionsSuppressedUntil = Date.now() + durationMs
+}
+
 export async function setupCollectionReplication(
   config: ReplicationConfig
 ): Promise<RxReplicationState<any, CheckpointType>> {
@@ -57,14 +67,22 @@ export async function setupCollectionReplication(
       async handler(changeRows) {
         try {
           // Guard: skip push if JWT room_id no longer matches this replication's room.
-          // This prevents RLS errors during room switching (JWT updates before replication stops).
           const session = await supabase.auth.getSession()
           const jwtRoomId = session.data.session?.user?.user_metadata?.room_id
           if (!jwtRoomId || jwtRoomId !== roomId) {
             return []
           }
 
-          const rows = changeRows.map(change => {
+          // During a room-switch clear window, drop _deleted events so that
+          // stale d.remove() deletions don't corrupt real server data.
+          // Returning [] marks them as synced (discarded) so RxDB won't retry.
+          let effectiveChanges = changeRows
+          if (Date.now() < pushDeletionsSuppressedUntil) {
+            effectiveChanges = changeRows.filter(c => !c.newDocumentState._deleted)
+            if (effectiveChanges.length === 0) return []
+          }
+
+          const rows = effectiveChanges.map(change => {
             const doc = change.newDocumentState
             return transformRxDBToSupabase(doc as any, roomId)
           })
@@ -77,9 +95,8 @@ export async function setupCollectionReplication(
 
           if (error) {
             if (error.code === '42501') {
-              // Batch RLS violation: likely stale deletion events from a room switch
-              // (old room's document IDs exist in Supabase under a different room_id).
-              // Retry row-by-row so valid rows are still pushed; silently skip RLS failures.
+              // Batch RLS violation: retry row-by-row, silently skip RLS failures
+              // (stale rows whose IDs exist in Supabase under a different room_id).
               for (const row of rows) {
                 const { error: rowError } = await supabase
                   .from(tableName)
