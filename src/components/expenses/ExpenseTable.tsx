@@ -8,6 +8,23 @@ interface ExpenseTableProps {
   onLongPress?: (id: string) => void
 }
 
+function formatDateLabel(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00')
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+function groupByDate(rows: ExpenseRowData[]): { label: string; key: string; rows: ExpenseRowData[] }[] {
+  const map = new Map<string, ExpenseRowData[]>()
+  for (const row of rows) {
+    const key = row.date.slice(0, 10)
+    if (!map.has(key)) map.set(key, [])
+    map.get(key)!.push(row)
+  }
+  return Array.from(map.entries())
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([key, rows]) => ({ key, label: formatDateLabel(key), rows }))
+}
+
 export function ExpenseTable({ data, selectionMode, selectedIds, onToggleSelect, onLongPress }: ExpenseTableProps) {
   if (data.length === 0) {
     return (
@@ -23,17 +40,26 @@ export function ExpenseTable({ data, selectionMode, selectedIds, onToggleSelect,
     )
   }
 
+  const groups = groupByDate(data)
+
   return (
-    <div className="mx-4 mt-2 flex flex-col gap-3">
-      {data.map((row) => (
-        <ExpenseRow
-          key={row.expenseId}
-          data={row}
-          selectionMode={selectionMode}
-          selected={selectedIds?.has(row.expenseId)}
-          onToggleSelect={() => onToggleSelect?.(row.expenseId)}
-          onLongPress={() => onLongPress?.(row.expenseId)}
-        />
+    <div className="mx-4 mt-2 flex flex-col gap-0">
+      {groups.map((group) => (
+        <div key={group.key}>
+          <div className="text-[12px] text-text-hint font-medium px-1 pt-3 pb-1">{group.label}</div>
+          <div className="flex flex-col gap-3">
+            {group.rows.map((row) => (
+              <ExpenseRow
+                key={row.expenseId}
+                data={row}
+                selectionMode={selectionMode}
+                selected={selectedIds?.has(row.expenseId)}
+                onToggleSelect={() => onToggleSelect?.(row.expenseId)}
+                onLongPress={() => onLongPress?.(row.expenseId)}
+              />
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   )

@@ -25,6 +25,8 @@ const COLLECTION_NAMES = [
   'receipts',
   'receiptItems',
   'expenseAttachments',
+  'shoppingListItems',
+  'purchaseAttachments',
 ]
 
 export function SyncProvider({ children }: { children: ReactNode }) {

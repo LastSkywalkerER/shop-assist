@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 export interface ExpenseRowData {
@@ -8,6 +9,7 @@ export interface ExpenseRowData {
   currency?: string
   date: string
   categoryName?: string
+  notes?: string
   hasAttachments: boolean
   receiptItemsCount: number
 }
@@ -23,31 +25,40 @@ interface ExpenseRowProps {
 export function ExpenseRow({ data, selectionMode, selected, onToggleSelect, onLongPress }: ExpenseRowProps) {
   const navigate = useNavigate()
 
-  // Title: name + storeName, or whichever exists
-  const title = [data.name, data.storeName].filter(Boolean).join(' — ') || 'Расход'
-
-  // Format date as DD.MM.YYYY
-  const formattedDate = new Date(data.date).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
+  // Title: expense name, or fallback
+  const title = data.name || 'Расход'
 
   // Long press detection (touch and mouse)
-  let pressTimer: NodeJS.Timeout | null = null
+  const pressTimer = useRef<NodeJS.Timeout | null>(null)
+  const touchStartPos = useRef<{ x: number; y: number } | null>(null)
 
   const handlePressStart = () => {
     if (!selectionMode && onLongPress) {
-      pressTimer = setTimeout(() => {
+      pressTimer.current = setTimeout(() => {
         onLongPress()
-      }, 500) // 500ms for long press
+      }, 500)
     }
   }
 
   const handlePressEnd = () => {
-    if (pressTimer) {
-      clearTimeout(pressTimer)
-      pressTimer = null
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current)
+      pressTimer.current = null
+    }
+  }
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+    handlePressStart()
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!pressTimer.current || !touchStartPos.current) return
+    const dx = e.touches[0].clientX - touchStartPos.current.x
+    const dy = e.touches[0].clientY - touchStartPos.current.y
+    if (Math.sqrt(dx * dx + dy * dy) > 8) {
+      clearTimeout(pressTimer.current)
+      pressTimer.current = null
     }
   }
 
@@ -65,7 +76,8 @@ export function ExpenseRow({ data, selectionMode, selected, onToggleSelect, onLo
         selected ? 'ring-2 ring-primary' : ''
       }`}
       onClick={handleClick}
-      onTouchStart={handlePressStart}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
       onTouchEnd={handlePressEnd}
       onTouchCancel={handlePressEnd}
       onMouseDown={handlePressStart}
@@ -115,15 +127,21 @@ export function ExpenseRow({ data, selectionMode, selected, onToggleSelect, onLo
         </div>
       </div>
 
-      {/* Bottom line: date + category + indicators */}
-      <div className="mt-1 flex items-center gap-2 text-[12px] text-text-hint">
-        <span>{formattedDate}</span>
+      {/* Bottom line: store + category + notes + indicators */}
+      <div className="mt-1 flex items-center gap-2 text-[12px] text-text-hint flex-wrap">
+        {data.storeName && <span>{data.storeName}</span>}
         {data.categoryName && (
           <>
-            <span>·</span>
+            {data.storeName && <span>·</span>}
             <span className="px-2 py-0.5 bg-primary/10 text-primary-text rounded-full text-[11px]">
               {data.categoryName}
             </span>
+          </>
+        )}
+        {data.notes && (
+          <>
+            {(data.storeName || data.categoryName) && <span>·</span>}
+            <span className="truncate max-w-[120px]">{data.notes}</span>
           </>
         )}
         {data.hasAttachments && (

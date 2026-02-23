@@ -82,6 +82,7 @@ export function ExpensesDashboard() {
         currency: expense.currency,
         date: expense.date,
         categoryName: categoryMap.get(expense.categoryId || '')?.name,
+        notes: expense.notes,
         hasAttachments,
         receiptItemsCount,
       }

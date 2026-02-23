@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
-import type { ProductDocument, StoreDocument, PurchaseDocument } from '../../db/types'
+import type { ProductDocument, StoreDocument, PurchaseDocument, PurchaseAttachmentDocument } from '../../db/types'
 import { ProductSelect } from './ProductSelect'
 import { StoreSelect } from './StoreSelect'
 import { Input } from '../shared/Input'
@@ -15,6 +15,7 @@ export function AddPurchase() {
   const productsCol = useRxCollection<ProductDocument>('products')
   const storesCol = useRxCollection<StoreDocument>('stores')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
+  const purchaseAttachmentsCol = useRxCollection<PurchaseAttachmentDocument>('purchaseAttachments')
 
   const products = useRxQuery(productsCol)
   const stores = useRxQuery(storesCol)
@@ -29,7 +30,9 @@ export function AddPurchase() {
   const [rating, setRating] = useState<number | undefined>(undefined)
   const [notes, setNotes] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   const categories = useMemo(() => {
     const set = new Set<string>()
@@ -80,13 +83,22 @@ export function AddPurchase() {
     setSelectedStore(store)
   }
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => setImageDataUrl(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
   const handleSubmit = async () => {
     if (!canSubmit || !purchasesCol) return
     setSaving(true)
     try {
       const now = new Date().toISOString()
+      const purchaseId = crypto.randomUUID()
       await purchasesCol.insert({
-        id: crypto.randomUUID(),
+        id: purchaseId,
         productId: selectedProduct.id,
         storeId: selectedStore.id,
         price: parseFloat(parseFloat(price).toFixed(2)),
@@ -100,6 +112,15 @@ export function AddPurchase() {
         createdAt: now,
         updatedAt: now,
       })
+      if (imageDataUrl && purchaseAttachmentsCol) {
+        await purchaseAttachmentsCol.insert({
+          id: crypto.randomUUID(),
+          purchaseId,
+          dataUrl: imageDataUrl,
+          createdAt: now,
+          updatedAt: now,
+        })
+      }
       navigate('/')
     } catch (err) {
       console.error('Failed to save purchase:', err)
@@ -202,6 +223,37 @@ export function AddPurchase() {
           rows={2}
           className="bg-surface rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow resize-none"
         />
+      </div>
+
+      {/* Image */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[13px] text-section-header font-medium pl-1">Фото</label>
+        <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+        {imageDataUrl ? (
+          <div className="relative">
+            <img src={imageDataUrl} alt="Purchase" className="w-full rounded-xl object-cover max-h-48" />
+            <button
+              onClick={() => { setImageDataUrl(null); if (imageInputRef.current) imageInputRef.current.value = '' }}
+              className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full bg-black/50 text-white active:opacity-70"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => imageInputRef.current?.click()}
+            className="bg-surface rounded-xl px-4 py-3 flex items-center gap-2 text-text-hint text-[14px] active:bg-bg-secondary transition-colors"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+              <circle cx="9" cy="9" r="2" />
+              <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+            </svg>
+            Добавить фото
+          </button>
+        )}
       </div>
 
       {/* Submit */}

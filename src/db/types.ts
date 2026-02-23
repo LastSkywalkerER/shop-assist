@@ -89,3 +89,19 @@ export interface ExpenseAttachmentDocument {
   createdAt: string
   updatedAt: string
 }
+
+export interface ShoppingListItemDocument {
+  id: string
+  name: string
+  done: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PurchaseAttachmentDocument {
+  id: string
+  purchaseId: string
+  dataUrl: string
+  createdAt: string
+  updatedAt: string
+}

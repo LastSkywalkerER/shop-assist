@@ -9,6 +9,8 @@ import { expenseSchema } from './schemas/expense.schema'
 import { receiptSchema } from './schemas/receipt.schema'
 import { receiptItemSchema } from './schemas/receiptItem.schema'
 import { expenseAttachmentSchema } from './schemas/expenseAttachment.schema'
+import { shoppingListItemSchema } from './schemas/shoppingListItem.schema'
+import { purchaseAttachmentSchema } from './schemas/purchaseAttachment.schema'
 import type { RxDatabase, RxCollection } from 'rxdb'
 import type {
   ProductDocument,
@@ -19,6 +21,8 @@ import type {
   ReceiptDocument,
   ReceiptItemDocument,
   ExpenseAttachmentDocument,
+  ShoppingListItemDocument,
+  PurchaseAttachmentDocument,
 } from './types'
 import { getDatabaseVersion, getStoredDbVersion, setStoredDbVersion } from './version'
 import { readRawIndexedDB, buildBackupFromRawData, downloadBackup } from './backup'
@@ -33,6 +37,8 @@ export type ShopAssistCollections = {
   receipts: RxCollection<ReceiptDocument>
   receiptItems: RxCollection<ReceiptItemDocument>
   expenseAttachments: RxCollection<ExpenseAttachmentDocument>
+  shoppingListItems: RxCollection<ShoppingListItemDocument>
+  purchaseAttachments: RxCollection<PurchaseAttachmentDocument>
 }
 
 export type ShopAssistDatabase = RxDatabase<ShopAssistCollections>
@@ -104,18 +110,25 @@ async function createDb(): Promise<ShopAssistDatabase> {
     purchases: {
       schema: purchaseSchema,
       migrationStrategies: {
-        1: (oldDoc: any) => ({
-          ...oldDoc,
-          price: oldDoc.priceByn,
-          currency: 'BYN',
-          priceByn: undefined,
-        }),
-        2: (oldDoc: any) => ({
-          ...oldDoc,
-          manufacturer: undefined,
-          packageVolume: undefined,
-          variety: undefined,
-        }),
+        1: (oldDoc: any) => {
+          const { priceByn, ...rest } = oldDoc
+          return { ...rest, price: priceByn, currency: 'BYN' }
+        },
+        2: (oldDoc: any) => {
+          const result: Record<string, any> = {
+            id: oldDoc.id,
+            productId: oldDoc.productId,
+            storeId: oldDoc.storeId,
+            price: oldDoc.price,
+            currency: oldDoc.currency || 'BYN',
+            purchaseDate: oldDoc.purchaseDate,
+            createdAt: oldDoc.createdAt,
+            updatedAt: oldDoc.updatedAt,
+          }
+          if (oldDoc.qualityRating != null) result.qualityRating = oldDoc.qualityRating
+          if (oldDoc.notes != null) result.notes = oldDoc.notes
+          return result
+        },
       },
     },
     expenseCategories: {
@@ -167,6 +180,19 @@ async function createDb(): Promise<ShopAssistDatabase> {
     },
     expenseAttachments: {
       schema: expenseAttachmentSchema,
+      migrationStrategies: {},
+    },
+  })
+
+  // New collections added in a separate call: Dexie must add new object stores
+  // (requiring a version upgrade) only after existing migrations have finished.
+  await db.addCollections({
+    shoppingListItems: {
+      schema: shoppingListItemSchema,
+      migrationStrategies: {},
+    },
+    purchaseAttachments: {
+      schema: purchaseAttachmentSchema,
       migrationStrategies: {},
     },
   })

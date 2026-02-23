@@ -1,6 +1,6 @@
 interface TabBarProps {
-  activeTab: 'products' | 'expenses' | 'settings'
-  onTabChange: (tab: 'products' | 'expenses' | 'settings') => void
+  activeTab: 'products' | 'expenses' | 'shopping-list'
+  onTabChange: (tab: 'products' | 'expenses' | 'shopping-list') => void
 }
 
 export function TabBar({ activeTab, onTabChange }: TabBarProps) {
@@ -30,13 +30,13 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
           )}
         </button>
         <button
-          onClick={() => onTabChange('settings')}
+          onClick={() => onTabChange('shopping-list')}
           className={`flex-1 py-2.5 text-[15px] font-medium transition-colors relative ${
-            activeTab === 'settings' ? 'text-primary-text' : 'text-text-hint'
+            activeTab === 'shopping-list' ? 'text-primary-text' : 'text-text-hint'
           }`}
         >
-          Настройки
-          {activeTab === 'settings' && (
+          Список
+          {activeTab === 'shopping-list' && (
             <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary" />
           )}
         </button>

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Rating } from '../shared/Rating'
-import type { PurchaseDocument, ProductDocument, StoreDocument } from '../../db/types'
+import type { PurchaseDocument, ProductDocument, StoreDocument, PurchaseAttachmentDocument } from '../../db/types'
 import type { RxCollection } from 'rxdb'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import { ProductSelect } from './ProductSelect'
@@ -18,8 +18,11 @@ interface EditPurchaseProps {
 export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps) {
   const productsCol = useRxCollection<ProductDocument>('products')
   const storesCol = useRxCollection<StoreDocument>('stores')
+  const purchaseAttachmentsCol = useRxCollection<PurchaseAttachmentDocument>('purchaseAttachments')
   const products = useRxQuery(productsCol)
   const stores = useRxQuery(storesCol)
+  const allAttachments = useRxQuery(purchaseAttachmentsCol)
+  const existingAttachment = allAttachments.find((a) => a.purchaseId === purchase.id) ?? null
 
   const [selectedProduct, setSelectedProduct] = useState<ProductDocument | null>(
     products.find((p) => p.id === purchase.productId) ?? null,
@@ -35,7 +38,12 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
   const [variety, setVariety] = useState(purchase.variety ?? '')
   const [rating, setRating] = useState<number | undefined>(purchase.qualityRating)
   const [notes, setNotes] = useState(purchase.notes ?? '')
+  // undefined = untouched, null = deleted, string = new image
+  const [imageDataUrl, setImageDataUrl] = useState<string | null | undefined>(undefined)
   const [saving, setSaving] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+
+  const displayedImage = imageDataUrl !== undefined ? imageDataUrl : (existingAttachment?.dataUrl ?? null)
 
   // Sync product/store selection when data loads
   const resolvedProduct = selectedProduct ?? products.find((p) => p.id === purchase.productId) ?? null
@@ -82,10 +90,19 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
     setSelectedStore(store)
   }
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => setImageDataUrl(reader.result as string)
+    reader.readAsDataURL(file)
+  }
+
   const handleSave = async () => {
     if (!resolvedProduct || !resolvedStore) return
     setSaving(true)
     try {
+      const now = new Date().toISOString()
       const doc = await collection.findOne(purchase.id).exec()
       if (doc) {
         await doc.patch({
@@ -99,8 +116,23 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
           variety: variety.trim() || undefined,
           qualityRating: rating || undefined,
           notes: notes.trim() || undefined,
-          updatedAt: new Date().toISOString(),
+          updatedAt: now,
         })
+      }
+      if (purchaseAttachmentsCol && imageDataUrl !== undefined) {
+        if (existingAttachment) {
+          const existingDoc = await purchaseAttachmentsCol.findOne(existingAttachment.id).exec()
+          if (existingDoc) await existingDoc.remove()
+        }
+        if (imageDataUrl !== null) {
+          await purchaseAttachmentsCol.insert({
+            id: crypto.randomUUID(),
+            purchaseId: purchase.id,
+            dataUrl: imageDataUrl,
+            createdAt: now,
+            updatedAt: now,
+          })
+        }
       }
       onDone()
     } catch (err) {
@@ -199,6 +231,37 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
           rows={2}
           className="bg-bg-secondary rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow resize-none"
         />
+      </div>
+
+      {/* Image */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[13px] text-section-header font-medium pl-1">Фото</label>
+        <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+        {displayedImage ? (
+          <div className="relative">
+            <img src={displayedImage} alt="Purchase" className="w-full rounded-xl object-cover max-h-48" />
+            <button
+              onClick={() => { setImageDataUrl(null); if (imageInputRef.current) imageInputRef.current.value = '' }}
+              className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full bg-black/50 text-white active:opacity-70"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => imageInputRef.current?.click()}
+            className="bg-bg-secondary rounded-xl px-4 py-3 flex items-center gap-2 text-text-hint text-[14px] active:opacity-70 transition-opacity"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+              <circle cx="9" cy="9" r="2" />
+              <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+            </svg>
+            Добавить фото
+          </button>
+        )}
       </div>
 
       <div className="flex gap-2 pt-1">

@@ -5,11 +5,11 @@ import { TabBar } from '../components/layout/TabBar'
 export function ExpensesPage() {
   const navigate = useNavigate()
 
-  const handleTabChange = (tab: 'products' | 'expenses' | 'settings') => {
+  const handleTabChange = (tab: 'products' | 'expenses' | 'shopping-list') => {
     if (tab === 'products') {
       navigate('/')
-    } else if (tab === 'settings') {
-      navigate('/settings')
+    } else if (tab === 'shopping-list') {
+      navigate('/shopping-list')
     }
   }
 

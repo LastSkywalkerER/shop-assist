@@ -9,7 +9,7 @@ export function useDatabase(): ShopAssistDatabase | null {
 }
 
 export function useRxCollection<T>(
-  name: 'products' | 'stores' | 'purchases' | 'expenseCategories' | 'expenses' | 'receipts' | 'receiptItems' | 'expenseAttachments'
+  name: 'products' | 'stores' | 'purchases' | 'expenseCategories' | 'expenses' | 'receipts' | 'receiptItems' | 'expenseAttachments' | 'shoppingListItems' | 'purchaseAttachments'
 ): RxCollection<T> | null {
   const db = useDatabase()
   return (db?.[name] as RxCollection<T> | undefined) ?? null
