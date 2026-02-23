@@ -276,8 +276,19 @@ export async function restoreBackupToDb(
 
     if (docs.length > 0) {
       try {
-        await collection.bulkInsert(docs)
-        restored += docs.length
+        // Strip null values: RxDB JSON Schema does not accept null for typed fields
+        const sanitized = docs.map((doc: any) =>
+          Object.fromEntries(Object.entries(doc).filter(([, v]) => v !== null)),
+        )
+        const result = await collection.bulkInsert(sanitized)
+        restored += result.success.length
+        if (result.error.length > 0) {
+          console.error(
+            `Restore ${colName}: ${result.error.length} docs failed`,
+            result.error[0],
+          )
+          skipped.push(`${colName}(${result.error.length} errors)`)
+        }
       } catch (err) {
         console.error(`Failed to restore collection ${colName}:`, err)
         skipped.push(colName)

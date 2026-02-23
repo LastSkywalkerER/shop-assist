@@ -129,6 +129,7 @@ async function createDb(): Promise<ShopAssistDatabase> {
           if (oldDoc.notes != null) result.notes = oldDoc.notes
           return result
         },
+        3: (oldDoc: any) => oldDoc,
       },
     },
     expenseCategories: {
@@ -146,6 +147,7 @@ async function createDb(): Promise<ShopAssistDatabase> {
           ...oldDoc,
           currency: 'BYN',
         }),
+        3: (oldDoc: any) => oldDoc,
       },
     },
     receipts: {
@@ -176,6 +178,7 @@ async function createDb(): Promise<ShopAssistDatabase> {
           ...oldDoc,
           variety: undefined,
         }),
+        5: (oldDoc: any) => oldDoc,
       },
     },
     expenseAttachments: {
