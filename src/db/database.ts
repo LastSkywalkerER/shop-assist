@@ -20,6 +20,9 @@ import type {
   ReceiptItemDocument,
   ExpenseAttachmentDocument,
 } from './types'
+import { getDatabaseVersion, getStoredDbVersion, setStoredDbVersion } from './version'
+import { readRawIndexedDB, buildBackupFromRawData, downloadBackup } from './backup'
+import packageJson from '../../package.json'
 
 export type ShopAssistCollections = {
   products: RxCollection<ProductDocument>
@@ -43,7 +46,26 @@ export function getDatabase(): Promise<ShopAssistDatabase> {
   return dbPromise
 }
 
+export function resetDatabase(): void {
+  dbPromise = null
+}
+
 async function createDb(): Promise<ShopAssistDatabase> {
+  // Pre-migration backup: if DB version changed since last run, export data before migration
+  const currentVersion = getDatabaseVersion()
+  const storedVersion = getStoredDbVersion()
+  if (storedVersion !== null && storedVersion !== currentVersion) {
+    try {
+      const raw = await readRawIndexedDB()
+      const backup = buildBackupFromRawData(raw, packageJson.version, storedVersion)
+      downloadBackup(backup)
+      console.log(`Pre-migration backup created: v${storedVersion} → v${currentVersion}`)
+    } catch (err) {
+      // Never block migration due to backup failure
+      console.error('Pre-migration backup failed (non-fatal):', err)
+    }
+  }
+
   if (import.meta.env.DEV) {
     const { RxDBDevModePlugin } = await import('rxdb/plugins/dev-mode')
     addRxPlugin(RxDBDevModePlugin)
@@ -149,5 +171,6 @@ async function createDb(): Promise<ShopAssistDatabase> {
     },
   })
 
+  setStoredDbVersion(currentVersion)
   return db
 }

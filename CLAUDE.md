@@ -12,6 +12,34 @@ All Supabase changes must be duplicated as local code for reproducibility:
 - **DB migrations** — keep in `supabase/migrations/<timestamp>_<name>.sql`
 - **RLS policies, triggers, types, extensions** — include in migration files
 
+## Data Protection
+
+Every schema or data change must preserve existing user data:
+
+### RxDB migration strategies
+- Every schema `version` increment requires a corresponding `migrationStrategies[N]` entry in `src/db/database.ts`
+- Strategies must handle undefined/null old fields safely
+- Never remove or modify a strategy that has already been deployed
+
+### Supabase migrations — additive only
+- Allowed: `ADD COLUMN IF NOT EXISTS ... DEFAULT ...`, new tables, new indexes, new policies
+- Forbidden: `DROP COLUMN`, `RENAME COLUMN`, `RENAME TABLE`, `DROP TABLE`
+- Reason: client and server may temporarily be at different schema versions during updates
+- The file `20260218120000_move_manufacturer_to_purchase.sql` is a documented exception (already deployed before this rule)
+
+### Pre-migration backup
+- A JSON backup is automatically downloaded whenever the DB version changes at startup (implemented in `src/db/database.ts`)
+- Backup filename: `shop-assist-backup-v{version}-{date}.json`
+- Users can also create a manual backup at any time from Settings → Резервные копии
+
+### Backup format (`src/db/backup.ts`)
+```
+BackupFile {
+  metadata: { version, appVersion, timestamp, collections, totalDocuments, attachmentSizeBytes }
+  collections: { [collectionName]: document[] }
+}
+```
+
 ## Code Style
 
 - All comments and documentation must be in English

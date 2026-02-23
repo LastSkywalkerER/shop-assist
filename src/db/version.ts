@@ -8,7 +8,7 @@ import { receiptItemSchema } from './schemas/receiptItem.schema'
 import { expenseAttachmentSchema } from './schemas/expenseAttachment.schema'
 
 /**
- * Получить текущую версию БД (максимальная версия среди всех схем)
+ * Returns the current DB version (max version across all schemas).
  */
 export function getDatabaseVersion(): number {
   const schemas = [
@@ -22,7 +22,26 @@ export function getDatabaseVersion(): number {
     expenseAttachmentSchema,
   ]
 
-  // Найти максимальную версию
   const maxVersion = Math.max(...schemas.map((schema) => schema.version))
   return maxVersion
+}
+
+const DB_VERSION_KEY = 'db_version'
+
+/**
+ * Returns the DB version stored from the last successful initialization.
+ * Returns null if no version has been stored (fresh install).
+ */
+export function getStoredDbVersion(): number | null {
+  const stored = localStorage.getItem(DB_VERSION_KEY)
+  if (stored === null) return null
+  const parsed = parseInt(stored, 10)
+  return isNaN(parsed) ? null : parsed
+}
+
+/**
+ * Persists the current DB version after successful initialization.
+ */
+export function setStoredDbVersion(version: number): void {
+  localStorage.setItem(DB_VERSION_KEY, String(version))
 }
