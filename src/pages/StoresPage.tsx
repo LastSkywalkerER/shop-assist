@@ -84,7 +84,7 @@ export function StoresPage() {
           Нет магазинов
         </div>
       ) : (
-        <div className="mx-4 flex flex-col gap-3">
+        <div className="mx-4 flex flex-col gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-3">
           {sorted.map((store) => {
             const pCount = purchaseCountMap.get(store.id) ?? 0
             const eCount = expenseCountMap.get(store.id) ?? 0

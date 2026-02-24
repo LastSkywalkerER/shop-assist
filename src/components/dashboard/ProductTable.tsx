@@ -17,7 +17,7 @@ function SkeletonCard() {
 export function ProductTable({ data, loading }: ProductTableProps) {
   if (loading) {
     return (
-      <div className="mx-4 mt-2 flex flex-col gap-3">
+      <div className="mx-4 mt-2 flex flex-col gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
       </div>
     )
@@ -38,7 +38,7 @@ export function ProductTable({ data, loading }: ProductTableProps) {
   }
 
   return (
-    <div className="mx-4 mt-2 flex flex-col gap-3">
+    <div className="mx-4 mt-2 flex flex-col gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-3">
       {data.map((row) => (
         <ProductRow key={row.productId} data={row} />
       ))}

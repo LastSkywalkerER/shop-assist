@@ -276,7 +276,7 @@ export function ShoppingListPage() {
       <div className="flex flex-col flex-1 pb-[136px] overflow-y-auto">
         {/* List */}
         {loading ? (
-          <div className="mx-4 mt-3 flex flex-col gap-2">
+          <div className="mx-4 mt-3 flex flex-col gap-2 sm:grid sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="glass rounded-2xl px-3.5 py-2.5 border border-separator/10 animate-pulse">
                 <div className="h-4 bg-text/10 rounded-full w-1/2" />
@@ -292,11 +292,11 @@ export function ShoppingListPage() {
             </div>
           </div>
         ) : (
-          <div className="mx-4 mt-3 flex flex-col gap-0">
+          <div className="mx-4 mt-3">
             {groups.map((group) => (
               <div key={group.key}>
                 <div className="text-[12px] text-text-hint font-medium px-1 pt-3 pb-1">{group.label}</div>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2 lg:grid-cols-3">
                   {group.items.map((item) => (
                     <ItemRow
                       key={item.id}

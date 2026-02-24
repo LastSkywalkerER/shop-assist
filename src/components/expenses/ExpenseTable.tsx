@@ -41,13 +41,13 @@ function SkeletonCard() {
 export function ExpenseTable({ data, loading, selectionMode, selectedIds, onToggleSelect, onLongPress }: ExpenseTableProps) {
   if (loading) {
     return (
-      <div className="mx-4 mt-2 flex flex-col gap-0">
+      <div className="mx-4 mt-2">
         {[3, 2].map((count, gi) => (
           <div key={gi}>
             <div className="px-1 pt-3 pb-1">
               <div className="h-3 bg-text/10 rounded-full w-36 animate-pulse" />
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: count }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
           </div>
@@ -73,11 +73,11 @@ export function ExpenseTable({ data, loading, selectionMode, selectedIds, onTogg
   const groups = groupByDate(data)
 
   return (
-    <div className="mx-4 mt-2 flex flex-col gap-0">
+    <div className="mx-4 mt-2">
       {groups.map((group) => (
         <div key={group.key}>
           <div className="text-[12px] text-text-hint font-medium px-1 pt-3 pb-1">{group.label}</div>
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-3">
             {group.rows.map((row) => (
               <ExpenseRow
                 key={row.expenseId}
