@@ -62,7 +62,7 @@ export function StoresPage() {
   }
 
   return (
-    <div className="pb-10">
+    <div className="pb-10 flex-1 overflow-y-auto min-h-0">
       <div className="p-4 pb-2 flex items-center justify-between">
         <h2 className="text-[20px] font-bold text-text">Магазины</h2>
         <button

@@ -4,6 +4,9 @@ import { TabBar } from '../components/layout/TabBar'
 import { useRxCollection, useRxQuery } from '../db/hooks'
 import type { ShoppingListItemDocument } from '../db/types'
 import { ConfirmModal } from '../components/shared/ConfirmModal'
+import { isValidUrl, urlHostname } from '../components/purchase/UrlInput'
+import { fetchPageMeta } from '../lib/fetchMeta'
+import { parseLinkMeta, serializeLinkMeta, type LinkMeta } from '../lib/linkMeta'
 
 function formatDateLabel(dateStr: string): string {
   const date = new Date(dateStr + 'T00:00:00')
@@ -62,6 +65,10 @@ function ItemRow({ item, selectionMode, selected, onToggle, onToggleSelect, onLo
     else onToggle()
   }
 
+  const link = parseLinkMeta(item.link)
+  const isUrlItem = !!link
+  const displayText = link?.title || (isUrlItem ? urlHostname(link!.url) : item.name)
+
   return (
     <div
       onClick={handleClick}
@@ -83,9 +90,41 @@ function ItemRow({ item, selectionMode, selected, onToggle, onToggleSelect, onLo
           )}
         </div>
       )}
-      <span className={`text-[15px] flex-1 ${item.done ? 'line-through text-text-hint' : 'text-text'}`}>
-        {item.name}
-      </span>
+
+      <div className="flex-1 min-w-0">
+        {isUrlItem ? (
+          <>
+            <div className="flex items-center gap-1.5">
+              {link!.favicon && (
+                <img
+                  src={link!.favicon}
+                  alt=""
+                  className="w-4 h-4 rounded-sm object-contain shrink-0"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              )}
+              <a
+                href={link!.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  if (selectionMode) { e.preventDefault(); onToggleSelect() }
+                  else e.stopPropagation()
+                }}
+                className={`text-[15px] text-primary underline-offset-2 hover:underline leading-snug truncate ${item.done ? 'line-through opacity-50' : ''}`}
+              >
+                {displayText}
+              </a>
+            </div>
+            <span className="text-[11px] text-text-hint/50 block truncate">{urlHostname(link!.url)}</span>
+          </>
+        ) : (
+          <span className={`text-[15px] ${item.done ? 'line-through text-text-hint' : 'text-text'}`}>
+            {item.name}
+          </span>
+        )}
+      </div>
+
       {!selectionMode && (
         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${item.done ? 'bg-primary border-primary' : 'border-separator'}`}>
           {item.done && (
@@ -109,21 +148,80 @@ export function ShoppingListPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [addingUrl, setAddingUrl] = useState(false)
+  // Pending URL preview: fetched meta waiting for user to confirm with "+"
+  const [urlPreview, setUrlPreview] = useState<LinkMeta | null>(null)
 
   const sortedItems = [...allItems].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   const groups = groupByDate(sortedItems)
 
-  const handleAdd = async () => {
-    const name = inputValue.trim()
-    if (!name || !col) return
+  const insertItem = async (name: string, linkMeta?: LinkMeta) => {
+    if (!name.trim() || !col) return
     const now = new Date().toISOString()
-    await col.insert({ id: crypto.randomUUID(), name, done: false, createdAt: now, updatedAt: now })
+    await col.insert({
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      done: false,
+      link: linkMeta ? serializeLinkMeta(linkMeta) : undefined,
+      createdAt: now,
+      updatedAt: now,
+    })
     setInputValue('')
+    setUrlPreview(null)
     inputRef.current?.focus()
   }
 
+  const handleAddFromInput = async () => {
+    // If we already have a fetched preview — just insert it
+    if (urlPreview) {
+      await insertItem(urlPreview.title || urlHostname(urlPreview.url), urlPreview)
+      return
+    }
+
+    const trimmed = inputValue.trim()
+    if (!trimmed || addingUrl) return
+
+    if (isValidUrl(trimmed)) {
+      setAddingUrl(true)
+      try {
+        const meta = await fetchPageMeta(trimmed)
+        const linkMeta: LinkMeta = { url: trimmed, title: meta.title, description: meta.description, image: meta.image, favicon: meta.favicon }
+        await insertItem(meta.title || urlHostname(trimmed), linkMeta)
+      } catch {
+        await insertItem(urlHostname(trimmed), { url: trimmed })
+      } finally {
+        setAddingUrl(false)
+      }
+    } else {
+      await insertItem(trimmed)
+    }
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleAdd()
+    if (e.key === 'Enter') handleAddFromInput()
+  }
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData('text').trim()
+    if (!isValidUrl(pasted)) return
+    e.preventDefault()
+    setInputValue(pasted)
+    // Fetch meta immediately on paste so preview is ready when user taps "+"
+    setAddingUrl(true)
+    fetchPageMeta(pasted)
+      .then((meta) => {
+        setUrlPreview({ url: pasted, title: meta.title, description: meta.description, image: meta.image, favicon: meta.favicon })
+      })
+      .catch(() => {
+        setUrlPreview({ url: pasted })
+      })
+      .finally(() => setAddingUrl(false))
+  }
+
+  const handleClearUrlPreview = () => {
+    setUrlPreview(null)
+    setInputValue('')
+    inputRef.current?.focus()
   }
 
   const handleToggle = async (item: ShoppingListItemDocument) => {
@@ -190,7 +288,7 @@ export function ShoppingListPage() {
             <div className="text-center">
               <div className="text-5xl mb-4 opacity-80">🛒</div>
               <div className="text-[17px] font-medium text-text mb-1">Список пуст</div>
-              <div className="text-[13px] text-text-hint">Добавьте первый товар снизу</div>
+              <div className="text-[13px] text-text-hint">Добавьте товар или вставьте ссылку снизу</div>
             </div>
           </div>
         ) : (
@@ -253,27 +351,78 @@ export function ShoppingListPage() {
       )}
 
       {/* Fixed glass input bar above the tab pill */}
-      <div className="fixed bottom-0 left-0 right-0 z-[9] pointer-events-none">
+      <div className="fixed bottom-0 left-0 right-0 z-9 pointer-events-none">
         <div className="px-4 pb-[80px] pt-2 pointer-events-auto">
-          <div className="glass rounded-2xl border border-separator/20 shadow-[0_4px_20px_rgba(0,0,0,0.1)] flex items-center gap-2 px-3 py-2">
-            <input
-              ref={inputRef}
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Добавить товар..."
-              className="flex-1 bg-transparent text-[15px] text-text placeholder:text-text-hint outline-none"
-            />
-            <button
-              onClick={handleAdd}
-              disabled={!inputValue.trim()}
-              className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary text-on-primary active:opacity-70 transition-opacity disabled:opacity-40 shrink-0"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-            </button>
+          <div className="glass rounded-2xl border border-separator/20 shadow-[0_4px_20px_rgba(0,0,0,0.1)] flex items-center gap-2 px-3 py-2 min-h-[48px]">
+            {urlPreview ? (
+              /* URL preview mode */
+              <>
+                <button
+                  type="button"
+                  onClick={handleClearUrlPreview}
+                  className="text-text-hint/50 active:opacity-60 shrink-0"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+                {urlPreview.favicon && (
+                  <img
+                    src={urlPreview.favicon}
+                    alt=""
+                    className="w-5 h-5 rounded-sm object-contain shrink-0"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[15px] text-primary font-medium truncate leading-tight">
+                    {urlPreview.title || urlHostname(urlPreview.url)}
+                  </p>
+                  <p className="text-[11px] text-text-hint/60 truncate">{urlHostname(urlPreview.url)}</p>
+                </div>
+                <button
+                  onClick={handleAddFromInput}
+                  className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary text-on-primary active:opacity-70 transition-opacity shrink-0"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              /* Normal text input mode */
+              <>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  placeholder="Товар или ссылка..."
+                  disabled={addingUrl}
+                  className="flex-1 bg-transparent text-[15px] text-text placeholder:text-text-hint outline-none disabled:opacity-60"
+                />
+                {addingUrl ? (
+                  <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                    <svg className="animate-spin w-4 h-4 text-primary" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                    </svg>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleAddFromInput}
+                    disabled={!inputValue.trim()}
+                    className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary text-on-primary active:opacity-70 transition-opacity disabled:opacity-40 shrink-0"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>

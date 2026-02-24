@@ -1,9 +1,6 @@
 # For full configuration options see:
 # https://supabase.com/docs/guides/cli/config
 
-[project]
-id = "lmdjawmxlxpecxrnkyis"
-
 [api]
 enabled = true
 port = 54321
@@ -30,7 +27,6 @@ file_size_limit = "50MiB"
 
 [auth]
 enabled = true
-port = 54325
 site_url = "http://localhost:5173"
 additional_redirect_urls = []
 jwt_expiry = 3600
@@ -45,7 +41,6 @@ enable_confirmations = false
 
 [edge_runtime]
 enabled = true
-port = 54321
 
 [functions.telegram-auth]
 verify_jwt = false
@@ -54,4 +49,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.room-invite]
+verify_jwt = false
+
+[functions.fetch-meta]
 verify_jwt = false

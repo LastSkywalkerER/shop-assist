@@ -31,6 +31,7 @@ export interface PurchaseDocument {
   packageVolume?: string
   variety?: string
   notes?: string
+  link?: string
   createdAt: string
   updatedAt: string
 }
@@ -94,6 +95,7 @@ export interface ShoppingListItemDocument {
   id: string
   name: string
   done: boolean
+  link?: string
   createdAt: string
   updatedAt: string
 }

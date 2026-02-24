@@ -7,6 +7,8 @@ import { StoreSelect } from './StoreSelect'
 import { Input } from '../shared/Input'
 import { Rating } from '../shared/Rating'
 import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
+import { UrlInput, type UrlMeta } from './UrlInput'
+import { serializeLinkMeta } from '../../lib/linkMeta'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 
 export function AddPurchase() {
@@ -31,6 +33,7 @@ export function AddPurchase() {
   const [notes, setNotes] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
+  const [urlMeta, setUrlMeta] = useState<UrlMeta | null>(null)
   const [saving, setSaving] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
@@ -107,6 +110,7 @@ export function AddPurchase() {
         variety: variety.trim() || undefined,
         qualityRating: rating || undefined,
         notes: notes.trim() || undefined,
+        link: urlMeta ? serializeLinkMeta({ url: urlMeta.url, title: urlMeta.title, description: urlMeta.description, image: urlMeta.image, favicon: urlMeta.favicon }) : undefined,
         purchaseDate: new Date(date).toISOString(),
         createdAt: now,
         updatedAt: now,
@@ -200,6 +204,9 @@ export function AddPurchase() {
         onChange={(e) => setVariety(e.currentTarget.value)}
         placeholder="Классическое"
       />
+
+      {/* Source URL */}
+      <UrlInput value={urlMeta} onChange={setUrlMeta} />
 
       {/* Quality rating */}
       <div className="flex flex-col gap-2">

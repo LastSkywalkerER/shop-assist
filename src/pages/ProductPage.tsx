@@ -7,6 +7,7 @@ import { ConfirmModal } from '../components/shared/ConfirmModal'
 import { EditPurchase } from '../components/purchase/EditPurchase'
 import { EditProduct } from '../components/purchase/EditProduct'
 import { showBackButton } from '../telegram/backButton'
+import { parseLinkMeta } from '../lib/linkMeta'
 
 export function ProductPage() {
   const { id } = useParams<{ id: string }>()
@@ -80,7 +81,7 @@ export function ProductPage() {
   const subtitle = [product.category].filter(Boolean).join(' · ')
 
   return (
-    <div className="pb-10">
+    <div className="pb-10 flex-1 overflow-y-auto min-h-0">
       {/* Product header */}
       {editingProduct && productsCol ? (
         <div className="p-4 pb-2">
@@ -213,6 +214,37 @@ export function ProductPage() {
                     {purchase.notes}
                   </div>
                 )}
+
+                {/* Row 5: source link */}
+                {(() => {
+                  const link = parseLinkMeta(purchase.link)
+                  if (!link) return null
+                  const displayText = link.title || (() => { try { return new URL(link.url).hostname.replace(/^www\./, '') } catch { return link.url } })()
+                  return (
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="mt-1.5 flex items-center gap-1.5 text-[12px] text-primary leading-snug hover:underline active:opacity-70"
+                    >
+                      {link.favicon ? (
+                        <img
+                          src={link.favicon}
+                          alt=""
+                          className="w-3.5 h-3.5 rounded-sm object-contain shrink-0"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
+                      ) : (
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                        </svg>
+                      )}
+                      <span className="truncate">{displayText}</span>
+                    </a>
+                  )
+                })()}
 
                 {/* Edit hint */}
                 <div className="mt-1.5 text-[11px] text-text-hint/40">

@@ -7,6 +7,8 @@ import { ProductSelect } from './ProductSelect'
 import { StoreSelect } from './StoreSelect'
 import { Input } from '../shared/Input'
 import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
+import { UrlInput, type UrlMeta } from './UrlInput'
+import { parseLinkMeta, serializeLinkMeta } from '../../lib/linkMeta'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 
 interface EditPurchaseProps {
@@ -38,6 +40,10 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
   const [variety, setVariety] = useState(purchase.variety ?? '')
   const [rating, setRating] = useState<number | undefined>(purchase.qualityRating)
   const [notes, setNotes] = useState(purchase.notes ?? '')
+  const [urlMeta, setUrlMeta] = useState<UrlMeta | null>(() => {
+    const m = parseLinkMeta(purchase.link)
+    return m ? { url: m.url, title: m.title, description: m.description, image: m.image, favicon: m.favicon } : null
+  })
   // undefined = untouched, null = deleted, string = new image
   const [imageDataUrl, setImageDataUrl] = useState<string | null | undefined>(undefined)
   const [saving, setSaving] = useState(false)
@@ -115,6 +121,7 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
           variety: variety.trim() || undefined,
           qualityRating: rating || undefined,
           notes: notes.trim() || undefined,
+          link: urlMeta ? serializeLinkMeta({ url: urlMeta.url, title: urlMeta.title, description: urlMeta.description, image: urlMeta.image, favicon: urlMeta.favicon }) : undefined,
           updatedAt: now,
         })
       }
@@ -208,6 +215,9 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
         onChange={(e) => setVariety(e.currentTarget.value)}
         placeholder="Классическое"
       />
+
+      {/* Source URL */}
+      <UrlInput value={urlMeta} onChange={setUrlMeta} />
 
       {/* Rating */}
       <div className="flex flex-col gap-2">

@@ -130,6 +130,20 @@ async function createDb(): Promise<ShopAssistDatabase> {
           return result
         },
         3: (oldDoc: any) => oldDoc,
+        4: (oldDoc: any) => oldDoc,
+        5: (oldDoc: any) => {
+          const doc = { ...oldDoc }
+          if (doc.sourceUrl) {
+            const meta: Record<string, string> = { url: doc.sourceUrl }
+            if (doc.sourceTitle) meta.title = doc.sourceTitle
+            if (doc.sourceDescription) meta.description = doc.sourceDescription
+            doc.link = JSON.stringify(meta)
+          }
+          delete doc.sourceUrl
+          delete doc.sourceTitle
+          delete doc.sourceDescription
+          return doc
+        },
       },
     },
     expenseCategories: {
@@ -192,7 +206,21 @@ async function createDb(): Promise<ShopAssistDatabase> {
   await db.addCollections({
     shoppingListItems: {
       schema: shoppingListItemSchema,
-      migrationStrategies: {},
+      migrationStrategies: {
+        1: (oldDoc: any) => oldDoc,
+        2: (oldDoc: any) => oldDoc,
+        3: (oldDoc: any) => {
+          const doc = { ...oldDoc }
+          if (doc.sourceUrl) {
+            const meta: Record<string, string> = { url: doc.sourceUrl }
+            if (doc.sourceTitle) meta.title = doc.sourceTitle
+            doc.link = JSON.stringify(meta)
+          }
+          delete doc.sourceUrl
+          delete doc.sourceTitle
+          return doc
+        },
+      },
     },
     purchaseAttachments: {
       schema: purchaseAttachmentSchema,
