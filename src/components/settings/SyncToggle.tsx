@@ -18,7 +18,8 @@ export function SyncToggle({ enabled, disabled, onChange }: SyncToggleProps) {
         />
         <div className={`
           w-11 h-6 rounded-full transition-colors
-          ${disabled ? 'bg-bg-secondary cursor-not-allowed' : 'bg-bg-secondary cursor-pointer'}
+          ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}
+          bg-separator/40
           peer-checked:bg-primary
           peer-disabled:opacity-50
         `} />

@@ -8,7 +8,7 @@ interface StoreSelectProps {
   stores: StoreDocument[]
   selected: StoreDocument | null
   onSelect: (store: StoreDocument) => void
-  onCreate: (data: { name: string; type?: 'market' | 'store'; address?: string }) => void
+  onCreate: (data: { name: string; address?: string }) => void
 }
 
 export function StoreSelect({ stores, selected, onSelect, onCreate }: StoreSelectProps) {
@@ -33,10 +33,7 @@ export function StoreSelect({ stores, selected, onSelect, onCreate }: StoreSelec
     if (!query.trim()) return stores
     const words = query.trim().toLowerCase().split(/\s+/)
     return stores.filter((s) => {
-      const nameLower = s.name.toLowerCase()
-      const addrLower = (s.address ?? '').toLowerCase()
-      const typeLower = s.type === 'market' ? 'рынок' : s.type === 'store' ? 'магазин' : ''
-      const searchable = `${nameLower} ${addrLower} ${typeLower}`
+      const searchable = `${s.name.toLowerCase()} ${(s.address ?? '').toLowerCase()}`
       return words.every((w) => searchable.includes(w))
     })
   }, [stores, query])
@@ -57,7 +54,6 @@ export function StoreSelect({ stores, selected, onSelect, onCreate }: StoreSelec
   const handleOsmSelect = (osm: OsmResult) => {
     onCreate({
       name: osm.name,
-      type: osm.type,
       address: osm.address,
     })
     setQuery('')
@@ -86,10 +82,8 @@ export function StoreSelect({ stores, selected, onSelect, onCreate }: StoreSelec
         <div className="bg-surface rounded-xl px-4 py-3 flex items-center justify-between ring-2 ring-primary/20">
           <div className="flex-1 min-w-0">
             <span className="text-[15px] font-medium text-text">{selected.name}</span>
-            {(selected.type || selected.address) && (
-              <span className="text-[13px] text-text-hint ml-1.5">
-                {[selected.type === 'market' ? 'Рынок' : selected.type === 'store' ? 'Магазин' : null, selected.address].filter(Boolean).join(' · ')}
-              </span>
+            {selected.address && (
+              <span className="text-[13px] text-text-hint ml-1.5">{selected.address}</span>
             )}
           </div>
           <button
@@ -139,10 +133,8 @@ export function StoreSelect({ stores, selected, onSelect, onCreate }: StoreSelec
                       className="w-full text-left px-4 py-2.5 active:bg-bg-secondary transition-colors border-b border-separator/20"
                     >
                       <div className="text-[15px] text-text">{s.name}</div>
-                      {(s.type || s.address) && (
-                        <div className="text-[12px] text-text-hint mt-0.5">
-                          {[s.type === 'market' ? 'Рынок' : s.type === 'store' ? 'Магазин' : null, s.address].filter(Boolean).join(' · ')}
-                        </div>
+                      {s.address && (
+                        <div className="text-[12px] text-text-hint mt-0.5">{s.address}</div>
                       )}
                     </button>
                   ))}
@@ -174,9 +166,9 @@ export function StoreSelect({ stores, selected, onSelect, onCreate }: StoreSelec
                         <span className="text-[15px] text-text">{osm.name}</span>
                         <span className="text-[10px] text-text-hint/40 ml-auto shrink-0">{osm.source}</span>
                       </div>
-                      <div className="text-[12px] text-text-hint mt-0.5 pl-5">
-                        {[osm.type === 'market' ? 'Рынок' : osm.type === 'store' ? 'Магазин' : null, osm.address].filter(Boolean).join(' · ')}
-                      </div>
+                      {osm.address && (
+                        <div className="text-[12px] text-text-hint mt-0.5 pl-5">{osm.address}</div>
+                      )}
                     </button>
                   ))}
                   {!osmLoading && osmResults.length === 0 && (

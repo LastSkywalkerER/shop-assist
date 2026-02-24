@@ -39,14 +39,14 @@ export function ExpenseDetails() {
   const productsCol = useRxCollection<ProductDocument>('products')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
 
-  const expenses = useRxQuery(expensesCol)
-  const stores = useRxQuery(storesCol)
-  const categories = useRxQuery(categoriesCol)
-  const receipts = useRxQuery(receiptsCol)
-  const receiptItems = useRxQuery(receiptItemsCol)
-  const attachments = useRxQuery(attachmentsCol)
-  const products = useRxQuery(productsCol)
-  const purchases = useRxQuery(purchasesCol)
+  const { data: expenses } = useRxQuery(expensesCol)
+  const { data: stores } = useRxQuery(storesCol)
+  const { data: categories } = useRxQuery(categoriesCol)
+  const { data: receipts } = useRxQuery(receiptsCol)
+  const { data: receiptItems } = useRxQuery(receiptItemsCol)
+  const { data: attachments } = useRxQuery(attachmentsCol)
+  const { data: products } = useRxQuery(productsCol)
+  const { data: purchases } = useRxQuery(purchasesCol)
 
   // Extract product categories
   const productCategories = useMemo(() => {
@@ -99,7 +99,7 @@ export function ExpenseDetails() {
     )
   }, [expenseReceiptItems, purchases])
 
-  const handleCreateStore = async (data: { name: string; type?: 'market' | 'store'; address?: string }) => {
+  const handleCreateStore = async (data: { name: string; address?: string }) => {
     if (!storesCol) return
     const nameLower = data.name.toLowerCase()
     const existing = stores.find((s) => {
@@ -112,7 +112,6 @@ export function ExpenseDetails() {
     const store: StoreDocument = {
       id: crypto.randomUUID(),
       name: data.name,
-      type: data.type,
       address: data.address,
       createdAt: now,
       updatedAt: now,

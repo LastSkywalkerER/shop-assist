@@ -27,9 +27,9 @@ export function StoresPage() {
   const storesCol = useRxCollection<StoreDocument>('stores')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
-  const stores = useRxQuery(storesCol)
-  const purchases = useRxQuery(purchasesCol)
-  const expenses = useRxQuery(expensesCol)
+  const { data: stores } = useRxQuery(storesCol)
+  const { data: purchases } = useRxQuery(purchasesCol)
+  const { data: expenses } = useRxQuery(expensesCol)
 
   const purchaseCountMap = new Map<string, number>()
   for (const p of purchases) {
@@ -105,10 +105,8 @@ export function StoresPage() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="text-[15px] font-medium text-text">{store.name}</div>
-                    {(store.type || store.address) && (
-                      <div className="text-[12px] text-text-hint mt-0.5">
-                        {[store.type === 'market' ? 'Рынок' : store.type === 'store' ? 'Магазин' : null, store.address].filter(Boolean).join(' · ')}
-                      </div>
+                    {store.address && (
+                      <div className="text-[12px] text-text-hint mt-0.5">{store.address}</div>
                     )}
                     <div className="text-[11px] text-text-hint/60 mt-1">
                       {pCount === 0 && eCount === 0
@@ -173,7 +171,6 @@ interface StoreEditCardProps {
 
 function StoreEditCard({ store, collection, onDone }: StoreEditCardProps) {
   const [name, setName] = useState(store.name)
-  const [type, setType] = useState<'market' | 'store' | ''>(store.type ?? '')
   const [address, setAddress] = useState(store.address ?? '')
   const [saving, setSaving] = useState(false)
 
@@ -185,7 +182,6 @@ function StoreEditCard({ store, collection, onDone }: StoreEditCardProps) {
       if (doc) {
         await doc.patch({
           name: name.trim(),
-          type: type || undefined,
           address: address.trim() || undefined,
           updatedAt: new Date().toISOString(),
         })
@@ -209,25 +205,6 @@ function StoreEditCard({ store, collection, onDone }: StoreEditCardProps) {
         onChange={(e) => setName(e.currentTarget.value)}
         placeholder="Название магазина"
       />
-      <div className="flex flex-col gap-1.5">
-        <label className="text-[13px] text-section-header font-medium pl-1">Тип</label>
-        <div className="flex gap-2">
-          {([['store', 'Магазин'], ['market', 'Рынок']] as const).map(([val, label]) => (
-            <button
-              key={val}
-              type="button"
-              onClick={() => setType(type === val ? '' : val)}
-              className={`flex-1 py-2.5 rounded-xl text-[15px] font-medium transition-all ${
-                type === val
-                  ? 'bg-primary text-on-primary'
-                  : 'bg-bg-secondary text-text active:bg-separator/30'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
       <Input
         label="Адрес"
         value={address}

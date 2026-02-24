@@ -48,29 +48,41 @@ export function SyncSection() {
   }
 
   return (
-    <section className="mb-6">
-      <h2 className="text-[20px] font-semibold text-text mb-4">Синхронизация</h2>
+    <section>
+      <div className="px-4 pt-5 pb-2">
+        <span className="text-[12px] font-semibold uppercase tracking-wide text-section-header">
+          Синхронизация
+        </span>
+      </div>
 
-      <div className="bg-surface rounded-xl p-4 border border-separator/30">
+      <div className="mx-4 glass rounded-2xl overflow-hidden border border-separator/15 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
         {!isAuthenticated ? (
           <>
-            <TelegramLoginButton />
-            <SyncToggle enabled={false} disabled={true} onChange={() => {}} />
-            <p className="text-[13px] text-text-hint mt-3">
-              💡 Войдите через Telegram для синхронизации данных между устройствами
-            </p>
+            <div className="px-4 py-3">
+              <TelegramLoginButton />
+            </div>
+            <div className="h-px bg-separator/20" />
+            <div className="px-4 py-3">
+              <SyncToggle enabled={false} disabled={true} onChange={() => {}} />
+            </div>
+            <div className="h-px bg-separator/20" />
+            <div className="px-4 py-3">
+              <p className="text-[13px] text-text-hint">
+                Войдите через Telegram для синхронизации данных между устройствами
+              </p>
+            </div>
           </>
         ) : (
           <>
-            <div className="mb-4 flex items-center gap-3">
+            <div className="px-4 py-3 flex items-center gap-3">
               {user?.photo_url ? (
                 <img
                   src={user.photo_url}
                   alt="Avatar"
-                  className="w-10 h-10 rounded-full object-cover"
+                  className="w-10 h-10 rounded-full object-cover shrink-0"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-[20px]">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-[20px] shrink-0">
                   👤
                 </div>
               )}
@@ -79,36 +91,45 @@ export function SyncSection() {
               </p>
             </div>
 
-            <SyncToggle
-              enabled={isSyncEnabled}
-              disabled={false}
-              onChange={handleToggleSync}
-            />
+            <div className="h-px bg-separator/20 mx-4" />
 
-            {isSyncing && (
-              <p className="text-[13px] text-text-hint mt-3">
-                {lastSyncTime
-                  ? `📊 Последняя синхронизация: ${formatRelativeTime(lastSyncTime)}`
-                  : '📊 Синхронизация активна'
-                }
-              </p>
+            <div className="px-4 py-3">
+              <SyncToggle
+                enabled={isSyncEnabled}
+                disabled={false}
+                onChange={handleToggleSync}
+              />
+            </div>
+
+            {(isSyncing || (!isSyncing && isSyncEnabled && !syncError)) && (
+              <>
+                <div className="h-px bg-separator/20 mx-4" />
+                <div className="px-4 py-3">
+                  <p className="text-[13px] text-text-hint">
+                    {isSyncing && lastSyncTime
+                      ? `Последняя синхронизация: ${formatRelativeTime(lastSyncTime)}`
+                      : isSyncing
+                        ? 'Синхронизация активна'
+                        : 'Синхронизация включена'
+                    }
+                  </p>
+                </div>
+              </>
             )}
-
-            {!isSyncing && isSyncEnabled && !syncError && (
-              <p className="text-[13px] text-text-hint mt-3">
-                📊 Синхронизация включена
-              </p>
-            )}
-
-            <button
-              onClick={handleLogout}
-              className="mt-4 text-[15px] text-primary-text active:opacity-70 transition-opacity"
-            >
-              Выйти
-            </button>
           </>
         )}
       </div>
+
+      {isAuthenticated && (
+        <div className="mx-4 mt-3 glass rounded-2xl overflow-hidden border border-separator/15">
+          <button
+            onClick={handleLogout}
+            className="w-full px-4 py-3 text-[15px] text-destructive font-medium active:opacity-70 transition-opacity text-left"
+          >
+            Выйти
+          </button>
+        </div>
+      )}
     </section>
   )
 }

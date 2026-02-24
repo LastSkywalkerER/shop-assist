@@ -32,12 +32,12 @@ export function ExpensesDashboard() {
   const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
   const attachmentsCol = useRxCollection<ExpenseAttachmentDocument>('expenseAttachments')
 
-  const expenses = useRxQuery(expensesCol)
-  const stores = useRxQuery(storesCol)
-  const categories = useRxQuery(categoriesCol)
-  const receipts = useRxQuery(receiptsCol)
-  const receiptItems = useRxQuery(receiptItemsCol)
-  const attachments = useRxQuery(attachmentsCol)
+  const { data: expenses, loading } = useRxQuery(expensesCol)
+  const { data: stores } = useRxQuery(storesCol)
+  const { data: categories } = useRxQuery(categoriesCol)
+  const { data: receipts } = useRxQuery(receiptsCol)
+  const { data: receiptItems } = useRxQuery(receiptItemsCol)
+  const { data: attachments } = useRxQuery(attachmentsCol)
 
   const tableData: ExpenseRowData[] = useMemo(() => {
     const storeMap = new Map(stores.map((s) => [s.id, s]))
@@ -156,10 +156,16 @@ export function ExpensesDashboard() {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="shrink-0">
+    <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="glass-strong sticky top-0 z-10 border-b border-separator/15">
         <SearchBar value={search} onChange={setSearch} />
-        {categories.length > 0 && (
+        {loading ? (
+          <div className="px-4 pb-2.5 flex gap-2">
+            {[48, 64, 56].map((w, i) => (
+              <div key={i} className="h-7 rounded-full animate-pulse bg-text/10 shrink-0" style={{ width: w }} />
+            ))}
+          </div>
+        ) : categories.length > 0 && (
           <ExpenseCategoryFilter
             categories={categories}
             selected={selectedCategoryId}
@@ -167,9 +173,10 @@ export function ExpensesDashboard() {
           />
         )}
       </div>
-      <div className="overflow-y-auto flex-1 pb-20">
+      <div className="pb-24">
         <ExpenseTable
           data={tableData}
+          loading={loading}
           selectionMode={selectionMode}
           selectedIds={selectedIds}
           onToggleSelect={handleToggleSelect}
@@ -183,7 +190,7 @@ export function ExpensesDashboard() {
           {selectedIds.size > 0 && (
             <button
               onClick={() => setConfirmDelete(true)}
-              className="fixed bottom-20 right-5 w-[52px] h-[52px] bg-destructive text-on-primary rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
+              className="fixed bottom-[88px] right-5 w-[52px] h-[52px] bg-destructive text-on-primary rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -202,7 +209,7 @@ export function ExpensesDashboard() {
           )}
           <button
             onClick={handleCancelSelection}
-            className="fixed bottom-20 left-5 px-4 py-2.5 bg-surface text-text rounded-2xl shadow-lg text-[15px] font-medium active:opacity-80 transition-opacity z-20"
+            className="fixed bottom-[88px] left-5 px-4 py-2.5 bg-surface text-text rounded-2xl shadow-lg text-[15px] font-medium active:opacity-80 transition-opacity z-20"
           >
             Отмена
           </button>

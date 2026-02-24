@@ -17,8 +17,8 @@ export function AddPurchase() {
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
   const purchaseAttachmentsCol = useRxCollection<PurchaseAttachmentDocument>('purchaseAttachments')
 
-  const products = useRxQuery(productsCol)
-  const stores = useRxQuery(storesCol)
+  const { data: products } = useRxQuery(productsCol)
+  const { data: stores } = useRxQuery(storesCol)
 
   const [selectedProduct, setSelectedProduct] = useState<ProductDocument | null>(null)
   const [selectedStore, setSelectedStore] = useState<StoreDocument | null>(null)
@@ -58,7 +58,7 @@ export function AddPurchase() {
     setSelectedProduct(product)
   }
 
-  const handleCreateStore = async (data: { name: string; type?: 'market' | 'store'; address?: string }) => {
+  const handleCreateStore = async (data: { name: string; address?: string }) => {
     if (!storesCol) return
     const nameLower = data.name.toLowerCase()
     const existing = stores.find((s) => {
@@ -74,7 +74,6 @@ export function AddPurchase() {
     const store: StoreDocument = {
       id: crypto.randomUUID(),
       name: data.name,
-      type: data.type,
       address: data.address,
       createdAt: now,
       updatedAt: now,
@@ -130,7 +129,7 @@ export function AddPurchase() {
   }
 
   return (
-    <div className="p-4 space-y-4 pb-10">
+    <div className="p-4 space-y-4 pb-10 overflow-y-auto flex-1 min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-[20px] font-bold text-text">Новая покупка</h2>

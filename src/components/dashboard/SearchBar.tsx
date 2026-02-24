@@ -5,7 +5,7 @@ interface SearchBarProps {
 
 export function SearchBar({ value, onChange }: SearchBarProps) {
   return (
-    <div className="px-4 pt-3 pb-1">
+    <div className="px-4 pt-3 pb-2.5">
       <div className="relative">
         <svg
           className="absolute left-3 top-1/2 -translate-y-1/2 text-text-hint pointer-events-none"
@@ -27,7 +27,7 @@ export function SearchBar({ value, onChange }: SearchBarProps) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Поиск продуктов..."
-          className="w-full bg-surface rounded-xl pl-9 pr-4 py-2 text-[15px] text-text placeholder:text-text-hint focus:ring-2 focus:ring-primary/30 transition-shadow"
+          className="w-full glass rounded-2xl border border-separator/20 pl-9 pr-4 py-2.5 text-[15px] text-text placeholder:text-text-hint focus:ring-2 focus:ring-primary/25 outline-none transition-shadow"
         />
         {value && (
           <button

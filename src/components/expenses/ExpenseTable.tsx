@@ -2,6 +2,7 @@ import { ExpenseRow, type ExpenseRowData } from './ExpenseRow'
 
 interface ExpenseTableProps {
   data: ExpenseRowData[]
+  loading?: boolean
   selectionMode?: boolean
   selectedIds?: Set<string>
   onToggleSelect?: (id: string) => void
@@ -25,7 +26,36 @@ function groupByDate(rows: ExpenseRowData[]): { label: string; key: string; rows
     .map(([key, rows]) => ({ key, label: formatDateLabel(key), rows }))
 }
 
-export function ExpenseTable({ data, selectionMode, selectedIds, onToggleSelect, onLongPress }: ExpenseTableProps) {
+function SkeletonCard() {
+  return (
+    <div className="glass rounded-2xl px-3.5 py-3 border border-separator/10 animate-pulse">
+      <div className="flex items-center justify-between mb-2">
+        <div className="h-4 bg-text/10 rounded-full w-1/2" />
+        <div className="h-4 bg-text/10 rounded-full w-16" />
+      </div>
+      <div className="h-3 bg-text/8 rounded-full w-1/3" />
+    </div>
+  )
+}
+
+export function ExpenseTable({ data, loading, selectionMode, selectedIds, onToggleSelect, onLongPress }: ExpenseTableProps) {
+  if (loading) {
+    return (
+      <div className="mx-4 mt-2 flex flex-col gap-0">
+        {[3, 2].map((count, gi) => (
+          <div key={gi}>
+            <div className="px-1 pt-3 pb-1">
+              <div className="h-3 bg-text/10 rounded-full w-36 animate-pulse" />
+            </div>
+            <div className="flex flex-col gap-3">
+              {Array.from({ length: count }).map((_, i) => <SkeletonCard key={i} />)}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   if (data.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center px-8 pb-20">

@@ -32,11 +32,11 @@ export function AddExpense() {
   const productsCol = useRxCollection<ProductDocument>('products')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
 
-  const expenses = useRxQuery(expensesCol)
-  const stores = useRxQuery(storesCol)
-  const categories = useRxQuery(categoriesCol)
-  const products = useRxQuery(productsCol)
-  const purchases = useRxQuery(purchasesCol)
+  const { data: expenses } = useRxQuery(expensesCol)
+  const { data: stores } = useRxQuery(storesCol)
+  const { data: categories } = useRxQuery(categoriesCol)
+  const { data: products } = useRxQuery(productsCol)
+  const { data: purchases } = useRxQuery(purchasesCol)
 
   // Extract product categories
   const productCategories = useMemo(() => {
@@ -62,7 +62,7 @@ export function AddExpense() {
   // Validation: at least name OR store required, and amount > 0
   const canSubmit = (name.trim() || selectedStore) && amount && parseFloat(amount) > 0
 
-  const handleCreateStore = async (data: { name: string; type?: 'market' | 'store'; address?: string }) => {
+  const handleCreateStore = async (data: { name: string; address?: string }) => {
     if (!storesCol) return
     // Dedup: find existing store with same name (case-insensitive) and same address
     const nameLower = data.name.toLowerCase()
@@ -79,7 +79,6 @@ export function AddExpense() {
     const store: StoreDocument = {
       id: crypto.randomUUID(),
       name: data.name,
-      type: data.type,
       address: data.address,
       createdAt: now,
       updatedAt: now,
@@ -255,7 +254,7 @@ export function AddExpense() {
   }
 
   return (
-    <div className="p-4 space-y-4 pb-10">
+    <div className="p-4 space-y-4 pb-10 overflow-y-auto flex-1 min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-[20px] font-bold text-text">Новый расход</h2>

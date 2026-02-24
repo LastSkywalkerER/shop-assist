@@ -17,9 +17,9 @@ export function Dashboard() {
   const storesCol = useRxCollection<StoreDocument>('stores')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
 
-  const products = useRxQuery(productsCol)
-  const stores = useRxQuery(storesCol)
-  const purchases = useRxQuery(purchasesCol)
+  const { data: products, loading } = useRxQuery(productsCol)
+  const { data: stores } = useRxQuery(storesCol)
+  const { data: purchases } = useRxQuery(purchasesCol)
 
   const categories = useMemo(() => {
     const set = new Set<string>()
@@ -116,10 +116,16 @@ export function Dashboard() {
   }, [products, stores, purchases, search, selectedCategory])
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="shrink-0">
+    <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="glass-strong sticky top-0 z-10 border-b border-separator/15">
         <SearchBar value={search} onChange={setSearch} />
-        {categories.length > 0 && (
+        {loading ? (
+          <div className="px-4 pb-2.5 flex gap-2">
+            {[48, 64, 56].map((w, i) => (
+              <div key={i} className="h-7 rounded-full animate-pulse bg-text/10 shrink-0" style={{ width: w }} />
+            ))}
+          </div>
+        ) : categories.length > 0 && (
           <CategoryFilter
             categories={categories}
             selected={selectedCategory}
@@ -127,8 +133,8 @@ export function Dashboard() {
           />
         )}
       </div>
-      <div className="overflow-y-auto flex-1 pb-20">
-        <ProductTable data={tableData} />
+      <div className="pb-24">
+        <ProductTable data={tableData} loading={loading} />
       </div>
       <FAB onClick={() => navigate('/add')} />
     </div>

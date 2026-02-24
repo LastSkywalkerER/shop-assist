@@ -2,20 +2,18 @@ import { useState } from 'react'
 import { Input } from '../shared/Input'
 
 interface StoreFormProps {
-  onSave: (data: { name: string; type?: 'market' | 'store'; address?: string }) => void
+  onSave: (data: { name: string; address?: string }) => void
   onCancel: () => void
 }
 
 export function StoreForm({ onSave, onCancel }: StoreFormProps) {
   const [name, setName] = useState('')
-  const [type, setType] = useState<'market' | 'store' | ''>('')
   const [address, setAddress] = useState('')
 
   const handleSubmit = () => {
     if (!name.trim()) return
     onSave({
       name: name.trim(),
-      type: type || undefined,
       address: address.trim() || undefined,
     })
   }
@@ -26,25 +24,6 @@ export function StoreForm({ onSave, onCancel }: StoreFormProps) {
         Новый магазин
       </div>
       <Input label="Название" value={name} onChange={(e) => setName(e.currentTarget.value)} placeholder="Евроопт" />
-      <div className="flex flex-col gap-1.5">
-        <label className="text-[13px] text-section-header font-medium pl-1">Тип</label>
-        <div className="flex gap-2">
-          {([['store', 'Магазин'], ['market', 'Рынок']] as const).map(([val, label]) => (
-            <button
-              key={val}
-              type="button"
-              onClick={() => setType(type === val ? '' : val)}
-              className={`flex-1 py-2.5 rounded-xl text-[15px] font-medium transition-all ${
-                type === val
-                  ? 'bg-primary text-on-primary'
-                  : 'bg-bg-secondary text-text active:bg-separator/30'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
       <Input label="Адрес" value={address} onChange={(e) => setAddress(e.currentTarget.value)} placeholder="ул. Примерная 1" />
       <div className="flex gap-2 pt-1">
         <button

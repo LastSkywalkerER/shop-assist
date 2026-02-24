@@ -18,8 +18,9 @@ export function useRxCollection<T>(
 export function useRxQuery<T>(
   collection: RxCollection<T> | null,
   queryObj?: MangoQuery<T>,
-): T[] {
+): { data: T[]; loading: boolean } {
   const [results, setResults] = useState<T[]>([])
+  const [loading, setLoading] = useState(true)
   const queryKey = useMemo(() => JSON.stringify(queryObj ?? {}), [queryObj])
 
   useEffect(() => {
@@ -27,9 +28,10 @@ export function useRxQuery<T>(
     const query = queryObj ? collection.find(queryObj) : collection.find()
     const sub = query.$.subscribe((docs) => {
       setResults(docs.map((d) => d.toJSON() as T))
+      setLoading(false)
     })
     return () => sub.unsubscribe()
   }, [collection, queryKey])
 
-  return results
+  return { data: results, loading }
 }

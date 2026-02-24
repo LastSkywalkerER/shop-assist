@@ -49,6 +49,7 @@
   button {
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    outline: none;
   }
 
   input::-webkit-outer-spin-button,
@@ -59,5 +60,28 @@
 
   input[type='number'] {
     -moz-appearance: textfield;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background-color: color-mix(in srgb, var(--color-surface) 72%, transparent);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+  }
+  .glass-strong {
+    background-color: color-mix(in srgb, var(--color-header-bg) 80%, transparent);
+    backdrop-filter: blur(24px) saturate(200%);
+    -webkit-backdrop-filter: blur(24px) saturate(200%);
+  }
+  .glass-tab {
+    background-color: color-mix(in srgb, var(--color-surface) 82%, transparent);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+  }
+  .glass-chip {
+    background-color: color-mix(in srgb, var(--color-surface) 65%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 }

@@ -19,9 +19,9 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
   const productsCol = useRxCollection<ProductDocument>('products')
   const storesCol = useRxCollection<StoreDocument>('stores')
   const purchaseAttachmentsCol = useRxCollection<PurchaseAttachmentDocument>('purchaseAttachments')
-  const products = useRxQuery(productsCol)
-  const stores = useRxQuery(storesCol)
-  const allAttachments = useRxQuery(purchaseAttachmentsCol)
+  const { data: products } = useRxQuery(productsCol)
+  const { data: stores } = useRxQuery(storesCol)
+  const { data: allAttachments } = useRxQuery(purchaseAttachmentsCol)
   const existingAttachment = allAttachments.find((a) => a.purchaseId === purchase.id) ?? null
 
   const [selectedProduct, setSelectedProduct] = useState<ProductDocument | null>(
@@ -65,7 +65,7 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
     setSelectedProduct(product)
   }
 
-  const handleCreateStore = async (data: { name: string; type?: 'market' | 'store'; address?: string }) => {
+  const handleCreateStore = async (data: { name: string; address?: string }) => {
     if (!storesCol) return
     const nameLower = data.name.toLowerCase()
     const existing = stores.find((s) => {
@@ -81,7 +81,6 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
     const store: StoreDocument = {
       id: crypto.randomUUID(),
       name: data.name,
-      type: data.type,
       address: data.address,
       createdAt: now,
       updatedAt: now,

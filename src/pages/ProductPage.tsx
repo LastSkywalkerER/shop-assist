@@ -24,9 +24,9 @@ export function ProductPage() {
   const storesCol = useRxCollection<StoreDocument>('stores')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
 
-  const products = useRxQuery(productsCol)
-  const stores = useRxQuery(storesCol)
-  const purchases = useRxQuery(purchasesCol)
+  const { data: products } = useRxQuery(productsCol)
+  const { data: stores } = useRxQuery(storesCol)
+  const { data: purchases } = useRxQuery(purchasesCol)
 
   const product = useMemo(() => products.find((p) => p.id === id), [products, id])
   const storeMap = useMemo(() => new Map(stores.map((s) => [s.id, s])), [stores])

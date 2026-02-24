@@ -25,7 +25,7 @@ export function Header({ city, onCityChange }: HeaderProps) {
   }, [])
 
   return (
-    <header className="bg-header-bg backdrop-blur-lg sticky top-0 z-10 border-b border-separator/30">
+    <header className="glass-strong sticky top-0 z-10 border-b border-separator/20">
       <div className="px-4 h-11 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <button

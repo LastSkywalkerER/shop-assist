@@ -2,9 +2,27 @@ import { ProductRow, type ProductRowData } from './ProductRow'
 
 interface ProductTableProps {
   data: ProductRowData[]
+  loading?: boolean
 }
 
-export function ProductTable({ data }: ProductTableProps) {
+function SkeletonCard() {
+  return (
+    <div className="glass rounded-2xl px-3.5 py-3 border border-separator/10 animate-pulse">
+      <div className="h-4 bg-text/10 rounded-full w-2/3 mb-2" />
+      <div className="h-3 bg-text/8 rounded-full w-1/3" />
+    </div>
+  )
+}
+
+export function ProductTable({ data, loading }: ProductTableProps) {
+  if (loading) {
+    return (
+      <div className="mx-4 mt-2 flex flex-col gap-3">
+        {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
+      </div>
+    )
+  }
+
   if (data.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center px-8 pb-20">

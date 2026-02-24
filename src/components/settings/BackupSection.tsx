@@ -79,35 +79,42 @@ export function BackupSection() {
   const isWorking = state === 'exporting' || state === 'restoring'
 
   return (
-    <section className="mb-6">
-      <h2 className="text-[20px] font-semibold text-text mb-4">Резервные копии</h2>
+    <section>
+      <div className="px-4 pt-5 pb-2">
+        <span className="text-[12px] font-semibold uppercase tracking-wide text-section-header">
+          Резервные копии
+        </span>
+      </div>
 
-      <div className="bg-surface rounded-xl p-4 border border-separator/30 space-y-3">
-        {lastBackupMeta && (
-          <div className="px-3 py-2 bg-bg-secondary rounded-lg">
-            <p className="text-[12px] text-text-hint">Последняя резервная копия</p>
-            <p className="text-[13px] text-text">
-              Версия {lastBackupMeta.version} ·{' '}
-              {new Date(lastBackupMeta.timestamp).toLocaleString()}
+      {lastBackupMeta && (
+        <div className="mx-4 glass rounded-2xl overflow-hidden border border-separator/15 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
+          <div className="px-4 py-3">
+            <p className="text-[12px] text-text-hint mb-0.5">Последняя резервная копия</p>
+            <p className="text-[14px] text-text">
+              Версия {lastBackupMeta.version} · {new Date(lastBackupMeta.timestamp).toLocaleString()}
             </p>
-            <p className="text-[12px] text-text-hint">
+            <p className="text-[12px] text-text-hint mt-0.5">
               {lastBackupMeta.totalDocuments} документов
               {lastBackupMeta.attachmentSizeBytes > 0
                 ? `, вложения: ${formatBytes(lastBackupMeta.attachmentSizeBytes)}`
                 : ''}
             </p>
           </div>
-        )}
+        </div>
+      )}
 
-        {message && (
-          <div className="px-3 py-2 bg-bg-secondary rounded-lg">
+      {message && (
+        <div className="mx-4 mt-3 glass rounded-2xl overflow-hidden border border-separator/15">
+          <div className="px-4 py-3">
             <p className="text-[13px] text-text">{message}</p>
           </div>
-        )}
+        </div>
+      )}
 
-        {state === 'confirm-restore' && pendingBackup && (
-          <div className="px-3 py-3 bg-destructive/5 border border-destructive/20 rounded-xl">
-            <p className="text-[13px] text-text font-medium mb-1">Подтвердите восстановление</p>
+      {state === 'confirm-restore' && pendingBackup && (
+        <div className="mx-4 mt-3 glass rounded-2xl overflow-hidden border border-destructive/20">
+          <div className="px-4 py-3">
+            <p className="text-[14px] text-text font-medium mb-1">Подтвердите восстановление</p>
             <p className="text-[12px] text-text-hint mb-1">
               Все текущие данные будут заменены резервной копией от{' '}
               {new Date(pendingBackup.metadata.timestamp).toLocaleString()} (
@@ -125,39 +132,43 @@ export function BackupSection() {
             <div className="flex gap-2">
               <button
                 onClick={handleCancelRestore}
-                className="flex-1 py-2 rounded-lg border border-separator/30 text-[14px] text-text active:opacity-70 transition-opacity"
+                className="flex-1 py-2 rounded-xl border border-separator/30 text-[14px] text-text active:opacity-70 transition-opacity"
               >
                 Отмена
               </button>
               <button
                 onClick={handleConfirmRestore}
-                className="flex-1 py-2 rounded-lg bg-destructive text-white text-[14px] font-medium active:opacity-80 transition-opacity"
+                className="flex-1 py-2 rounded-xl bg-destructive text-white text-[14px] font-medium active:opacity-80 transition-opacity"
               >
                 Восстановить
               </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
+      <div className="mx-4 mt-3 glass rounded-2xl overflow-hidden border border-separator/15">
         <button
           onClick={handleCreateBackup}
           disabled={isWorking || !db}
-          className="w-full px-4 py-2.5 bg-primary text-white rounded-lg font-medium text-[15px] active:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full px-4 py-3 text-[15px] text-primary-text font-medium active:opacity-70 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {state === 'exporting' ? (
             <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-primary-text border-t-transparent rounded-full animate-spin" />
               Создание...
             </>
           ) : (
             'Скачать резервную копию'
           )}
         </button>
+      </div>
 
+      <div className="mx-4 mt-3 glass rounded-2xl overflow-hidden border border-separator/15">
         <button
           onClick={handlePickRestore}
           disabled={isWorking || !db || state === 'confirm-restore'}
-          className="w-full px-4 py-2.5 bg-bg-secondary text-text rounded-lg font-medium text-[15px] border border-separator/30 active:opacity-70 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full px-4 py-3 text-[15px] text-text font-medium active:opacity-70 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {state === 'restoring' ? (
             <>

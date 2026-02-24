@@ -72,7 +72,7 @@ function ItemRow({ item, selectionMode, selected, onToggle, onToggleSelect, onLo
       onMouseDown={handlePressStart}
       onMouseUp={handlePressEnd}
       onMouseLeave={handlePressEnd}
-      className={`bg-surface rounded-2xl px-3.5 py-2.5 flex items-center gap-3 cursor-pointer active:bg-bg-secondary/50 transition-colors ${selected ? 'ring-2 ring-primary' : ''}`}
+      className={`glass rounded-2xl px-3.5 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-separator/10 flex items-center gap-3 cursor-pointer active:opacity-80 transition-opacity ${selected ? 'ring-2 ring-primary' : ''}`}
     >
       {selectionMode && (
         <div className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-all ${selected ? 'bg-primary border-primary' : 'border-separator'}`}>
@@ -102,7 +102,7 @@ function ItemRow({ item, selectionMode, selected, onToggle, onToggleSelect, onLo
 export function ShoppingListPage() {
   const navigate = useNavigate()
   const col = useRxCollection<ShoppingListItemDocument>('shoppingListItems')
-  const allItems = useRxQuery(col)
+  const { data: allItems, loading } = useRxQuery(col)
   const [inputValue, setInputValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const [selectionMode, setSelectionMode] = useState(false)
@@ -175,40 +175,26 @@ export function ShoppingListPage() {
 
   return (
     <>
-      <div className="flex flex-col flex-1 pb-20 overflow-y-auto">
-        {/* Add item bar */}
-        <div className="px-4 pt-3 pb-2 flex gap-2">
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Добавить товар..."
-            className="flex-1 bg-surface rounded-xl px-3.5 py-2.5 text-[15px] text-text placeholder:text-text-hint outline-none focus:ring-2 focus:ring-primary/30"
-          />
-          <button
-            onClick={handleAdd}
-            disabled={!inputValue.trim()}
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-primary text-on-primary active:opacity-70 transition-opacity disabled:opacity-40"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
-        </div>
-
+      <div className="flex flex-col flex-1 pb-[136px] overflow-y-auto">
         {/* List */}
-        {allItems.length === 0 ? (
+        {loading ? (
+          <div className="mx-4 mt-3 flex flex-col gap-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="glass rounded-2xl px-3.5 py-2.5 border border-separator/10 animate-pulse">
+                <div className="h-4 bg-text/10 rounded-full w-1/2" />
+              </div>
+            ))}
+          </div>
+        ) : allItems.length === 0 ? (
           <div className="flex-1 flex items-center justify-center px-8">
             <div className="text-center">
               <div className="text-5xl mb-4 opacity-80">🛒</div>
               <div className="text-[17px] font-medium text-text mb-1">Список пуст</div>
-              <div className="text-[13px] text-text-hint">Добавьте первый товар выше</div>
+              <div className="text-[13px] text-text-hint">Добавьте первый товар снизу</div>
             </div>
           </div>
         ) : (
-          <div className="mx-4 mt-1 flex flex-col gap-0">
+          <div className="mx-4 mt-3 flex flex-col gap-0">
             {groups.map((group) => (
               <div key={group.key}>
                 <div className="text-[12px] text-text-hint font-medium px-1 pt-3 pb-1">{group.label}</div>
@@ -237,7 +223,7 @@ export function ShoppingListPage() {
           {selectedIds.size > 0 && (
             <button
               onClick={() => setConfirmDelete(true)}
-              className="fixed bottom-20 right-5 w-[52px] h-[52px] bg-destructive text-on-primary rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
+              className="fixed bottom-[88px] right-5 w-[52px] h-[52px] bg-destructive text-on-primary rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -246,7 +232,7 @@ export function ShoppingListPage() {
           )}
           <button
             onClick={handleCancelSelection}
-            className="fixed bottom-20 left-5 px-4 py-2.5 bg-surface text-text rounded-2xl shadow-lg text-[15px] font-medium active:opacity-80 transition-opacity z-20"
+            className="fixed bottom-[88px] left-5 px-4 py-2.5 bg-surface text-text rounded-2xl shadow-lg text-[15px] font-medium active:opacity-80 transition-opacity z-20"
           >
             Отмена
           </button>
@@ -265,6 +251,32 @@ export function ShoppingListPage() {
           onCancel={() => setConfirmDelete(false)}
         />
       )}
+
+      {/* Fixed glass input bar above the tab pill */}
+      <div className="fixed bottom-0 left-0 right-0 z-[9] pointer-events-none">
+        <div className="px-4 pb-[80px] pt-2 pointer-events-auto">
+          <div className="glass rounded-2xl border border-separator/20 shadow-[0_4px_20px_rgba(0,0,0,0.1)] flex items-center gap-2 px-3 py-2">
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Добавить товар..."
+              className="flex-1 bg-transparent text-[15px] text-text placeholder:text-text-hint outline-none"
+            />
+            <button
+              onClick={handleAdd}
+              disabled={!inputValue.trim()}
+              className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary text-on-primary active:opacity-70 transition-opacity disabled:opacity-40 shrink-0"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
 
       <TabBar activeTab="shopping-list" onTabChange={handleTabChange} />
     </>
