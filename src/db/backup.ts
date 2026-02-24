@@ -23,6 +23,7 @@ const COLLECTION_NAMES = [
   'receipts',
   'receiptItems',
   'expenseAttachments',
+  'shoppingListItems',
 ] as const
 
 const LAST_BACKUP_META_KEY = 'last_backup_meta'
