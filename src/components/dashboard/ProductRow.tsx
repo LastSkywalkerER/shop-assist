@@ -53,8 +53,8 @@ export function ProductRow({ data }: ProductRowProps) {
       {/* Store rows */}
       {data.stores.length > 0 && (
         <div className="mt-1.5 flex flex-col gap-1">
-          {data.stores.map((s) => (
-            <div key={s.storeName} className="flex items-center gap-2 min-h-[22px]">
+          {data.stores.map((s, i) => (
+            <div key={`${s.storeName}-${i}`} className="flex items-center gap-2 min-h-[22px]">
               <span className="text-[12px] text-text-subtitle truncate min-w-0 flex-shrink">{s.storeName}</span>
               <span className="text-[13px] text-primary-text font-semibold tabular-nums whitespace-nowrap">
                 {s.bestPrice.toFixed(2)} {s.currency}
