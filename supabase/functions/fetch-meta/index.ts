@@ -105,8 +105,12 @@ async function fetchViaScrapingBee(url: string, apiKey: string): Promise<string 
   }
 }
 
-/** Fetch HTML directly with browser-like User-Agent */
-async function fetchDirect(url: string): Promise<string | null> {
+// Status codes that indicate antibot protection
+const ANTIBOT_STATUSES = new Set([401, 403, 407, 429, 503])
+
+/** Fetch HTML directly with browser-like User-Agent. Returns html or null on failure.
+ *  Sets antiBotBlocked=true on the result object when a bot-protection status is detected. */
+async function fetchDirect(url: string): Promise<{ html: string | null; antiBotBlocked: boolean }> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 8000)
   try {
@@ -118,12 +122,15 @@ async function fetchDirect(url: string): Promise<string | null> {
         'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.5',
       },
     })
-    if (!response.ok) return null
+    if (ANTIBOT_STATUSES.has(response.status)) {
+      return { html: null, antiBotBlocked: true }
+    }
+    if (!response.ok) return { html: null, antiBotBlocked: false }
     const contentType = response.headers.get('content-type') ?? ''
-    if (!contentType.includes('text/html')) return null
-    return await readHtml(response)
+    if (!contentType.includes('text/html')) return { html: null, antiBotBlocked: false }
+    return { html: await readHtml(response), antiBotBlocked: false }
   } catch {
-    return null
+    return { html: null, antiBotBlocked: false }
   } finally {
     clearTimeout(timeoutId)
   }
@@ -171,17 +178,16 @@ serve(async (req) => {
 
     const targetUrl = parsedUrl.toString()
 
-    // Primary: ScrapingBee (handles antibot protection)
-    const scrapingBeeKey = Deno.env.get('SCRAPINGBEE_API_KEY')
-    let html: string | null = null
+    // Primary: direct fetch
+    const { html: directHtml, antiBotBlocked } = await fetchDirect(targetUrl)
+    let html: string | null = directHtml
 
-    if (scrapingBeeKey) {
-      html = await fetchViaScrapingBee(targetUrl, scrapingBeeKey)
-    }
-
-    // Fallback: direct fetch
-    if (!html) {
-      html = await fetchDirect(targetUrl)
+    // Fallback to ScrapingBee when blocked by antibot protection or direct fetch failed
+    if (!html && antiBotBlocked) {
+      const scrapingBeeKey = Deno.env.get('SCRAPINGBEE_API_KEY')
+      if (scrapingBeeKey) {
+        html = await fetchViaScrapingBee(targetUrl, scrapingBeeKey)
+      }
     }
 
     if (!html) {
