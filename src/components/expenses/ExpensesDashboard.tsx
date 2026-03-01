@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
+import { useDragSelect } from '../../hooks/useDragSelect'
 import type {
   ExpenseDocument,
   StoreDocument,
@@ -136,10 +137,15 @@ export function ExpensesDashboard() {
   }
 
   const handleLongPress = (id: string) => {
-    // Activate selection mode and select the pressed item
     setSelectionMode(true)
     setSelectedIds(new Set([id]))
   }
+
+  const addToSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => new Set([...prev, id]))
+  }, [])
+
+  useDragSelect(selectionMode, addToSelection, 'data-expense-id')
 
   const handleCancelSelection = () => {
     setSelectionMode(false)
@@ -199,13 +205,13 @@ export function ExpensesDashboard() {
           )}
           <button
             onClick={handleCancelSelection}
-            className="fixed bottom-[88px] left-5 px-4 py-2.5 bg-surface text-text rounded-2xl shadow-lg text-[15px] font-medium active:opacity-80 transition-opacity z-20"
+            className="fixed bottom-[88px] left-5 px-4 py-2.5 glass rounded-2xl border border-white/20 shadow-lg text-[15px] font-medium text-text active:opacity-80 transition-opacity z-20"
           >
             Отмена
           </button>
         </>
       ) : (
-        <ExpenseQuickAddBar />
+        <ExpenseQuickAddBar expenses={expenses} />
       )}
 
       {/* Confirm delete modal */}

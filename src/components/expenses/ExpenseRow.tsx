@@ -72,6 +72,7 @@ export function ExpenseRow({ data, selectionMode, selected, onToggleSelect, onLo
 
   return (
     <div
+      data-expense-id={data.expenseId}
       className={`glass rounded-2xl px-3.5 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-separator/10 active:opacity-80 transition-opacity cursor-pointer ${
         selected ? 'ring-2 ring-primary' : ''
       }`}

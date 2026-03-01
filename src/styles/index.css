@@ -64,25 +64,38 @@
 }
 
 @layer utilities {
+  /* GPU layer + isolation help backdrop-filter render in Telegram WebView / iOS */
   .glass {
-    background-color: color-mix(in srgb, var(--color-surface) 72%, transparent);
+    background-color: color-mix(in srgb, var(--color-surface) 78%, transparent);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    isolation: isolate;
   }
   .glass-strong {
-    background-color: color-mix(in srgb, var(--color-header-bg) 80%, transparent);
+    background-color: color-mix(in srgb, var(--color-header-bg) 85%, transparent);
     backdrop-filter: blur(24px) saturate(200%);
     -webkit-backdrop-filter: blur(24px) saturate(200%);
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    isolation: isolate;
   }
   .glass-tab {
-    background-color: color-mix(in srgb, var(--color-surface) 82%, transparent);
+    background-color: color-mix(in srgb, var(--color-surface) 85%, transparent);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    isolation: isolate;
   }
   .glass-chip {
-    background-color: color-mix(in srgb, var(--color-surface) 65%, transparent);
+    background-color: color-mix(in srgb, var(--color-surface) 70%, transparent);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    isolation: isolate;
   }
 
   /* Theme-aware shadow for FAB (uses Telegram accent, avoids hardcoded blue) */

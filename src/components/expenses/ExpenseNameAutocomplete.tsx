@@ -54,7 +54,7 @@ export function ExpenseNameAutocomplete({ expenses, value, onChange }: ExpenseNa
 
       {/* Dropdown */}
       {isOpen && filtered.length > 0 && (
-        <div className="absolute top-[calc(100%+4px)] left-0 right-0 bg-surface rounded-xl shadow-lg border border-separator/30 py-1 z-50 max-h-44 overflow-y-auto">
+        <div className="absolute top-[calc(100%+4px)] left-0 right-0 glass rounded-xl shadow-lg border border-separator/30 py-1 z-50 max-h-44 overflow-y-auto">
           {filtered.map((name) => (
             <button
               key={name}

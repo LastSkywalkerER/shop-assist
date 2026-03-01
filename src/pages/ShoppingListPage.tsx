@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useDragSelect } from '../hooks/useDragSelect'
 import { TabBar } from '../components/layout/TabBar'
 import { useRxCollection, useRxQuery } from '../db/hooks'
 import type { ShoppingListItemDocument } from '../db/types'
@@ -71,6 +72,7 @@ function ItemRow({ item, selectionMode, selected, onToggle, onToggleSelect, onLo
 
   return (
     <div
+      data-item-id={item.id}
       onClick={handleClick}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -234,6 +236,12 @@ export function ShoppingListPage() {
     setSelectedIds(new Set([id]))
   }
 
+  const addToSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => new Set([...prev, id]))
+  }, [])
+
+  useDragSelect(selectionMode, addToSelection, 'data-item-id')
+
   const handleToggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -330,7 +338,7 @@ export function ShoppingListPage() {
           )}
           <button
             onClick={handleCancelSelection}
-            className="fixed bottom-[88px] left-5 px-4 py-2.5 bg-surface text-text rounded-2xl shadow-lg text-[15px] font-medium active:opacity-80 transition-opacity z-20"
+            className="fixed bottom-[88px] left-5 px-4 py-2.5 glass rounded-2xl border border-white/20 shadow-lg text-[15px] font-medium text-text active:opacity-80 transition-opacity z-20"
           >
             Отмена
           </button>
@@ -353,7 +361,7 @@ export function ShoppingListPage() {
       {/* Fixed glass input bar above the tab pill */}
       <div className="fixed bottom-0 left-0 right-0 z-9 pointer-events-none">
         <div className="px-4 pb-[80px] pt-2 pointer-events-auto">
-          <div className="glass rounded-2xl border border-separator/20 shadow-[0_4px_20px_rgba(0,0,0,0.1)] flex items-center gap-2 px-3 py-2 min-h-[48px]">
+          <div className="glass rounded-2xl border border-separator/20 ring-1 ring-link/15 shadow-[0_4px_20px_rgba(0,0,0,0.1)] flex items-center gap-2 px-3 py-2.5 min-h-[52px]">
             {urlPreview ? (
               /* URL preview mode */
               <>
