@@ -48,7 +48,7 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
   }, [showSuggestions, suggestions.length])
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: PointerEvent) => {
       const target = e.target as Node
       if (
         wrapperRef.current?.contains(target) ||
@@ -58,14 +58,15 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
       }
       setShowSuggestions(false)
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('pointerdown', handleClickOutside)
+    return () => document.removeEventListener('pointerdown', handleClickOutside)
   }, [])
 
   const canAdd = (name.trim() || amount.trim()) && parseFloat(amount) > 0
 
   const handleAdd = async () => {
     if (!canAdd || !expensesCol) return
+    setShowSuggestions(false)
 
     const parsedAmount = parseFloat(parseFloat(amount).toFixed(2))
     if (isNaN(parsedAmount) || parsedAmount <= 0) return
@@ -105,8 +106,8 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
     }
   }
 
-  return (
-    <div className="fixed bottom-0 left-0 right-0 z-9 pointer-events-none">
+  return createPortal(
+    <div className="fixed bottom-0 left-0 right-0 z-10 pointer-events-none">
       <div className="px-4 pb-[80px] pt-2 pointer-events-auto">
         <div ref={wrapperRef} className="relative">
           <div className="glass rounded-2xl border border-separator/20 ring-1 ring-primary/15 shadow-[0_4px_20px_rgba(0,0,0,0.1)] flex items-center gap-2 px-3 py-2.5 min-h-[52px]">
@@ -130,6 +131,7 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
                   setShowSuggestions(true)
                 }}
                 onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                 onKeyDown={handleKeyDown}
                 placeholder="Название"
                 className="w-full bg-transparent text-[15px] text-text placeholder:text-text-hint outline-none"
@@ -185,7 +187,7 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
             ))}
           </select>
           <button
-            onClick={handleAdd}
+            onPointerDown={(e) => { if (!canAdd) return; e.preventDefault(); void handleAdd() }}
             disabled={!canAdd}
             className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary text-on-primary active:opacity-70 transition-opacity disabled:opacity-40 shrink-0"
           >
@@ -196,6 +198,7 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
         </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

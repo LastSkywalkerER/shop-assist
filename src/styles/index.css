@@ -64,34 +64,40 @@
 }
 
 @layer utilities {
-  /* GPU layer + isolation help backdrop-filter render in Telegram WebView / iOS */
+  /* will-change: transform creates a compositing layer without a 3D context.
+     transform: translateZ(0) caused backdrop-filter to fail on Android Chrome / Telegram WebView
+     because it placed the element in a 3D compositing context that prevented correct backdrop capture. */
   .glass {
     background-color: color-mix(in srgb, var(--color-surface) 78%, transparent);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    transform: translateZ(0);
-    -webkit-transform: translateZ(0);
+    will-change: transform;
   }
   .glass-strong {
     background-color: color-mix(in srgb, var(--color-header-bg) 85%, transparent);
     backdrop-filter: blur(24px) saturate(200%);
     -webkit-backdrop-filter: blur(24px) saturate(200%);
-    transform: translateZ(0);
-    -webkit-transform: translateZ(0);
+    will-change: transform;
   }
   .glass-tab {
     background-color: color-mix(in srgb, var(--color-surface) 85%, transparent);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    transform: translateZ(0);
-    -webkit-transform: translateZ(0);
+    will-change: transform;
   }
   .glass-chip {
     background-color: color-mix(in srgb, var(--color-surface) 70%, transparent);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    transform: translateZ(0);
-    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+
+  /* Opaque fallback when backdrop-filter is unsupported (older Telegram WebView) */
+  @supports not (backdrop-filter: blur(1px)) {
+    .glass { background-color: color-mix(in srgb, var(--color-surface) 95%, transparent); }
+    .glass-strong { background-color: color-mix(in srgb, var(--color-header-bg) 98%, transparent); }
+    .glass-tab { background-color: color-mix(in srgb, var(--color-surface) 97%, transparent); }
+    .glass-chip { background-color: color-mix(in srgb, var(--color-surface) 90%, transparent); }
   }
 
   /* Theme-aware shadow for FAB (uses Telegram accent, avoids hardcoded blue) */

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useDragSelect } from '../hooks/useDragSelect'
 import { TabBar } from '../components/layout/TabBar'
@@ -359,7 +360,7 @@ export function ShoppingListPage() {
       )}
 
       {/* Fixed glass input bar above the tab pill */}
-      <div className="fixed bottom-0 left-0 right-0 z-9 pointer-events-none">
+      {createPortal(<div className="fixed bottom-0 left-0 right-0 z-10 pointer-events-none">
         <div className="px-4 pb-[80px] pt-2 pointer-events-auto">
           <div className="glass rounded-2xl border border-separator/20 ring-1 ring-link/15 shadow-[0_4px_20px_rgba(0,0,0,0.1)] flex items-center gap-2 px-3 py-2.5 min-h-[52px]">
             {urlPreview ? (
@@ -389,7 +390,7 @@ export function ShoppingListPage() {
                   <p className="text-[11px] text-text-hint/60 truncate">{urlHostname(urlPreview.url)}</p>
                 </div>
                 <button
-                  onClick={handleAddFromInput}
+                  onPointerDown={(e) => { e.preventDefault(); void handleAddFromInput() }}
                   className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary text-on-primary active:opacity-70 transition-opacity shrink-0"
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -420,7 +421,7 @@ export function ShoppingListPage() {
                   </div>
                 ) : (
                   <button
-                    onClick={handleAddFromInput}
+                    onPointerDown={(e) => { if (!inputValue.trim()) return; e.preventDefault(); void handleAddFromInput() }}
                     disabled={!inputValue.trim()}
                     className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary text-on-primary active:opacity-70 transition-opacity disabled:opacity-40 shrink-0"
                   >
@@ -433,7 +434,7 @@ export function ShoppingListPage() {
             )}
           </div>
         </div>
-      </div>
+      </div>, document.body)}
 
       <TabBar activeTab="shopping-list" onTabChange={handleTabChange} />
     </>

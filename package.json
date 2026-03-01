@@ -1,7 +1,7 @@
 {
   "name": "shop-assist-temp",
   "private": true,
-  "version": "1.6.4",
+  "version": "1.6.6",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -24,6 +24,7 @@
     "@tailwindcss/vite": "^4.1.18",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-basic-ssl": "^2.1.4",
     "@vitejs/plugin-react": "^4.4.1",
     "eslint": "^9.25.0",
     "eslint-plugin-react-hooks": "^5.2.0",

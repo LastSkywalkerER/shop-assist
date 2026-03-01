@@ -1,10 +1,12 @@
+import { createPortal } from 'react-dom'
+
 interface TabBarProps {
   activeTab: 'products' | 'expenses' | 'shopping-list'
   onTabChange: (tab: 'products' | 'expenses' | 'shopping-list') => void
 }
 
 export function TabBar({ activeTab, onTabChange }: TabBarProps) {
-  return (
+  return createPortal(
     <div className="fixed bottom-0 left-0 right-0 flex justify-center pb-3 px-4 z-10 pointer-events-none">
       <div className="glass-tab rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.12)] border border-white/20 flex w-full max-w-sm pointer-events-auto">
         <button
@@ -57,6 +59,7 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
           )}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

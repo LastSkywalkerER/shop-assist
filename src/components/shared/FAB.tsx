@@ -6,7 +6,7 @@ export function FAB({ onClick }: FABProps) {
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-[88px] right-5 w-[52px] h-[52px] bg-primary/90 text-on-primary rounded-2xl backdrop-blur-sm border border-white/20 flex items-center justify-center active:scale-95 transition-transform z-20 fab-shadow"
+      className="fixed bottom-[88px] right-5 w-[52px] h-[52px] bg-primary/90 text-on-primary rounded-2xl backdrop-blur-sm border border-white/20 flex items-center justify-center active:scale-95 transition-transform z-20 fab-shadow will-change-transform"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
         <path d="M12 5v14M5 12h14" />
