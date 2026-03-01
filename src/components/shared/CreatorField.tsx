@@ -113,11 +113,20 @@ export function CreatorField({ value, onChange, roomId }: CreatorFieldProps) {
                   onClick={() => selectUser(member)}
                   className="w-full px-4 py-2 text-left flex items-center gap-2.5 active:bg-primary/5 transition-colors"
                 >
-                  <div className="w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
-                    <span className="text-[11px] font-semibold text-primary">
-                      {member.displayName.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+                  {member.photoUrl ? (
+                    <img
+                      src={member.photoUrl}
+                      alt={member.displayName}
+                      className="w-6 h-6 rounded-full object-cover shrink-0"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                      <span className="text-[11px] font-semibold text-primary">
+                        {member.displayName.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                   <span className="text-[14px] text-text">{member.displayName}</span>
                 </button>
               ))}

@@ -9,7 +9,6 @@ import { ConfirmModal } from '../components/shared/ConfirmModal'
 import { isValidUrl, urlHostname } from '../components/purchase/UrlInput'
 import { fetchPageMeta } from '../lib/fetchMeta'
 import { parseLinkMeta, serializeLinkMeta, type LinkMeta } from '../lib/linkMeta'
-import { CreatorField } from '../components/shared/CreatorField'
 import { useAuth } from '../contexts/AuthContext'
 
 function formatDateLabel(dateStr: string): string {
@@ -162,8 +161,7 @@ export function ShoppingListPage() {
   const [addingUrl, setAddingUrl] = useState(false)
   // Pending URL preview: fetched meta waiting for user to confirm with "+"
   const [urlPreview, setUrlPreview] = useState<LinkMeta | null>(null)
-  const [creatorName, setCreatorName] = useState(user?.first_name ?? '')
-  const [showCreatorField, setShowCreatorField] = useState(false)
+  const creatorName = user?.first_name ?? ''
 
   const sortedItems = [...allItems].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   const groups = groupByDate(sortedItems)
@@ -397,29 +395,7 @@ export function ShoppingListPage() {
       {/* Fixed glass input bar above the tab pill */}
       {createPortal(<div className="fixed bottom-0 left-0 right-0 z-10 pointer-events-none">
         <div className="px-4 pb-[80px] pt-2 pointer-events-auto">
-          {/* Creator field (expandable, only when authenticated) */}
-          {roomId && showCreatorField && (
-            <div className="mb-2 glass rounded-2xl border border-separator/20 px-3 py-3">
-              <CreatorField
-                value={creatorName}
-                onChange={setCreatorName}
-                roomId={roomId}
-              />
-            </div>
-          )}
-
           <div className="glass rounded-2xl border border-separator/20 ring-1 ring-link/15 shadow-[0_4px_20px_rgba(0,0,0,0.1)] flex items-center gap-2 px-3 py-2.5 min-h-[52px]">
-            {/* Author toggle chip — only when authenticated */}
-            {roomId && (
-              <button
-                type="button"
-                onClick={() => setShowCreatorField((v) => !v)}
-                className={`shrink-0 text-[12px] font-medium px-2 py-1 rounded-lg transition-colors max-w-[80px] truncate ${showCreatorField ? 'bg-primary/10 text-primary' : 'bg-surface text-text-hint active:opacity-60'}`}
-                title="Указать автора"
-              >
-                {creatorName ? creatorName.split(' ')[0] : 'Я'}
-              </button>
-            )}
 
             {urlPreview ? (
               /* URL preview mode */

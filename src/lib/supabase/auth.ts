@@ -197,13 +197,13 @@ export function getStoredRooms(): RoomWithRole[] {
 export async function fetchRoomMembers(roomId: string): Promise<RoomMember[]> {
   const { data } = await supabase
     .from('room_memberships')
-    .select('user_id, users(id, first_name, last_name, telegram_id)')
+    .select('user_id, users(id, first_name, last_name, telegram_id, photo_url)')
     .eq('room_id', roomId)
 
   return (data || []).map((m: any) => {
     const u = m.users
     const displayName = [u?.first_name, u?.last_name].filter(Boolean).join(' ') || u?.first_name || ''
-    return { userId: u?.id ?? '', displayName, telegramId: u?.telegram_id ?? 0 }
+    return { userId: u?.id ?? '', displayName, telegramId: u?.telegram_id ?? 0, photoUrl: u?.photo_url ?? undefined }
   }).filter((m) => m.userId)
 }
 

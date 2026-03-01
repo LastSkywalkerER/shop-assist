@@ -85,4 +85,5 @@ export interface RoomMember {
   userId: string
   displayName: string
   telegramId: number
+  photoUrl?: string
 }
