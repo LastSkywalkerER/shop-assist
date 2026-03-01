@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type {
   ExpenseDocument,
@@ -10,6 +10,7 @@ import type {
   ExpenseAttachmentDocument,
   ProductDocument,
   PurchaseDocument,
+  ShoppingListItemDocument,
 } from '../../db/types'
 import { ExpenseNameAutocomplete } from './ExpenseNameAutocomplete'
 import { StoreSelect } from '../purchase/StoreSelect'
@@ -19,9 +20,15 @@ import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { FileUpload, type AttachmentFile } from './FileUpload'
 import { ReceiptItemsManager, type ReceiptItem } from './ReceiptItemsManager'
+import { CreatorField } from '../shared/CreatorField'
+import { useAuth } from '../../contexts/AuthContext'
 
 export function AddExpense() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const { user, roomId } = useAuth()
+
+  const prefilledItems = (location.state as { prefilledItems?: ShoppingListItemDocument[] } | null)?.prefilledItems
 
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const storesCol = useRxCollection<StoreDocument>('stores')
@@ -55,8 +62,18 @@ export function AddExpense() {
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryDocument | null>(null)
   const [notes, setNotes] = useState('')
   const [attachments, setAttachments] = useState<AttachmentFile[]>([])
-  const [receiptItems, setReceiptItems] = useState<ReceiptItem[]>([])
+  const [receiptItems, setReceiptItems] = useState<ReceiptItem[]>(() =>
+    prefilledItems?.length
+      ? prefilledItems.map((item) => ({ id: crypto.randomUUID(), name: item.name, amount: 0, currency: DEFAULT_CURRENCY }))
+      : []
+  )
+  const [creatorName, setCreatorName] = useState(user?.first_name ?? '')
   const [saving, setSaving] = useState(false)
+
+  // Fill in default author name once user auth state is resolved
+  useEffect(() => {
+    if (user?.first_name && !creatorName) setCreatorName(user.first_name)
+  }, [user?.first_name])
   const [validationError, setValidationError] = useState('')
 
   // Validation: at least name OR store required, and amount > 0
@@ -125,6 +142,7 @@ export function AddExpense() {
         date: new Date(date).toISOString(),
         categoryId: selectedCategory?.id,
         notes: notes.trim() || undefined,
+        creatorName: creatorName.trim() || undefined,
         createdAt: now,
         updatedAt: now,
       })
@@ -307,6 +325,9 @@ export function AddExpense() {
           rows={2}
         />
       </div>
+
+      {/* Author */}
+      <CreatorField value={creatorName} onChange={setCreatorName} roomId={roomId} />
 
       {/* File upload */}
       <FileUpload attachments={attachments} onChange={setAttachments} />

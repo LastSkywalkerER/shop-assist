@@ -162,6 +162,7 @@ async function createDb(): Promise<ShopAssistDatabase> {
           currency: 'BYN',
         }),
         3: (oldDoc: any) => oldDoc,
+        4: (oldDoc: any) => oldDoc,
       },
     },
     receipts: {
@@ -220,6 +221,7 @@ async function createDb(): Promise<ShopAssistDatabase> {
           delete doc.sourceTitle
           return doc
         },
+        4: (oldDoc: any) => oldDoc,
       },
     },
     purchaseAttachments: {

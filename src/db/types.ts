@@ -52,6 +52,7 @@ export interface ExpenseDocument {
   date: string
   categoryId?: string
   notes?: string
+  creatorName?: string
   createdAt: string
   updatedAt: string
 }
@@ -96,6 +97,7 @@ export interface ShoppingListItemDocument {
   name: string
   done: boolean
   link?: string
+  creatorName?: string
   createdAt: string
   updatedAt: string
 }

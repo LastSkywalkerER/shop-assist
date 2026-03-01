@@ -2,7 +2,7 @@ import type { RxJsonSchema } from 'rxdb'
 import type { ExpenseDocument } from '../types'
 
 export const expenseSchema: RxJsonSchema<ExpenseDocument> = {
-  version: 3,
+  version: 4,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -14,6 +14,7 @@ export const expenseSchema: RxJsonSchema<ExpenseDocument> = {
     date: { type: 'string', maxLength: 30 },
     categoryId: { type: 'string', maxLength: 36 },
     notes: { type: 'string', maxLength: 500 },
+    creatorName: { type: 'string', maxLength: 100 },
     createdAt: { type: 'string', maxLength: 30 },
     updatedAt: { type: 'string', maxLength: 30 },
   },

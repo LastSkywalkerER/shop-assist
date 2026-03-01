@@ -34,7 +34,7 @@ export function ReceiptItemsManager({ items, onChange, productCategories, produc
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
 
-  const totalAmount = items.reduce((sum, item) => sum + item.amount, 0)
+  const totalAmount = items.reduce((sum, item) => sum + (item.amount || 0), 0)
 
   const handleAdd = (item: ReceiptItem) => {
     onChange([...items, item])
@@ -57,7 +57,7 @@ export function ReceiptItemsManager({ items, onChange, productCategories, produc
         <label className="text-[13px] text-section-header font-medium pl-1">
           Позиции чека
         </label>
-        {items.length > 0 && (
+        {totalAmount > 0 && (
           <span className="text-[13px] text-text-hint">
             Итого: {totalAmount.toFixed(2)}
           </span>
@@ -106,7 +106,7 @@ export function ReceiptItemsManager({ items, onChange, productCategories, produc
                     )}
                   </div>
                   <div className="text-[12px] text-text-hint mt-0.5">
-                    {item.amount.toFixed(2)} {item.currency || DEFAULT_CURRENCY}
+                    {item.amount > 0 ? `${item.amount.toFixed(2)} ${item.currency || DEFAULT_CURRENCY}` : '—'}
                     {subtitle && ` · ${subtitle}`}
                   </div>
                 </div>
@@ -268,14 +268,14 @@ function ReceiptItemForm({ item, productCategories, products, purchases, stores,
 
   const handleSubmit = () => {
     const trimmedName = name.trim()
-    const parsedAmount = parseFloat(amount)
+    const parsedAmount = parseFloat(amount) || 0
 
-    if (!trimmedName || !parsedAmount || parsedAmount <= 0) return
+    if (!trimmedName) return
 
     onSave({
       id: item?.id || crypto.randomUUID(),
       name: trimmedName,
-      amount: parseFloat(parsedAmount.toFixed(2)),
+      amount: parsedAmount > 0 ? parseFloat(parsedAmount.toFixed(2)) : 0,
       currency,
       manufacturer: manufacturer.trim() || undefined,
       packageVolume: packageVolume.trim() || undefined,
@@ -452,7 +452,7 @@ function ReceiptItemForm({ item, productCategories, products, purchases, stores,
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={!name.trim() || !amount || parseFloat(amount) <= 0}
+          disabled={!name.trim()}
           className="flex-1 bg-primary text-on-primary py-2.5 rounded-xl font-medium text-[15px] disabled:opacity-30 active:opacity-80 transition-opacity"
         >
           {item ? 'Сохранить' : 'Добавить'}

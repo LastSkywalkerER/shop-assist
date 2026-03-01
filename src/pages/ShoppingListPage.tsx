@@ -9,6 +9,8 @@ import { ConfirmModal } from '../components/shared/ConfirmModal'
 import { isValidUrl, urlHostname } from '../components/purchase/UrlInput'
 import { fetchPageMeta } from '../lib/fetchMeta'
 import { parseLinkMeta, serializeLinkMeta, type LinkMeta } from '../lib/linkMeta'
+import { CreatorField } from '../components/shared/CreatorField'
+import { useAuth } from '../contexts/AuthContext'
 
 function formatDateLabel(dateStr: string): string {
   const date = new Date(dateStr + 'T00:00:00')
@@ -126,6 +128,11 @@ function ItemRow({ item, selectionMode, selected, onToggle, onToggleSelect, onLo
             {item.name}
           </span>
         )}
+        {item.creatorName && (
+          <span className="text-[11px] text-text-hint block truncate mt-0.5">
+            {item.creatorName}
+          </span>
+        )}
       </div>
 
       {!selectionMode && (
@@ -143,6 +150,7 @@ function ItemRow({ item, selectionMode, selected, onToggle, onToggleSelect, onLo
 
 export function ShoppingListPage() {
   const navigate = useNavigate()
+  const { user, roomId } = useAuth()
   const col = useRxCollection<ShoppingListItemDocument>('shoppingListItems')
   const { data: allItems, loading } = useRxQuery(col)
   const [inputValue, setInputValue] = useState('')
@@ -154,6 +162,8 @@ export function ShoppingListPage() {
   const [addingUrl, setAddingUrl] = useState(false)
   // Pending URL preview: fetched meta waiting for user to confirm with "+"
   const [urlPreview, setUrlPreview] = useState<LinkMeta | null>(null)
+  const [creatorName, setCreatorName] = useState(user?.first_name ?? '')
+  const [showCreatorField, setShowCreatorField] = useState(false)
 
   const sortedItems = [...allItems].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   const groups = groupByDate(sortedItems)
@@ -166,6 +176,7 @@ export function ShoppingListPage() {
       name: name.trim(),
       done: false,
       link: linkMeta ? serializeLinkMeta(linkMeta) : undefined,
+      creatorName: creatorName.trim() || undefined,
       createdAt: now,
       updatedAt: now,
     })
@@ -275,6 +286,13 @@ export function ShoppingListPage() {
     }
   }
 
+  const handleCreateExpenseFromSelected = () => {
+    const selectedItems = allItems.filter((item) => selectedIds.has(item.id))
+    navigate('/expenses/add', { state: { prefilledItems: selectedItems } })
+    setSelectionMode(false)
+    setSelectedIds(new Set())
+  }
+
   const handleTabChange = (tab: 'products' | 'expenses' | 'shopping-list') => {
     if (tab === 'products') navigate('/products')
     else if (tab === 'expenses') navigate('/')
@@ -328,14 +346,31 @@ export function ShoppingListPage() {
       {selectionMode && (
         <>
           {selectedIds.size > 0 && (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="fixed bottom-[88px] right-5 w-[52px] h-[52px] bg-destructive text-on-primary rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
-            </button>
+            <>
+              {/* Create expense from selection */}
+              <button
+                onClick={handleCreateExpenseFromSelected}
+                className="fixed bottom-[88px] right-[77px] w-[52px] h-[52px] bg-primary text-on-primary rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
+                title="Создать расход"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
+              </button>
+              {/* Delete selection */}
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="fixed bottom-[88px] right-5 w-[52px] h-[52px] bg-destructive text-on-primary rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+              </button>
+            </>
           )}
           <button
             onClick={handleCancelSelection}
@@ -362,7 +397,30 @@ export function ShoppingListPage() {
       {/* Fixed glass input bar above the tab pill */}
       {createPortal(<div className="fixed bottom-0 left-0 right-0 z-10 pointer-events-none">
         <div className="px-4 pb-[80px] pt-2 pointer-events-auto">
+          {/* Creator field (expandable, only when authenticated) */}
+          {roomId && showCreatorField && (
+            <div className="mb-2 glass rounded-2xl border border-separator/20 px-3 py-3">
+              <CreatorField
+                value={creatorName}
+                onChange={setCreatorName}
+                roomId={roomId}
+              />
+            </div>
+          )}
+
           <div className="glass rounded-2xl border border-separator/20 ring-1 ring-link/15 shadow-[0_4px_20px_rgba(0,0,0,0.1)] flex items-center gap-2 px-3 py-2.5 min-h-[52px]">
+            {/* Author toggle chip — only when authenticated */}
+            {roomId && (
+              <button
+                type="button"
+                onClick={() => setShowCreatorField((v) => !v)}
+                className={`shrink-0 text-[12px] font-medium px-2 py-1 rounded-lg transition-colors max-w-[80px] truncate ${showCreatorField ? 'bg-primary/10 text-primary' : 'bg-surface text-text-hint active:opacity-60'}`}
+                title="Указать автора"
+              >
+                {creatorName ? creatorName.split(' ')[0] : 'Я'}
+              </button>
+            )}
+
             {urlPreview ? (
               /* URL preview mode */
               <>

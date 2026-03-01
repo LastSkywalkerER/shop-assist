@@ -1,5 +1,5 @@
 import { supabase } from './client'
-import type { TelegramAuthData, AuthResponse, SwitchRoomResponse, InviteResponse, AcceptInviteResponse, RoomWithRole } from './types'
+import type { TelegramAuthData, AuthResponse, SwitchRoomResponse, InviteResponse, AcceptInviteResponse, RoomWithRole, RoomMember } from './types'
 
 const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 
@@ -192,4 +192,34 @@ export function getStoredRoomId(): string | null {
 export function getStoredRooms(): RoomWithRole[] {
   const roomsJson = localStorage.getItem('auth_rooms')
   return roomsJson ? JSON.parse(roomsJson) : []
+}
+
+export async function fetchRoomMembers(roomId: string): Promise<RoomMember[]> {
+  const { data } = await supabase
+    .from('room_memberships')
+    .select('user_id, users(id, first_name, last_name, telegram_id)')
+    .eq('room_id', roomId)
+
+  return (data || []).map((m: any) => {
+    const u = m.users
+    const displayName = [u?.first_name, u?.last_name].filter(Boolean).join(' ') || u?.first_name || ''
+    return { userId: u?.id ?? '', displayName, telegramId: u?.telegram_id ?? 0 }
+  }).filter((m) => m.userId)
+}
+
+export async function fetchCustomNames(roomId: string): Promise<string[]> {
+  const { data } = await supabase
+    .from('room_custom_names')
+    .select('name')
+    .eq('room_id', roomId)
+    .order('created_at', { ascending: false })
+
+  return (data || []).map((r: any) => r.name as string)
+}
+
+export async function saveCustomName(roomId: string, name: string): Promise<void> {
+  // upsert with onConflict ignore: if (room_id, name) already exists, no error
+  await supabase
+    .from('room_custom_names')
+    .upsert({ room_id: roomId, name }, { onConflict: 'room_id,name', ignoreDuplicates: true })
 }

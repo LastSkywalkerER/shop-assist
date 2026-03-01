@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { RxCollection } from 'rxdb'
 import type { ExpenseDocument, StoreDocument, ExpenseCategoryDocument } from '../../db/types'
 import { ExpenseNameAutocomplete } from './ExpenseNameAutocomplete'
@@ -7,6 +7,8 @@ import { ExpenseCategorySelect } from './ExpenseCategorySelect'
 import { Input } from '../shared/Input'
 import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
+import { CreatorField } from '../shared/CreatorField'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface EditExpenseProps {
   expense: ExpenseDocument
@@ -29,6 +31,7 @@ export function EditExpense({
   onCreateStore,
   onCreateCategory,
 }: EditExpenseProps) {
+  const { user, roomId } = useAuth()
   const [name, setName] = useState(expense.name || '')
   const [selectedStore, setSelectedStore] = useState<StoreDocument | null>(
     expense.storeId ? stores.find((s) => s.id === expense.storeId) || null : null
@@ -40,8 +43,16 @@ export function EditExpense({
     expense.categoryId ? categories.find((c) => c.id === expense.categoryId) || null : null
   )
   const [notes, setNotes] = useState(expense.notes || '')
+  const [creatorName, setCreatorName] = useState(expense.creatorName || user?.first_name || '')
   const [saving, setSaving] = useState(false)
   const [validationError, setValidationError] = useState('')
+
+  // Fill in default author once user auth resolves (if expense had no saved author)
+  useEffect(() => {
+    if (!expense.creatorName && user?.first_name && !creatorName) {
+      setCreatorName(user.first_name)
+    }
+  }, [user?.first_name])
 
   const hasChanges =
     name.trim() !== (expense.name || '') ||
@@ -50,7 +61,8 @@ export function EditExpense({
     new Date(date).toISOString() !== expense.date ||
     currency !== (expense.currency || DEFAULT_CURRENCY) ||
     selectedCategory?.id !== expense.categoryId ||
-    notes.trim() !== (expense.notes || '')
+    notes.trim() !== (expense.notes || '') ||
+    creatorName.trim() !== (expense.creatorName || '')
 
   const canSubmit = (name.trim() || selectedStore) && amount && parseFloat(amount) > 0 && hasChanges
 
@@ -76,6 +88,7 @@ export function EditExpense({
           date: new Date(date).toISOString(),
           categoryId: selectedCategory?.id,
           notes: notes.trim() || undefined,
+          creatorName: creatorName.trim() || undefined,
           updatedAt: new Date().toISOString(),
         })
       }
@@ -121,6 +134,9 @@ export function EditExpense({
           rows={2}
         />
       </div>
+
+      {/* Author */}
+      <CreatorField value={creatorName} onChange={setCreatorName} roomId={roomId} />
 
       {validationError && (
         <div className="bg-destructive/10 border border-destructive/30 rounded-xl px-4 py-3 text-[13px] text-destructive">

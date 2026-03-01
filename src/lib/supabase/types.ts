@@ -80,3 +80,9 @@ export interface AcceptInviteResponse {
   room_name?: string
   role?: string
 }
+
+export interface RoomMember {
+  userId: string
+  displayName: string
+  telegramId: number
+}

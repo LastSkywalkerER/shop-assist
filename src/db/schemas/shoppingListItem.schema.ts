@@ -2,7 +2,7 @@ import type { RxJsonSchema } from 'rxdb'
 import type { ShoppingListItemDocument } from '../types'
 
 export const shoppingListItemSchema: RxJsonSchema<ShoppingListItemDocument> = {
-  version: 3,
+  version: 4,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -10,6 +10,7 @@ export const shoppingListItemSchema: RxJsonSchema<ShoppingListItemDocument> = {
     name: { type: 'string', maxLength: 200 },
     done: { type: 'boolean' },
     link: { type: 'string', maxLength: 5000 },
+    creatorName: { type: 'string', maxLength: 100 },
     createdAt: { type: 'string', maxLength: 30 },
     updatedAt: { type: 'string', maxLength: 30 },
   },
