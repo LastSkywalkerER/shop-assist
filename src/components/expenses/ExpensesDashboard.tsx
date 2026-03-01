@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type {
   ExpenseDocument,
@@ -9,21 +8,18 @@ import type {
   ReceiptItemDocument,
   ExpenseAttachmentDocument,
 } from '../../db/types'
-import { SearchBar } from '../dashboard/SearchBar'
 import { ExpenseCategoryFilter } from './ExpenseCategoryFilter'
 import { ExpenseTable } from './ExpenseTable'
-import { FAB } from '../shared/FAB'
+import { ExpenseQuickAddBar } from './ExpenseQuickAddBar'
 import { ConfirmModal } from '../shared/ConfirmModal'
 import type { ExpenseRowData } from './ExpenseRow'
 
 export function ExpensesDashboard() {
-  const [search, setSearch] = useState('')
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const navigate = useNavigate()
 
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const storesCol = useRxCollection<StoreDocument>('stores')
@@ -56,14 +52,9 @@ export function ExpensesDashboard() {
       receiptHasAttachmentsMap.set(att.receiptId, true)
     }
 
-    const query = search.toLowerCase()
     const filtered = expenses.filter((e) => {
-      const matchesSearch =
-        !query ||
-        (e.name?.toLowerCase().includes(query) ?? false) ||
-        (storeMap.get(e.storeId || '')?.name.toLowerCase().includes(query) ?? false)
       const matchesCategory = !selectedCategoryId || e.categoryId === selectedCategoryId
-      return matchesSearch && matchesCategory
+      return matchesCategory
     })
 
     // Sort by date descending (newest first)
@@ -87,7 +78,7 @@ export function ExpensesDashboard() {
         receiptItemsCount,
       }
     })
-  }, [expenses, stores, categories, receipts, receiptItems, attachments, search, selectedCategoryId])
+  }, [expenses, stores, categories, receipts, receiptItems, attachments, selectedCategoryId])
 
   const handleToggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -157,8 +148,7 @@ export function ExpensesDashboard() {
 
   return (
     <div className="flex-1 overflow-y-auto min-h-0">
-      <div className="glass-strong sticky top-0 z-10 border-b border-separator/15">
-        <SearchBar value={search} onChange={setSearch} />
+      <div className="glass-strong sticky top-0 z-10 border-b border-separator/15 pt-3">
         {loading ? (
           <div className="px-4 pb-2.5 flex gap-2">
             {[48, 64, 56].map((w, i) => (
@@ -215,7 +205,7 @@ export function ExpensesDashboard() {
           </button>
         </>
       ) : (
-        <FAB onClick={() => navigate('/expenses/add')} />
+        <ExpenseQuickAddBar />
       )}
 
       {/* Confirm delete modal */}

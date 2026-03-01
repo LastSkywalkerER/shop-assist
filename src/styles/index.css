@@ -84,4 +84,9 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
   }
+
+  /* Theme-aware shadow for FAB (uses Telegram accent, avoids hardcoded blue) */
+  .fab-shadow {
+    box-shadow: 0 4px 20px color-mix(in srgb, var(--tg-theme-button-color, #007aff) 40%, transparent);
+  }
 }

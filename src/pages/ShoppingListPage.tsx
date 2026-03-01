@@ -267,8 +267,8 @@ export function ShoppingListPage() {
   }
 
   const handleTabChange = (tab: 'products' | 'expenses' | 'shopping-list') => {
-    if (tab === 'products') navigate('/')
-    else if (tab === 'expenses') navigate('/expenses')
+    if (tab === 'products') navigate('/products')
+    else if (tab === 'expenses') navigate('/')
   }
 
   return (

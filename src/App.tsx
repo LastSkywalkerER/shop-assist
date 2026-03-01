@@ -17,7 +17,8 @@ export function App() {
       <MemoryRouter>
         <AppShell>
           <Routes>
-            <Route path="/" element={<DashboardPage />} />
+            <Route path="/" element={<ExpensesPage />} />
+            <Route path="/products" element={<DashboardPage />} />
             <Route path="/add" element={<AddPurchasePage />} />
             <Route path="/product/:id" element={<ProductPage />} />
             <Route path="/stores" element={<StoresPage />} />

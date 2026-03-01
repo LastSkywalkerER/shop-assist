@@ -7,7 +7,7 @@ export function DashboardPage() {
 
   const handleTabChange = (tab: 'products' | 'expenses' | 'shopping-list') => {
     if (tab === 'expenses') {
-      navigate('/expenses')
+      navigate('/')
     } else if (tab === 'shopping-list') {
       navigate('/shopping-list')
     }
