@@ -71,7 +71,6 @@
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
-    isolation: isolate;
   }
   .glass-strong {
     background-color: color-mix(in srgb, var(--color-header-bg) 85%, transparent);
@@ -79,7 +78,6 @@
     -webkit-backdrop-filter: blur(24px) saturate(200%);
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
-    isolation: isolate;
   }
   .glass-tab {
     background-color: color-mix(in srgb, var(--color-surface) 85%, transparent);
@@ -87,7 +85,6 @@
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
-    isolation: isolate;
   }
   .glass-chip {
     background-color: color-mix(in srgb, var(--color-surface) 70%, transparent);
@@ -95,7 +92,6 @@
     -webkit-backdrop-filter: blur(12px);
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
-    isolation: isolate;
   }
 
   /* Theme-aware shadow for FAB (uses Telegram accent, avoids hardcoded blue) */
