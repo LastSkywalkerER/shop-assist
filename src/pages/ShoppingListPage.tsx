@@ -149,7 +149,7 @@ function ItemRow({ item, selectionMode, selected, onToggle, onToggleSelect, onLo
 
 export function ShoppingListPage() {
   const navigate = useNavigate()
-  const { user, roomId } = useAuth()
+  const { user } = useAuth()
   const col = useRxCollection<ShoppingListItemDocument>('shoppingListItems')
   const { data: allItems, loading } = useRxQuery(col)
   const [inputValue, setInputValue] = useState('')
