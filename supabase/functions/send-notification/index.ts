@@ -53,9 +53,9 @@ serve(async (req) => {
   }
 
   try {
-    const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN')
+    const botToken = Deno.env.get('BOT_TOKEN')
     if (!botToken) {
-      return new Response(JSON.stringify({ error: 'TELEGRAM_BOT_TOKEN not configured' }), {
+      return new Response(JSON.stringify({ error: 'BOT_TOKEN not configured' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
