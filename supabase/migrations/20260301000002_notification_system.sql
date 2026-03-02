@@ -18,12 +18,16 @@ CREATE TABLE IF NOT EXISTS notification_queue (
 -- RLS enabled with no policies: only service role (edge function) can access
 ALTER TABLE notification_queue ENABLE ROW LEVEL SECURITY;
 
--- Trigger function: called when a shopping list item is inserted/updated in Supabase
+-- Trigger function: called when a shopping list item is inserted/updated in Supabase.
+-- On the first item in a new batch (no active task in last 5 min), immediately calls
+-- the send-notification edge function so the "list updated" message arrives right away.
+-- Subsequent items within 5 minutes only append to the queue (cron handles 30-min summary).
 CREATE OR REPLACE FUNCTION handle_shopping_list_sync_change()
 RETURNS TRIGGER AS $$
 DECLARE
   five_min_ago TIMESTAMPTZ := NOW() - INTERVAL '5 minutes';
   existing_count INT;
+  is_new_task BOOLEAN := false;
 BEGIN
   -- Ignore soft-deleted items
   IF NEW._deleted = true THEN
@@ -38,7 +42,7 @@ BEGIN
     AND last_updated_at >= five_min_ago;
 
   IF existing_count > 0 THEN
-    -- Append item name to existing task
+    -- Append item name to existing task (no new notification needed)
     UPDATE notification_queue
     SET
       items = items || jsonb_build_array(NEW.name),
@@ -54,6 +58,16 @@ BEGIN
         immediate_sent = false,
         created_at = NOW(),
         last_updated_at = NOW();
+    is_new_task := true;
+  END IF;
+
+  -- Immediately call edge function for new tasks (don't wait for cron)
+  IF is_new_task THEN
+    PERFORM net.http_post(
+      url := 'https://lmdjawmxlxpecxrnkyis.supabase.co/functions/v1/send-notification',
+      body := '{"action":"process_queue"}'::jsonb,
+      headers := '{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxtZGphd214bHhwZWN4cm5reWlzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTI0MTg0MywiZXhwIjoyMDg2ODE3ODQzfQ.RwSAM062G76gGiKchgQzEzV-g_JnKkzS6arcbznMqsQ"}'::jsonb
+    );
   END IF;
 
   RETURN NULL;
