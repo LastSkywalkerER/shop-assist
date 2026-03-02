@@ -16,6 +16,13 @@ function formatDateLabel(dateStr: string): string {
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+function isOlderThanOneWeek(dateStr: string): boolean {
+  const date = new Date(dateStr)
+  const weekAgo = new Date()
+  weekAgo.setDate(weekAgo.getDate() - 7)
+  return date < weekAgo
+}
+
 function groupByDate(items: ShoppingListItemDocument[]): { label: string; key: string; items: ShoppingListItemDocument[] }[] {
   const map = new Map<string, ShoppingListItemDocument[]>()
   for (const item of items) {
@@ -162,9 +169,21 @@ export function ShoppingListPage() {
   // Pending URL preview: fetched meta waiting for user to confirm with "+"
   const [urlPreview, setUrlPreview] = useState<LinkMeta | null>(null)
   const creatorName = user?.first_name ?? ''
+  const [hideOldDone, setHideOldDone] = useState(() => {
+    const stored = localStorage.getItem('shopping-list-hide-old-done')
+    return stored === null ? true : stored === 'true'
+  })
 
   const sortedItems = [...allItems].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  const groups = groupByDate(sortedItems)
+  const filteredItems = hideOldDone
+    ? sortedItems.filter((item) => !(item.done && isOlderThanOneWeek(item.createdAt)))
+    : sortedItems
+  const groups = groupByDate(filteredItems)
+
+  const handleHideOldDoneChange = (checked: boolean) => {
+    setHideOldDone(checked)
+    localStorage.setItem('shopping-list-hide-old-done', String(checked))
+  }
 
   const insertItem = async (name: string, linkMeta?: LinkMeta) => {
     if (!name.trim() || !col) return
@@ -318,9 +337,22 @@ export function ShoppingListPage() {
           </div>
         ) : (
           <div className="mx-4 mt-3">
-            {groups.map((group) => (
+            {groups.map((group, index) => (
               <div key={group.key}>
-                <div className="text-[12px] text-text-hint font-medium px-1 pt-3 pb-1">{group.label}</div>
+                <div className="flex items-center justify-between gap-2 px-1 pt-3 pb-1">
+                  <div className="text-[12px] text-text-hint font-medium">{group.label}</div>
+                  {index === 0 && (
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={hideOldDone}
+                        onChange={(e) => handleHideOldDoneChange(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded border-separator text-primary focus:ring-primary/30"
+                      />
+                      <span className="text-[11px] text-text-hint">Скрыть старые выполненные</span>
+                    </label>
+                  )}
+                </div>
                 <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2 lg:grid-cols-3">
                   {group.items.map((item) => (
                     <ItemRow
