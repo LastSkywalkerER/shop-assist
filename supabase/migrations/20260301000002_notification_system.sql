@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS notification_queue (
   UNIQUE(room_id, type)
 );
 
--- No RLS: only accessible via service role (edge function)
+-- RLS enabled with no policies: only service role (edge function) can access
+ALTER TABLE notification_queue ENABLE ROW LEVEL SECURITY;
 
 -- Trigger function: called when a shopping list item is inserted/updated in Supabase
 CREATE OR REPLACE FUNCTION handle_shopping_list_sync_change()
