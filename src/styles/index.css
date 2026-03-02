@@ -67,28 +67,26 @@
   /* will-change: transform creates a compositing layer without a 3D context.
      transform: translateZ(0) caused backdrop-filter to fail on Android Chrome / Telegram WebView
      because it placed the element in a 3D compositing context that prevented correct backdrop capture. */
+  /* Use only unprefixed backdrop-filter: LightningCSS adds -webkit- in build.
+     Writing both caused LightningCSS to drop the standard property, breaking blur in some WebViews. */
   .glass {
     background-color: color-mix(in srgb, var(--color-surface) 78%, transparent);
     backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
     will-change: transform;
   }
   .glass-strong {
     background-color: color-mix(in srgb, var(--color-header-bg) 85%, transparent);
     backdrop-filter: blur(24px) saturate(200%);
-    -webkit-backdrop-filter: blur(24px) saturate(200%);
     will-change: transform;
   }
   .glass-tab {
     background-color: color-mix(in srgb, var(--color-surface) 85%, transparent);
     backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
     will-change: transform;
   }
   .glass-chip {
     background-color: color-mix(in srgb, var(--color-surface) 70%, transparent);
     backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
     will-change: transform;
   }
 
