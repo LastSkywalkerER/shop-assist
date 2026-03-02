@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import type { RxCollection } from 'rxdb'
 import type { ExpenseDocument, StoreDocument, ExpenseCategoryDocument } from '../../db/types'
 import { ExpenseNameAutocomplete } from './ExpenseNameAutocomplete'
@@ -31,7 +31,7 @@ export function EditExpense({
   onCreateStore,
   onCreateCategory,
 }: EditExpenseProps) {
-  const { user, roomId } = useAuth()
+  const { roomId } = useAuth()
   const [name, setName] = useState(expense.name || '')
   const [selectedStore, setSelectedStore] = useState<StoreDocument | null>(
     expense.storeId ? stores.find((s) => s.id === expense.storeId) || null : null
@@ -43,16 +43,9 @@ export function EditExpense({
     expense.categoryId ? categories.find((c) => c.id === expense.categoryId) || null : null
   )
   const [notes, setNotes] = useState(expense.notes || '')
-  const [creatorName, setCreatorName] = useState(expense.creatorName || user?.first_name || '')
+  const [creatorName, setCreatorName] = useState(expense.creatorName || '')
   const [saving, setSaving] = useState(false)
   const [validationError, setValidationError] = useState('')
-
-  // Fill in default author once user auth resolves (if expense had no saved author)
-  useEffect(() => {
-    if (!expense.creatorName && user?.first_name && !creatorName) {
-      setCreatorName(user.first_name)
-    }
-  }, [user?.first_name])
 
   const hasChanges =
     name.trim() !== (expense.name || '') ||
