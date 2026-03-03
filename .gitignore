@@ -29,4 +29,6 @@ dist-ssr
 *.sw?
 
 supabase/.temp
-dev-dist
+dev-dist.mcp.json
+
+.mcp.json
