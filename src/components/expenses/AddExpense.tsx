@@ -285,7 +285,17 @@ export function AddExpense() {
       </div>
 
       {/* Expense name */}
-      <ExpenseNameAutocomplete expenses={expenses} value={name} onChange={setName} />
+      <ExpenseNameAutocomplete
+        expenses={expenses}
+        value={name}
+        onChange={setName}
+        onSelectSuggestion={(_, categoryId) => {
+          if (categoryId) {
+            const cat = categories.find((c) => c.id === categoryId)
+            if (cat) setSelectedCategory(cat)
+          }
+        }}
+      />
 
       {/* Store selector */}
       <StoreSelect stores={stores} selected={selectedStore} onSelect={setSelectedStore} onCreate={handleCreateStore} />

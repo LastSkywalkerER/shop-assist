@@ -1,22 +1,31 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 
 interface ExpenseNameAutocompleteProps {
-  expenses: Array<{ name?: string }>
+  expenses: Array<{ name?: string; categoryId?: string; date?: string }>
   value: string
   onChange: (value: string) => void
+  /** Called when user selects a suggestion from dropdown; provides categoryId from most recent expense with that name */
+  onSelectSuggestion?: (name: string, categoryId?: string) => void
 }
 
-export function ExpenseNameAutocomplete({ expenses, value, onChange }: ExpenseNameAutocompleteProps) {
+export function ExpenseNameAutocomplete({ expenses, value, onChange, onSelectSuggestion }: ExpenseNameAutocompleteProps) {
   const [isOpen, setIsOpen] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
-  // Get unique expense names
-  const existingNames = useMemo(() => {
+  // Get unique expense names and map name -> categoryId (from most recent expense with that name)
+  const { existingNames, nameToCategoryId } = useMemo(() => {
+    const byDate = [...expenses].sort(
+      (a, b) => new Date((b.date ?? '').toString()).getTime() - new Date((a.date ?? '').toString()).getTime()
+    )
     const names = new Set<string>()
-    for (const e of expenses) {
-      if (e.name) names.add(e.name)
+    const map = new Map<string, string>()
+    for (const e of byDate) {
+      if (e.name) {
+        names.add(e.name)
+        if (e.categoryId && !map.has(e.name)) map.set(e.name, e.categoryId)
+      }
     }
-    return Array.from(names).sort()
+    return { existingNames: Array.from(names).sort(), nameToCategoryId: map }
   }, [expenses])
 
   // Filter names by current input
@@ -60,6 +69,7 @@ export function ExpenseNameAutocomplete({ expenses, value, onChange }: ExpenseNa
               key={name}
               onClick={() => {
                 onChange(name)
+                onSelectSuggestion?.(name, nameToCategoryId.get(name))
                 setIsOpen(false)
               }}
               className="w-full px-4 py-2 text-left text-[15px] text-text hover:bg-bg-secondary/50 transition-colors"

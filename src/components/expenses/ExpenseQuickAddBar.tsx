@@ -6,7 +6,7 @@ import type { ExpenseDocument } from '../../db/types'
 import { CURRENCIES, DEFAULT_CURRENCY } from '../../config/currencies'
 
 interface ExpenseQuickAddBarProps {
-  expenses?: Array<{ name?: string }>
+  expenses?: Array<{ name?: string; categoryId?: string; date?: string }>
   onAdd?: () => void
 }
 
@@ -16,6 +16,7 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
   const navigate = useNavigate()
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const [name, setName] = useState('')
+  const [pickedCategoryId, setPickedCategoryId] = useState<string | undefined>(undefined)
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY)
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -24,12 +25,19 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
   const wrapperRef = useRef<HTMLDivElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const existingNames = useMemo(() => {
+  const { existingNames, nameToCategoryId } = useMemo(() => {
+    const byDate = [...expenses].sort(
+      (a, b) => new Date((b.date ?? '').toString()).getTime() - new Date((a.date ?? '').toString()).getTime()
+    )
     const names = new Set<string>()
-    for (const e of expenses) {
-      if (e.name) names.add(e.name)
+    const map = new Map<string, string>()
+    for (const e of byDate) {
+      if (e.name) {
+        names.add(e.name)
+        if (e.categoryId && !map.has(e.name)) map.set(e.name, e.categoryId)
+      }
     }
-    return Array.from(names).sort()
+    return { existingNames: Array.from(names).sort(), nameToCategoryId: map }
   }, [expenses])
 
   const suggestions = useMemo(() => {
@@ -81,10 +89,12 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
         amount: parsedAmount,
         currency,
         date: new Date().toISOString(),
+        categoryId: pickedCategoryId,
         createdAt: now,
         updatedAt: now,
       })
       setName('')
+      setPickedCategoryId(undefined)
       setAmount('')
       inputRef.current?.focus()
       onAdd?.()
@@ -97,7 +107,9 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
     if (e.key === 'Enter') {
       e.preventDefault()
       if (showSuggestions && suggestions.length > 0) {
-        setName(suggestions[0])
+        const first = suggestions[0]
+        setName(first)
+        setPickedCategoryId(nameToCategoryId.get(first))
         setShowSuggestions(false)
         inputRef.current?.focus()
       } else {
@@ -128,6 +140,7 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
                 value={name}
                 onChange={(e) => {
                   setName(e.target.value)
+                  setPickedCategoryId(undefined)
                   setShowSuggestions(true)
                 }}
                 onFocus={() => setShowSuggestions(true)}
@@ -153,6 +166,7 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
                         type="button"
                         onClick={() => {
                           setName(s)
+                          setPickedCategoryId(nameToCategoryId.get(s))
                           setShowSuggestions(false)
                         }}
                         className="w-full px-3 py-2 text-left text-[15px] text-text hover:bg-bg-secondary/50 active:bg-bg-secondary/70 transition-colors"
