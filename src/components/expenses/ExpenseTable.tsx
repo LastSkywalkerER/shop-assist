@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+import { GroupedVirtuoso } from 'react-virtuoso'
 import { ExpenseRow, type ExpenseRowData } from './ExpenseRow'
 
 interface ExpenseTableProps {
@@ -7,6 +9,7 @@ interface ExpenseTableProps {
   selectedIds?: Set<string>
   onToggleSelect?: (id: string) => void
   onLongPress?: (id: string) => void
+  customScrollParent?: HTMLElement | null
 }
 
 function formatDateLabel(dateStr: string): string {
@@ -38,7 +41,11 @@ function SkeletonCard() {
   )
 }
 
-export function ExpenseTable({ data, loading, selectionMode, selectedIds, onToggleSelect, onLongPress }: ExpenseTableProps) {
+export function ExpenseTable({ data, loading, selectionMode, selectedIds, onToggleSelect, onLongPress, customScrollParent }: ExpenseTableProps) {
+  const groups = useMemo(() => groupByDate(data), [data])
+  const groupCounts = useMemo(() => groups.map((g) => g.rows.length), [groups])
+  const flatItems = useMemo(() => groups.flatMap((g) => g.rows), [groups])
+
   if (loading) {
     return (
       <div className="mx-4 mt-2">
@@ -47,7 +54,7 @@ export function ExpenseTable({ data, loading, selectionMode, selectedIds, onTogg
             <div className="px-1 pt-3 pb-1">
               <div className="h-3 bg-text/10 rounded-full w-36 animate-pulse" />
             </div>
-            <div className="flex flex-col gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-3">
+            <div className="flex flex-col gap-3">
               {Array.from({ length: count }).map((_, i) => <SkeletonCard key={i} />)}
             </div>
           </div>
@@ -70,27 +77,29 @@ export function ExpenseTable({ data, loading, selectionMode, selectedIds, onTogg
     )
   }
 
-  const groups = groupByDate(data)
-
   return (
-    <div className="mx-4 mt-2">
-      {groups.map((group) => (
-        <div key={group.key}>
-          <div className="text-[12px] text-text-hint font-medium px-1 pt-3 pb-1">{group.label}</div>
-          <div className="flex flex-col gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-3">
-            {group.rows.map((row) => (
-              <ExpenseRow
-                key={row.expenseId}
-                data={row}
-                selectionMode={selectionMode}
-                selected={selectedIds?.has(row.expenseId)}
-                onToggleSelect={() => onToggleSelect?.(row.expenseId)}
-                onLongPress={() => onLongPress?.(row.expenseId)}
-              />
-            ))}
-          </div>
+    <GroupedVirtuoso
+      customScrollParent={customScrollParent ?? undefined}
+      groupCounts={groupCounts}
+      groupContent={(index) => (
+        <div className="text-[12px] text-text-hint font-medium px-5 pt-3 pb-1 bg-bg-secondary">
+          {groups[index].label}
         </div>
-      ))}
-    </div>
+      )}
+      itemContent={(index) => {
+        const row = flatItems[index]
+        return (
+          <div className="mx-4 mb-3">
+            <ExpenseRow
+              data={row}
+              selectionMode={selectionMode}
+              selected={selectedIds?.has(row.expenseId)}
+              onToggleSelect={() => onToggleSelect?.(row.expenseId)}
+              onLongPress={() => onLongPress?.(row.expenseId)}
+            />
+          </div>
+        )
+      }}
+    />
   )
 }

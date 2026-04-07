@@ -67,7 +67,7 @@ export function ProductSelect({ products, categories, selected, onSelect, onCrea
 
   return (
     <div className="flex flex-col gap-1.5" ref={wrapperRef}>
-      <label className="text-[13px] text-section-header font-medium pl-1">Продукт</label>
+      <label className="text-[13px] text-section-header font-medium pl-1">Товар</label>
       {selected ? (
         <div className="bg-surface rounded-xl px-4 py-3 flex items-center justify-between ring-2 ring-primary/20">
           <div className="flex-1 min-w-0">

@@ -78,7 +78,7 @@ export function CreatorField({ value, onChange, roomId }: CreatorFieldProps) {
   return (
     <div ref={wrapperRef} className="relative">
       <label className="block text-[13px] text-section-header font-medium mb-1.5 pl-1">
-        Автор
+        Участник
       </label>
       <input
         type="text"
@@ -94,7 +94,7 @@ export function CreatorField({ value, onChange, roomId }: CreatorFieldProps) {
             setOpen(false)
           }, 150)
         }}
-        placeholder="Имя автора..."
+        placeholder="Имя участника..."
         className="w-full bg-surface rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
       />
 

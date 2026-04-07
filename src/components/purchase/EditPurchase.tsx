@@ -71,8 +71,8 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
     setSelectedProduct(product)
   }
 
-  const handleCreateStore = async (data: { name: string; address?: string }) => {
-    if (!storesCol) return
+  const handleCreateStore = async (data: { name: string; address?: string }): Promise<StoreDocument | undefined> => {
+    if (!storesCol) return undefined
     const nameLower = data.name.toLowerCase()
     const existing = stores.find((s) => {
       if (s.name.toLowerCase() !== nameLower) return false
@@ -81,7 +81,7 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
     })
     if (existing) {
       setSelectedStore(existing)
-      return
+      return existing
     }
     const now = new Date().toISOString()
     const store: StoreDocument = {
@@ -93,6 +93,7 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
     }
     await storesCol.insert(store)
     setSelectedStore(store)
+    return store
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -153,7 +154,7 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
   return (
     <div className="bg-surface rounded-2xl p-4 space-y-3">
       <div className="text-[13px] text-section-header font-medium pl-1">
-        Редактирование покупки
+        Редактирование записи цены
       </div>
 
       {/* Product */}

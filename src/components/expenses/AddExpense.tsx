@@ -79,8 +79,8 @@ export function AddExpense() {
   // Validation: at least name OR store required, and amount > 0
   const canSubmit = (name.trim() || selectedStore) && amount && parseFloat(amount) > 0
 
-  const handleCreateStore = async (data: { name: string; address?: string }) => {
-    if (!storesCol) return
+  const handleCreateStore = async (data: { name: string; address?: string }): Promise<StoreDocument | undefined> => {
+    if (!storesCol) return undefined
     // Dedup: find existing store with same name (case-insensitive) and same address
     const nameLower = data.name.toLowerCase()
     const existing = stores.find((s) => {
@@ -90,7 +90,7 @@ export function AddExpense() {
     })
     if (existing) {
       setSelectedStore(existing)
-      return
+      return existing
     }
     const now = new Date().toISOString()
     const store: StoreDocument = {
@@ -102,6 +102,7 @@ export function AddExpense() {
     }
     await storesCol.insert(store)
     setSelectedStore(store)
+    return store
   }
 
   const handleCreateCategory = async (categoryName: string) => {

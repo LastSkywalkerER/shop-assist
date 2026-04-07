@@ -74,7 +74,7 @@ export function ProductPage() {
 
   if (!product) {
     return (
-      <div className="p-4 text-text-hint text-[15px]">Продукт не найден</div>
+      <div className="p-4 text-text-hint text-[15px]">Товар не найден</div>
     )
   }
 
@@ -120,14 +120,14 @@ export function ProductPage() {
       {/* Purchases header */}
       <div className="px-4 pt-3 pb-2">
         <span className="text-[13px] text-section-header font-medium">
-          Покупки ({productPurchases.length})
+          Записи цен ({productPurchases.length})
         </span>
       </div>
 
       {/* Purchases list */}
       {productPurchases.length === 0 ? (
         <div className="mx-4 bg-surface rounded-2xl px-4 py-6 text-center text-[13px] text-text-hint">
-          Нет записей о покупках
+          Нет записей о ценах
         </div>
       ) : (
         <div className="mx-4 flex flex-col gap-3">
@@ -180,7 +180,7 @@ export function ProductPage() {
                         setConfirmState({ type: 'purchase', purchase })
                       }}
                       className="w-8 h-8 flex items-center justify-center rounded-full active:bg-destructive/10 transition-colors"
-                      title="Удалить покупку"
+                      title="Удалить запись цены"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-destructive">
                         <path d="M3 6h18" />
@@ -263,17 +263,17 @@ export function ProductPage() {
             onClick={() => setConfirmState({ type: 'product' })}
             className="w-full text-[13px] text-destructive/70 font-medium active:text-destructive transition-colors py-2"
           >
-            Удалить продукт
+            Удалить товар
           </button>
         </div>
       )}
 
       {confirmState && (
         <ConfirmModal
-          title={confirmState.type === 'purchase' ? 'Удалить покупку?' : 'Удалить продукт?'}
+          title={confirmState.type === 'purchase' ? 'Удалить запись цены?' : 'Удалить товар?'}
           message={
             confirmState.type === 'purchase'
-              ? 'Запись о покупке будет удалена.'
+              ? 'Запись цены будет удалена.'
               : `Продукт «${product.name}» будет удалён. Это действие нельзя отменить.`
           }
           confirmLabel={confirmState.type === 'product' && deletingProduct ? 'Удаление...' : 'Удалить'}
