@@ -82,7 +82,7 @@ export function ExpenseTable({ data, loading, selectionMode, selectedIds, onTogg
       customScrollParent={customScrollParent ?? undefined}
       groupCounts={groupCounts}
       groupContent={(index) => (
-        <div className="text-[12px] text-text-hint font-medium px-5 pt-3 pb-1 bg-bg/80 backdrop-blur-sm">
+        <div className="text-[12px] text-text-hint font-medium px-5 pt-3 pb-1 bg-bg-secondary">
           {groups[index].label}
         </div>
       )}

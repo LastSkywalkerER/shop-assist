@@ -354,7 +354,7 @@ export function ShoppingListPage() {
               customScrollParent={scrollParent ?? undefined}
               groupCounts={groupCounts}
               groupContent={(index) => (
-                <div className="text-[12px] text-text-hint font-medium px-5 pt-2 pb-1 bg-bg/80 backdrop-blur-sm">
+                <div className="text-[12px] text-text-hint font-medium px-5 pt-2 pb-1 bg-bg-secondary">
                   {groups[index].label}
                 </div>
               )}
