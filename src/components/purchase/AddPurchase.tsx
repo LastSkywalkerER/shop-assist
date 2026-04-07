@@ -61,8 +61,8 @@ export function AddPurchase() {
     setSelectedProduct(product)
   }
 
-  const handleCreateStore = async (data: { name: string; address?: string }) => {
-    if (!storesCol) return
+  const handleCreateStore = async (data: { name: string; address?: string }): Promise<StoreDocument | undefined> => {
+    if (!storesCol) return undefined
     const nameLower = data.name.toLowerCase()
     const existing = stores.find((s) => {
       if (s.name.toLowerCase() !== nameLower) return false
@@ -71,7 +71,7 @@ export function AddPurchase() {
     })
     if (existing) {
       setSelectedStore(existing)
-      return
+      return existing
     }
     const now = new Date().toISOString()
     const store: StoreDocument = {
@@ -83,6 +83,7 @@ export function AddPurchase() {
     }
     await storesCol.insert(store)
     setSelectedStore(store)
+    return store
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -136,7 +137,7 @@ export function AddPurchase() {
     <div className="p-4 space-y-4 pb-10 overflow-y-auto flex-1 min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-[20px] font-bold text-text">Новая покупка</h2>
+        <h2 className="text-[20px] font-bold text-text">Новая запись цены</h2>
         <button
           onClick={() => navigate('/')}
           className="text-primary-text text-[15px] font-medium active:opacity-60 transition-opacity"
@@ -225,7 +226,7 @@ export function AddPurchase() {
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Заметка о покупке..."
+          placeholder="Заметка о записи цены..."
           rows={2}
           className="bg-surface rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow resize-none"
         />

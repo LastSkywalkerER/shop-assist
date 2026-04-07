@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
+import { GroupedVirtuoso } from 'react-virtuoso'
 import { useDragSelect } from '../hooks/useDragSelect'
 import { TabBar } from '../components/layout/TabBar'
 import { useRxCollection, useRxQuery } from '../db/hooks'
@@ -166,8 +167,8 @@ export function ShoppingListPage() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [addingUrl, setAddingUrl] = useState(false)
-  // Pending URL preview: fetched meta waiting for user to confirm with "+"
   const [urlPreview, setUrlPreview] = useState<LinkMeta | null>(null)
+  const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null)
   const creatorName = user?.first_name ?? ''
   const [hideOldDone, setHideOldDone] = useState(() => {
     const stored = localStorage.getItem('shopping-list-hide-old-done')
@@ -178,7 +179,9 @@ export function ShoppingListPage() {
   const filteredItems = hideOldDone
     ? sortedItems.filter((item) => !(item.done && isOlderThanOneWeek(item.createdAt)))
     : sortedItems
-  const groups = groupByDate(filteredItems)
+  const groups = useMemo(() => groupByDate(filteredItems), [filteredItems])
+  const groupCounts = useMemo(() => groups.map((g) => g.items.length), [groups])
+  const flatItems = useMemo(() => groups.flatMap((g) => g.items), [groups])
 
   const handleHideOldDoneChange = (checked: boolean) => {
     setHideOldDone(checked)
@@ -203,7 +206,6 @@ export function ShoppingListPage() {
   }
 
   const handleAddFromInput = async () => {
-    // If we already have a fetched preview — just insert it
     if (urlPreview) {
       await insertItem(urlPreview.title || urlHostname(urlPreview.url), urlPreview)
       return
@@ -237,7 +239,6 @@ export function ShoppingListPage() {
     if (!isValidUrl(pasted)) return
     e.preventDefault()
     setInputValue(pasted)
-    // Fetch meta immediately on paste so preview is ready when user taps "+"
     setAddingUrl(true)
     fetchPageMeta(pasted)
       .then((meta) => {
@@ -317,10 +318,10 @@ export function ShoppingListPage() {
 
   return (
     <>
-      <div className="flex flex-col flex-1 pb-[136px] overflow-y-auto">
+      <div ref={setScrollParent} className="flex flex-col flex-1 pb-[136px] overflow-y-auto">
         {/* List */}
         {loading ? (
-          <div className="mx-4 mt-3 flex flex-col gap-2 sm:grid sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mx-4 mt-3 flex flex-col gap-2">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="glass rounded-2xl px-3.5 py-2.5 border border-separator/10 animate-pulse">
                 <div className="h-4 bg-text/10 rounded-full w-1/2" />
@@ -336,25 +337,31 @@ export function ShoppingListPage() {
             </div>
           </div>
         ) : (
-          <div className="mx-4 mt-3">
-            {groups.map((group, index) => (
-              <div key={group.key}>
-                <div className="flex items-center justify-between gap-2 px-1 pt-3 pb-1">
-                  <div className="text-[12px] text-text-hint font-medium">{group.label}</div>
-                  {index === 0 && (
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={hideOldDone}
-                        onChange={(e) => handleHideOldDoneChange(e.target.checked)}
-                        className="w-3.5 h-3.5 rounded border-separator text-primary focus:ring-primary/30"
-                      />
-                      <span className="text-[11px] text-text-hint">Скрыть старые выполненные</span>
-                    </label>
-                  )}
+          <div className="mt-3 flex-1">
+            {/* Hide old done toggle above list */}
+            <div className="flex items-center justify-end px-5 pb-1">
+              <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+                <input
+                  type="checkbox"
+                  checked={hideOldDone}
+                  onChange={(e) => handleHideOldDoneChange(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded border-separator text-primary focus:ring-primary/30"
+                />
+                <span className="text-[11px] text-text-hint">Скрыть старые выполненные</span>
+              </label>
+            </div>
+            <GroupedVirtuoso
+              customScrollParent={scrollParent ?? undefined}
+              groupCounts={groupCounts}
+              groupContent={(index) => (
+                <div className="text-[12px] text-text-hint font-medium px-5 pt-2 pb-1 bg-bg-secondary">
+                  {groups[index].label}
                 </div>
-                <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2 lg:grid-cols-3">
-                  {group.items.map((item) => (
+              )}
+              itemContent={(index) => {
+                const item = flatItems[index]
+                return (
+                  <div className="mx-4 mb-2">
                     <ItemRow
                       key={item.id}
                       item={item}
@@ -364,10 +371,10 @@ export function ShoppingListPage() {
                       onToggleSelect={() => handleToggleSelect(item.id)}
                       onLongPress={() => handleLongPress(item.id)}
                     />
-                  ))}
-                </div>
-              </div>
-            ))}
+                  </div>
+                )
+              }}
+            />
           </div>
         )}
       </div>
@@ -377,7 +384,6 @@ export function ShoppingListPage() {
         <>
           {selectedIds.size > 0 && (
             <>
-              {/* Create expense from selection */}
               <button
                 onClick={handleCreateExpenseFromSelected}
                 className="fixed bottom-[88px] right-[77px] w-[52px] h-[52px] bg-primary text-on-primary rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
@@ -391,7 +397,6 @@ export function ShoppingListPage() {
                   <polyline points="10 9 9 9 8 9" />
                 </svg>
               </button>
-              {/* Delete selection */}
               <button
                 onClick={() => setConfirmDelete(true)}
                 className="fixed bottom-[88px] right-5 w-[52px] h-[52px] bg-destructive text-on-primary rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
@@ -430,7 +435,6 @@ export function ShoppingListPage() {
           <div className="glass rounded-2xl border border-separator/20 ring-1 ring-link/15 shadow-[0_4px_20px_rgba(0,0,0,0.1)] flex items-center gap-2 px-3 py-2.5 min-h-[52px]">
 
             {urlPreview ? (
-              /* URL preview mode */
               <>
                 <button
                   type="button"
@@ -465,7 +469,6 @@ export function ShoppingListPage() {
                 </button>
               </>
             ) : (
-              /* Normal text input mode */
               <>
                 <input
                   ref={inputRef}

@@ -99,15 +99,15 @@ export function ExpenseDetails() {
     )
   }, [expenseReceiptItems, purchases])
 
-  const handleCreateStore = async (data: { name: string; address?: string }) => {
-    if (!storesCol) return
+  const handleCreateStore = async (data: { name: string; address?: string }): Promise<StoreDocument | undefined> => {
+    if (!storesCol) return undefined
     const nameLower = data.name.toLowerCase()
     const existing = stores.find((s) => {
       if (s.name.toLowerCase() !== nameLower) return false
       if (data.address) return s.address?.toLowerCase() === data.address.toLowerCase()
       return !s.address
     })
-    if (existing) return
+    if (existing) return existing
     const now = new Date().toISOString()
     const store: StoreDocument = {
       id: crypto.randomUUID(),
@@ -117,6 +117,7 @@ export function ExpenseDetails() {
       updatedAt: now,
     }
     await storesCol.insert(store)
+    return store
   }
 
   const handleCreateCategory = async (categoryName: string) => {

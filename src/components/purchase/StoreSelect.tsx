@@ -8,7 +8,7 @@ interface StoreSelectProps {
   stores: StoreDocument[]
   selected: StoreDocument | null
   onSelect: (store: StoreDocument) => void
-  onCreate: (data: { name: string; address?: string }) => void
+  onCreate: (data: { name: string; address?: string }) => Promise<StoreDocument | undefined>
 }
 
 export function StoreSelect({ stores, selected, onSelect, onCreate }: StoreSelectProps) {
@@ -44,18 +44,20 @@ export function StoreSelect({ stores, selected, onSelect, onCreate }: StoreSelec
     return filtered.some((s) => s.name.toLowerCase() === q)
   }, [filtered, query])
 
-  const handleQuickCreate = () => {
+  const handleQuickCreate = async () => {
     if (!query.trim() || hasExactMatch) return
-    onCreate({ name: query.trim() })
+    const store = await onCreate({ name: query.trim() })
+    if (store) onSelect(store)
     setQuery('')
     setIsOpen(false)
   }
 
-  const handleOsmSelect = (osm: OsmResult) => {
-    onCreate({
+  const handleOsmSelect = async (osm: OsmResult) => {
+    const store = await onCreate({
       name: osm.name,
       address: osm.address,
     })
+    if (store) onSelect(store)
     setQuery('')
     setIsOpen(false)
   }
@@ -63,8 +65,9 @@ export function StoreSelect({ stores, selected, onSelect, onCreate }: StoreSelec
   if (showForm) {
     return (
       <StoreForm
-        onSave={(data) => {
-          onCreate(data)
+        onSave={async (data) => {
+          const store = await onCreate(data)
+          if (store) onSelect(store)
           setShowForm(false)
           setQuery('')
         }}
@@ -77,7 +80,7 @@ export function StoreSelect({ stores, selected, onSelect, onCreate }: StoreSelec
 
   return (
     <div className="flex flex-col gap-1.5" ref={wrapperRef}>
-      <label className="text-[13px] text-section-header font-medium pl-1">Магазин</label>
+      <label className="text-[13px] text-section-header font-medium pl-1">Место</label>
       {selected ? (
         <div className="bg-surface rounded-xl px-4 py-3 flex items-center justify-between ring-2 ring-primary/20">
           <div className="flex-1 min-w-0">
