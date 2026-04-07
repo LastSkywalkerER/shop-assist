@@ -17,7 +17,7 @@ interface EditExpenseProps {
   categories: ExpenseCategoryDocument[]
   expenses: ExpenseDocument[]
   onDone: () => void
-  onCreateStore: (data: { name: string; address?: string }) => Promise<void>
+  onCreateStore: (data: { name: string; address?: string }) => Promise<StoreDocument | undefined>
   onCreateCategory: (name: string) => Promise<void>
 }
 

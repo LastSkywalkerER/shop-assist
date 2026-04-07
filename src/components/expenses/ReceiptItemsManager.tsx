@@ -101,7 +101,7 @@ export function ReceiptItemsManager({ items, onChange, productCategories, produc
                     </div>
                     {item.addToProducts && (
                       <span className="text-[11px] px-1.5 py-0.5 bg-primary/10 text-primary-text rounded">
-                        {item.existingPurchaseId ? 'Привязано' : 'В продукты'}
+                        {item.existingPurchaseId ? 'Привязано' : 'В товары'}
                       </span>
                     )}
                   </div>
@@ -299,7 +299,7 @@ function ReceiptItemForm({ item, productCategories, products, purchases, stores,
         <label className="block text-[13px] text-section-header font-medium mb-1.5 pl-1">
           Название
           {existingPurchaseId && (
-            <span className="ml-2 text-primary-text font-normal">· Привязано к покупке</span>
+            <span className="ml-2 text-primary-text font-normal">· Привязано к записи цены</span>
           )}
         </label>
         <input
@@ -442,7 +442,7 @@ function ReceiptItemForm({ item, productCategories, products, purchases, stores,
             </div>
           </div>
           <span className="text-[15px] text-text">
-            {existingPurchaseId ? 'Привязать к существующей покупке' : 'Добавить в продукты'}
+            {existingPurchaseId ? 'Привязать к существующей записи цены' : 'Добавить в товары'}
           </span>
         </label>
       </div>
