@@ -50,6 +50,7 @@ export type Database = {
           receipt_id: string
           room_id: string
           size: number
+          storage_path: string | null
           updated_at: string
         }
         Insert: {
@@ -62,6 +63,7 @@ export type Database = {
           receipt_id: string
           room_id: string
           size: number
+          storage_path?: string | null
           updated_at: string
         }
         Update: {
@@ -74,6 +76,7 @@ export type Database = {
           receipt_id?: string
           room_id?: string
           size?: number
+          storage_path?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -264,27 +267,39 @@ export type Database = {
           _deleted: boolean | null
           created_at: string
           data_url: string
+          file_name: string | null
           id: string
+          mime_type: string | null
           purchase_id: string
           room_id: string
+          size: number | null
+          storage_path: string | null
           updated_at: string
         }
         Insert: {
           _deleted?: boolean | null
           created_at: string
           data_url: string
+          file_name?: string | null
           id: string
+          mime_type?: string | null
           purchase_id: string
           room_id: string
+          size?: number | null
+          storage_path?: string | null
           updated_at: string
         }
         Update: {
           _deleted?: boolean | null
           created_at?: string
           data_url?: string
+          file_name?: string | null
           id?: string
+          mime_type?: string | null
           purchase_id?: string
           room_id?: string
+          size?: number | null
+          storage_path?: string | null
           updated_at?: string
         }
         Relationships: [

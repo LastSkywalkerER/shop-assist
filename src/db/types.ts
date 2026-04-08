@@ -86,8 +86,8 @@ export interface ExpenseAttachmentDocument {
   receiptId: string
   fileName: string
   mimeType: string
-  dataUrl: string
   size: number
+  storagePath?: string
   createdAt: string
   updatedAt: string
 }
@@ -105,7 +105,10 @@ export interface ShoppingListItemDocument {
 export interface PurchaseAttachmentDocument {
   id: string
   purchaseId: string
-  dataUrl: string
+  fileName?: string
+  mimeType?: string
+  size?: number
+  storagePath?: string
   createdAt: string
   updatedAt: string
 }

@@ -26,6 +26,7 @@ import type {
 } from './types'
 import { getDatabaseVersion, getStoredDbVersion, setStoredDbVersion } from './version'
 import { readRawIndexedDB, buildBackupFromRawData, downloadBackup } from './backup'
+import { blobStorePut, addPendingUpload, dataUrlToBlob, closeBlobStore } from './blobStore'
 import packageJson from '../../package.json'
 
 export type ShopAssistCollections = {
@@ -53,6 +54,7 @@ export function getDatabase(): Promise<ShopAssistDatabase> {
 }
 
 export function resetDatabase(): void {
+  closeBlobStore()
   dbPromise = null
 }
 
@@ -198,7 +200,21 @@ async function createDb(): Promise<ShopAssistDatabase> {
     },
     expenseAttachments: {
       schema: expenseAttachmentSchema,
-      migrationStrategies: {},
+      migrationStrategies: {
+        1: async (oldDoc: any) => {
+          if (oldDoc.dataUrl && oldDoc.dataUrl.startsWith('data:')) {
+            try {
+              const blob = dataUrlToBlob(oldDoc.dataUrl)
+              await blobStorePut(oldDoc.id, blob)
+              addPendingUpload(oldDoc.id)
+            } catch (e) {
+              console.error('Failed to migrate expense attachment blob:', e)
+            }
+          }
+          const { dataUrl, ...rest } = oldDoc
+          return rest
+        },
+      },
     },
   })
 
@@ -226,7 +242,31 @@ async function createDb(): Promise<ShopAssistDatabase> {
     },
     purchaseAttachments: {
       schema: purchaseAttachmentSchema,
-      migrationStrategies: {},
+      migrationStrategies: {
+        1: async (oldDoc: any) => {
+          let mimeType = 'image/jpeg'
+          let size = 0
+          if (oldDoc.dataUrl && oldDoc.dataUrl.startsWith('data:')) {
+            try {
+              const blob = dataUrlToBlob(oldDoc.dataUrl)
+              mimeType = blob.type || 'image/jpeg'
+              size = blob.size
+              await blobStorePut(oldDoc.id, blob)
+              addPendingUpload(oldDoc.id)
+            } catch (e) {
+              console.error('Failed to migrate purchase attachment blob:', e)
+            }
+          }
+          return {
+            id: oldDoc.id,
+            purchaseId: oldDoc.purchaseId,
+            mimeType,
+            size,
+            createdAt: oldDoc.createdAt,
+            updatedAt: oldDoc.updatedAt,
+          }
+        },
+      },
     },
   })
 

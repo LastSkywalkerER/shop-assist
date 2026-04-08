@@ -2,6 +2,14 @@ import { replicateRxCollection, type RxReplicationState } from 'rxdb/plugins/rep
 import type { RxCollection } from 'rxdb'
 import { supabase } from '../supabase/client'
 import { transformRxDBToSupabase, transformSupabaseToRxDB, getTableName } from './transformers'
+import {
+  blobStoreGet,
+  blobStorePut,
+  blobStoreRemove,
+  dataUrlToBlob,
+  getPendingUploads,
+  removePendingUpload,
+} from '../../db/blobStore'
 
 export interface ReplicationConfig {
   collection: RxCollection
@@ -10,6 +18,14 @@ export interface ReplicationConfig {
 
 interface CheckpointType {
   updated_at: string
+}
+
+const ATTACHMENT_COLLECTIONS = new Set(['expenseAttachments', 'purchaseAttachments'])
+const STORAGE_BUCKET = 'sync-attachments'
+
+function getStoragePath(collectionName: string, roomId: string, id: string): string {
+  const folder = collectionName === 'expenseAttachments' ? 'expense_attachments' : 'purchase_attachments'
+  return `${roomId}/${folder}/${id}`
 }
 
 // Suppress pushing _deleted documents for a period after room-switch clears.
@@ -27,6 +43,7 @@ export async function setupCollectionReplication(
 ): Promise<RxReplicationState<any, CheckpointType>> {
   const { collection, roomId } = config
   const tableName = getTableName(collection.name)
+  const isAttachment = ATTACHMENT_COLLECTIONS.has(collection.name)
 
   const replicationState = replicateRxCollection({
     collection,
@@ -49,7 +66,24 @@ export async function setupCollectionReplication(
             throw error
           }
 
-          const documents = (data || []).map(transformSupabaseToRxDB)
+          let documents: any[]
+
+          if (isAttachment) {
+            documents = await Promise.all((data || []).map(async (row) => {
+              if (!row._deleted) {
+                await hydrateAttachmentBlob(row)
+              }
+              const doc = transformSupabaseToRxDB(row)
+              delete doc.dataUrl
+              if (collection.name === 'purchaseAttachments') {
+                if (!doc.mimeType) doc.mimeType = 'image/jpeg'
+                if (doc.size == null) doc.size = 0
+              }
+              return doc
+            }))
+          } else {
+            documents = (data || []).map(transformSupabaseToRxDB)
+          }
 
           return {
             documents,
@@ -66,20 +100,20 @@ export async function setupCollectionReplication(
     push: {
       async handler(changeRows) {
         try {
-          // Guard: skip push if JWT room_id no longer matches this replication's room.
           const session = await supabase.auth.getSession()
           const jwtRoomId = session.data.session?.user?.user_metadata?.room_id
           if (!jwtRoomId || jwtRoomId !== roomId) {
             return []
           }
 
-          // During a room-switch clear window, drop _deleted events so that
-          // stale d.remove() deletions don't corrupt real server data.
-          // Returning [] marks them as synced (discarded) so RxDB won't retry.
           let effectiveChanges = changeRows
           if (Date.now() < pushDeletionsSuppressedUntil) {
             effectiveChanges = changeRows.filter(c => !c.newDocumentState._deleted)
             if (effectiveChanges.length === 0) return []
+          }
+
+          if (isAttachment) {
+            return await pushAttachmentChanges(effectiveChanges, collection, roomId, tableName)
           }
 
           const rows = effectiveChanges.map(change => {
@@ -95,8 +129,6 @@ export async function setupCollectionReplication(
 
           if (error) {
             if (error.code === '42501') {
-              // Batch RLS violation: retry row-by-row, silently skip RLS failures
-              // (stale rows whose IDs exist in Supabase under a different room_id).
               for (const row of rows) {
                 const { error: rowError } = await supabase
                   .from(tableName)
@@ -121,7 +153,6 @@ export async function setupCollectionReplication(
     },
   })
 
-  // Подписаться на Realtime изменения
   const channel = supabase
     .channel(`${tableName}_changes`)
     .on(
@@ -137,18 +168,15 @@ export async function setupCollectionReplication(
       }
     )
     .subscribe((status) => {
-      // Re-sync on (re)connect so missed changes are pulled
       if (status === 'SUBSCRIBED') {
         replicationState.reSync()
       }
     })
 
-  // Fallback polling every 30s in case Realtime misses events
   const pollInterval = setInterval(() => {
     replicationState.reSync()
   }, 30_000)
 
-  // Сохранить channel и timer для очистки
   ;(replicationState as any).__channel = channel
   ;(replicationState as any).__pollInterval = pollInterval
 
@@ -156,16 +184,116 @@ export async function setupCollectionReplication(
 }
 
 export async function stopReplication(replicationState: RxReplicationState<any, CheckpointType>) {
-  // Остановить fallback polling
   const pollInterval = (replicationState as any).__pollInterval
   if (pollInterval) clearInterval(pollInterval)
 
-  // Отписаться от Realtime
   const channel = (replicationState as any).__channel
   if (channel) {
     await supabase.removeChannel(channel)
   }
 
-  // Остановить replication
   await replicationState.cancel()
+}
+
+// ---------------------------------------------------------------------------
+// Attachment-specific helpers
+// ---------------------------------------------------------------------------
+
+async function hydrateAttachmentBlob(row: any): Promise<void> {
+  const existing = await blobStoreGet(row.id)
+  if (existing) return
+
+  if (row.storage_path) {
+    try {
+      const { data, error } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .download(row.storage_path)
+      if (!error && data) {
+        await blobStorePut(row.id, data)
+      } else {
+        console.warn(`Failed to download attachment ${row.id}:`, error)
+      }
+    } catch (e) {
+      console.warn(`Failed to download attachment ${row.id}:`, e)
+    }
+  } else if (row.data_url && typeof row.data_url === 'string' && row.data_url.startsWith('data:')) {
+    try {
+      const blob = dataUrlToBlob(row.data_url)
+      await blobStorePut(row.id, blob)
+    } catch (e) {
+      console.warn(`Failed to decode legacy attachment ${row.id}:`, e)
+    }
+  }
+}
+
+async function pushAttachmentChanges(
+  changeRows: any[],
+  collection: RxCollection,
+  roomId: string,
+  tableName: string,
+): Promise<any[]> {
+  const pendingUploads = getPendingUploads()
+
+  for (const change of changeRows) {
+    const doc = change.newDocumentState
+
+    if (doc._deleted) {
+      const storagePath = doc.storagePath || getStoragePath(collection.name, roomId, doc.id)
+      const row = transformRxDBToSupabase(doc as any, roomId)
+      row.data_url = ''
+
+      const { error } = await supabase.from(tableName).upsert([row], { onConflict: 'id' })
+      if (error && error.code !== '42501') {
+        console.error(`Push delete error for ${tableName}:`, error)
+      }
+      supabase.storage.from(STORAGE_BUCKET).remove([storagePath]).catch(() => {})
+      blobStoreRemove(doc.id).catch(() => {})
+      removePendingUpload(doc.id)
+      continue
+    }
+
+    let storagePath: string | undefined = doc.storagePath
+
+    if (pendingUploads.has(doc.id)) {
+      const blob = await blobStoreGet(doc.id)
+      if (blob) {
+        storagePath = getStoragePath(collection.name, roomId, doc.id)
+        const { error: uploadError } = await supabase.storage
+          .from(STORAGE_BUCKET)
+          .upload(storagePath, blob, {
+            upsert: true,
+            contentType: doc.mimeType || 'application/octet-stream',
+          })
+        if (uploadError) {
+          console.error(`Failed to upload attachment ${doc.id}:`, uploadError)
+          throw uploadError
+        }
+      }
+    }
+
+    const row = transformRxDBToSupabase(doc as any, roomId)
+    row.data_url = ''
+    if (storagePath) row.storage_path = storagePath
+
+    const { error } = await supabase.from(tableName).upsert([row], { onConflict: 'id' })
+    if (error) {
+      if (error.code === '42501') continue
+      console.error(`Push error for ${tableName}:`, error)
+      throw error
+    }
+
+    if (pendingUploads.has(doc.id) && storagePath) {
+      removePendingUpload(doc.id)
+      try {
+        const rxDoc = await collection.findOne(doc.id).exec()
+        if (rxDoc) {
+          await rxDoc.patch({ storagePath })
+        }
+      } catch (e) {
+        console.warn(`Failed to update storagePath for ${doc.id}:`, e)
+      }
+    }
+  }
+
+  return []
 }

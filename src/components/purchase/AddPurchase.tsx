@@ -10,6 +10,7 @@ import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
 import { UrlInput, type UrlMeta } from './UrlInput'
 import { serializeLinkMeta } from '../../lib/linkMeta'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
+import { blobStorePut, blobStoreRemove, addPendingUpload } from '../../db/blobStore'
 
 export function AddPurchase() {
   const navigate = useNavigate()
@@ -32,7 +33,9 @@ export function AddPurchase() {
   const [rating, setRating] = useState<number | undefined>(undefined)
   const [notes, setNotes] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
-  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
+  const [imageAttachment, setImageAttachment] = useState<{
+    id: string; objectUrl: string; fileName: string; mimeType: string; size: number
+  } | null>(null)
   const [urlMeta, setUrlMeta] = useState<UrlMeta | null>(null)
   const [saving, setSaving] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -86,12 +89,18 @@ export function AddPurchase() {
     return store
   }
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => setImageDataUrl(reader.result as string)
-    reader.readAsDataURL(file)
+    const id = crypto.randomUUID()
+    await blobStorePut(id, file)
+    setImageAttachment({
+      id,
+      objectUrl: URL.createObjectURL(file),
+      fileName: file.name,
+      mimeType: file.type || 'image/jpeg',
+      size: file.size,
+    })
   }
 
   const handleSubmit = async () => {
@@ -116,11 +125,14 @@ export function AddPurchase() {
         createdAt: now,
         updatedAt: now,
       })
-      if (imageDataUrl && purchaseAttachmentsCol) {
+      if (imageAttachment && purchaseAttachmentsCol) {
+        addPendingUpload(imageAttachment.id)
         await purchaseAttachmentsCol.insert({
-          id: crypto.randomUUID(),
+          id: imageAttachment.id,
           purchaseId,
-          dataUrl: imageDataUrl,
+          fileName: imageAttachment.fileName,
+          mimeType: imageAttachment.mimeType,
+          size: imageAttachment.size,
           createdAt: now,
           updatedAt: now,
         })
@@ -236,11 +248,18 @@ export function AddPurchase() {
       <div className="flex flex-col gap-1.5">
         <label className="text-[13px] text-section-header font-medium pl-1">Фото</label>
         <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
-        {imageDataUrl ? (
+        {imageAttachment ? (
           <div className="relative">
-            <img src={imageDataUrl} alt="Purchase" className="w-full rounded-xl object-cover max-h-48" />
+            <img src={imageAttachment.objectUrl} alt="Purchase" className="w-full rounded-xl object-cover max-h-48" />
             <button
-              onClick={() => { setImageDataUrl(null); if (imageInputRef.current) imageInputRef.current.value = '' }}
+              onClick={() => {
+                if (imageAttachment) {
+                  URL.revokeObjectURL(imageAttachment.objectUrl)
+                  blobStoreRemove(imageAttachment.id).catch(() => {})
+                  setImageAttachment(null)
+                }
+                if (imageInputRef.current) imageInputRef.current.value = ''
+              }}
               className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full bg-black/50 text-white active:opacity-70"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

@@ -1,4 +1,11 @@
 import type { ShopAssistDatabase } from './database'
+import {
+  blobStoreGet,
+  blobStorePut,
+  blobToDataUrl,
+  dataUrlToBlob,
+  addPendingUpload,
+} from './blobStore'
 
 export interface BackupMetadata {
   version: number
@@ -24,7 +31,10 @@ const COLLECTION_NAMES = [
   'receiptItems',
   'expenseAttachments',
   'shoppingListItems',
+  'purchaseAttachments',
 ] as const
+
+const ATTACHMENT_COLLECTIONS = new Set<string>(['expenseAttachments', 'purchaseAttachments'])
 
 const LAST_BACKUP_META_KEY = 'last_backup_meta'
 const FALLBACK_DEXIE_DB_NAME = 'shopassist-rxdb'
@@ -128,11 +138,11 @@ export function buildBackupFromRawData(
     (sum, docs) => sum + docs.length,
     0,
   )
-  const attachmentDocs = rawCollections['expenseAttachments'] ?? []
-  const attachmentSizeBytes = attachmentDocs.reduce(
-    (sum, doc: any) => sum + (doc?.size ?? 0),
-    0,
-  )
+  const expenseAtts = rawCollections['expenseAttachments'] ?? []
+  const purchaseAtts = rawCollections['purchaseAttachments'] ?? []
+  const attachmentSizeBytes =
+    expenseAtts.reduce((sum, doc: any) => sum + (doc?.size ?? 0), 0) +
+    purchaseAtts.reduce((sum, doc: any) => sum + (doc?.size ?? 0), 0)
 
   return {
     metadata: {
@@ -167,13 +177,21 @@ export async function createBackupFromDb(
       continue
     }
     const docs = await collection.find().exec()
-    const plain = docs.map((d: any) => d.toJSON())
+    const plain: any[] = docs.map((d: any) => ({ ...d.toJSON() }))
+
+    // For attachment collections, embed blob data as base64 dataUrl in backup
+    if (ATTACHMENT_COLLECTIONS.has(colName)) {
+      for (const doc of plain) {
+        const blob = await blobStoreGet(doc.id)
+        if (blob) {
+          doc.dataUrl = await blobToDataUrl(blob)
+          attachmentSizeBytes += blob.size
+        }
+      }
+    }
+
     collections[colName] = plain
     totalDocuments += plain.length
-
-    if (colName === 'expenseAttachments') {
-      attachmentSizeBytes = plain.reduce((sum: number, doc: any) => sum + (doc.size ?? 0), 0)
-    }
   }
 
   return {
@@ -255,6 +273,24 @@ export function pickAndParseBackupFile(): Promise<BackupFile> {
 // Restore backup into live RxDB instance
 // ---------------------------------------------------------------------------
 
+/**
+ * Extracts a base64 dataUrl from a backup document into the blob store
+ * and returns a sanitized doc without the large binary payload.
+ */
+async function extractBlobFromBackupDoc(doc: any): Promise<any> {
+  if (doc.dataUrl && typeof doc.dataUrl === 'string' && doc.dataUrl.startsWith('data:')) {
+    try {
+      const blob = dataUrlToBlob(doc.dataUrl)
+      await blobStorePut(doc.id, blob)
+      addPendingUpload(doc.id)
+    } catch (e) {
+      console.error(`Failed to restore blob for ${doc.id}:`, e)
+    }
+  }
+  const { dataUrl, ...rest } = doc
+  return rest
+}
+
 export async function restoreBackupToDb(
   db: ShopAssistDatabase,
   backup: BackupFile,
@@ -277,10 +313,21 @@ export async function restoreBackupToDb(
 
     if (docs.length > 0) {
       try {
+        let sanitized: any[]
+
+        if (ATTACHMENT_COLLECTIONS.has(colName)) {
+          sanitized = await Promise.all(
+            docs.map((doc: any) => extractBlobFromBackupDoc(doc)),
+          )
+        } else {
+          sanitized = docs as any[]
+        }
+
         // Strip null values: RxDB JSON Schema does not accept null for typed fields
-        const sanitized = docs.map((doc: any) =>
+        sanitized = sanitized.map((doc: any) =>
           Object.fromEntries(Object.entries(doc).filter(([, v]) => v !== null)),
         )
+
         const result = await collection.bulkInsert(sanitized)
         restored += result.success.length
         if (result.error.length > 0) {

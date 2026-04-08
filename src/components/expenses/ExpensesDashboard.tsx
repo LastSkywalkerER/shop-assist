@@ -14,6 +14,7 @@ import { ExpenseTable } from './ExpenseTable'
 import { ExpenseQuickAddBar } from './ExpenseQuickAddBar'
 import { ConfirmModal } from '../shared/ConfirmModal'
 import type { ExpenseRowData } from './ExpenseRow'
+import { blobStoreRemove } from '../../db/blobStore'
 
 export function ExpensesDashboard() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
@@ -115,6 +116,7 @@ export function ExpensesDashboard() {
           for (const att of atts) {
             const doc = await attachmentsCol.findOne(att.id).exec()
             if (doc) await doc.remove()
+            blobStoreRemove(att.id).catch(() => {})
           }
 
           // Delete receipt

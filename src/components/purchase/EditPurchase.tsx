@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Rating } from '../shared/Rating'
 import type { PurchaseDocument, ProductDocument, StoreDocument, PurchaseAttachmentDocument } from '../../db/types'
 import type { RxCollection } from 'rxdb'
@@ -10,6 +10,7 @@ import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
 import { UrlInput, type UrlMeta } from './UrlInput'
 import { parseLinkMeta, serializeLinkMeta } from '../../lib/linkMeta'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
+import { blobStoreGet, blobStorePut, blobStoreRemove, addPendingUpload } from '../../db/blobStore'
 
 interface EditPurchaseProps {
   purchase: PurchaseDocument
@@ -44,12 +45,28 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
     const m = parseLinkMeta(purchase.link)
     return m ? { url: m.url, title: m.title, description: m.description, image: m.image, favicon: m.favicon } : null
   })
-  // undefined = untouched, null = deleted, string = new image
-  const [imageDataUrl, setImageDataUrl] = useState<string | null | undefined>(undefined)
+  const [newImageAttachment, setNewImageAttachment] = useState<{
+    id: string; objectUrl: string; fileName: string; mimeType: string; size: number
+  } | null | undefined>(undefined)
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
-  const displayedImage = imageDataUrl !== undefined ? imageDataUrl : (existingAttachment?.dataUrl ?? null)
+  useEffect(() => {
+    if (!existingAttachment) return
+    let url: string | null = null
+    let cancelled = false
+    blobStoreGet(existingAttachment.id).then(blob => {
+      if (cancelled || !blob) return
+      url = URL.createObjectURL(blob)
+      setExistingImageUrl(url)
+    })
+    return () => { cancelled = true; if (url) URL.revokeObjectURL(url) }
+  }, [existingAttachment?.id])
+
+  const displayedImage = newImageAttachment !== undefined
+    ? (newImageAttachment?.objectUrl ?? null)
+    : existingImageUrl
 
   // Sync product/store selection when data loads
   const resolvedProduct = selectedProduct ?? products.find((p) => p.id === purchase.productId) ?? null
@@ -96,12 +113,18 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
     return store
   }
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => setImageDataUrl(reader.result as string)
-    reader.readAsDataURL(file)
+    const id = crypto.randomUUID()
+    await blobStorePut(id, file)
+    setNewImageAttachment({
+      id,
+      objectUrl: URL.createObjectURL(file),
+      fileName: file.name,
+      mimeType: file.type || 'image/jpeg',
+      size: file.size,
+    })
   }
 
   const handleSave = async () => {
@@ -126,16 +149,20 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
           updatedAt: now,
         })
       }
-      if (purchaseAttachmentsCol && imageDataUrl !== undefined) {
+      if (purchaseAttachmentsCol && newImageAttachment !== undefined) {
         if (existingAttachment) {
           const existingDoc = await purchaseAttachmentsCol.findOne(existingAttachment.id).exec()
           if (existingDoc) await existingDoc.remove()
+          blobStoreRemove(existingAttachment.id).catch(() => {})
         }
-        if (imageDataUrl !== null) {
+        if (newImageAttachment !== null) {
+          addPendingUpload(newImageAttachment.id)
           await purchaseAttachmentsCol.insert({
-            id: crypto.randomUUID(),
+            id: newImageAttachment.id,
             purchaseId: purchase.id,
-            dataUrl: imageDataUrl,
+            fileName: newImageAttachment.fileName,
+            mimeType: newImageAttachment.mimeType,
+            size: newImageAttachment.size,
             createdAt: now,
             updatedAt: now,
           })
@@ -251,7 +278,14 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
           <div className="relative">
             <img src={displayedImage} alt="Purchase" className="w-full rounded-xl object-cover max-h-48" />
             <button
-              onClick={() => { setImageDataUrl(null); if (imageInputRef.current) imageInputRef.current.value = '' }}
+              onClick={() => {
+                if (newImageAttachment) {
+                  URL.revokeObjectURL(newImageAttachment.objectUrl)
+                  blobStoreRemove(newImageAttachment.id).catch(() => {})
+                }
+                setNewImageAttachment(null)
+                if (imageInputRef.current) imageInputRef.current.value = ''
+              }}
               className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full bg-black/50 text-white active:opacity-70"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

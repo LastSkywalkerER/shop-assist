@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react'
+import { blobStorePut } from '../../db/blobStore'
+import { useLocalBlobUrls } from '../../hooks/useLocalBlobUrls'
 
 export interface AttachmentFile {
   id: string
   fileName: string
   mimeType: string
-  dataUrl: string
   size: number
+  objectUrl?: string
 }
 
 interface FileUploadProps {
@@ -17,33 +19,36 @@ interface FileUploadProps {
 export function FileUpload({ attachments, onChange, maxSizeMB = 10 }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string>('')
+  const blobUrls = useLocalBlobUrls(attachments.map(a => a.id))
+
+  const getPreviewUrl = (a: AttachmentFile) => a.objectUrl || blobUrls[a.id]
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
     setError('')
-    const maxSize = maxSizeMB * 1024 * 1024 // Convert MB to bytes
+    const maxSize = maxSizeMB * 1024 * 1024
 
     try {
       const newAttachments: AttachmentFile[] = []
 
       for (const file of Array.from(files)) {
-        // Validate size
         if (file.size > maxSize) {
           setError(`Файл "${file.name}" превышает лимит ${maxSizeMB}MB`)
           continue
         }
 
-        // Convert to base64
-        const dataUrl = await fileToBase64(file)
+        const id = crypto.randomUUID()
+        await blobStorePut(id, file)
+        const objectUrl = URL.createObjectURL(file)
 
         newAttachments.push({
-          id: crypto.randomUUID(),
+          id,
           fileName: file.name,
-          mimeType: file.type,
-          dataUrl,
+          mimeType: file.type || 'application/octet-stream',
           size: file.size,
+          objectUrl,
         })
       }
 
@@ -53,13 +58,14 @@ export function FileUpload({ attachments, onChange, maxSizeMB = 10 }: FileUpload
       setError('Ошибка загрузки файлов')
     }
 
-    // Reset input
     if (inputRef.current) {
       inputRef.current.value = ''
     }
   }
 
   const handleRemove = (id: string) => {
+    const removed = attachments.find(a => a.id === id)
+    if (removed?.objectUrl) URL.revokeObjectURL(removed.objectUrl)
     onChange(attachments.filter((a) => a.id !== id))
   }
 
@@ -108,57 +114,60 @@ export function FileUpload({ attachments, onChange, maxSizeMB = 10 }: FileUpload
       {/* Attachments list */}
       {attachments.length > 0 && (
         <div className="space-y-2">
-          {attachments.map((attachment) => (
-            <div
-              key={attachment.id}
-              className="bg-surface rounded-2xl p-3 flex items-start gap-3"
-            >
-              {/* Thumbnail */}
-              <div className="w-16 h-16 shrink-0 rounded-xl overflow-hidden bg-bg-secondary">
-                <img
-                  src={attachment.dataUrl}
-                  alt={attachment.fileName}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="text-[14px] font-medium text-text truncate">
-                  {attachment.fileName}
-                </div>
-                <div className="text-[12px] text-text-hint mt-0.5">
-                  {formatSize(attachment.size)}
-                </div>
-              </div>
-
-              {/* Remove button */}
-              <button
-                type="button"
-                onClick={() => handleRemove(attachment.id)}
-                className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full active:bg-destructive/10 transition-colors"
-                title="Удалить"
+          {attachments.map((attachment) => {
+            const previewUrl = getPreviewUrl(attachment)
+            return (
+              <div
+                key={attachment.id}
+                className="bg-surface rounded-2xl p-3 flex items-start gap-3"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-destructive">
-                  <path d="M3 6h18" />
-                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                </svg>
-              </button>
-            </div>
-          ))}
+                {/* Thumbnail */}
+                <div className="w-16 h-16 shrink-0 rounded-xl overflow-hidden bg-bg-secondary">
+                  {previewUrl ? (
+                    <img
+                      src={previewUrl}
+                      alt={attachment.fileName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-text-hint/40">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                        <circle cx="9" cy="9" r="2" />
+                        <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="text-[14px] font-medium text-text truncate">
+                    {attachment.fileName}
+                  </div>
+                  <div className="text-[12px] text-text-hint mt-0.5">
+                    {formatSize(attachment.size)}
+                  </div>
+                </div>
+
+                {/* Remove button */}
+                <button
+                  type="button"
+                  onClick={() => handleRemove(attachment.id)}
+                  className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full active:bg-destructive/10 transition-colors"
+                  title="Удалить"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-destructive">
+                    <path d="M3 6h18" />
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                  </svg>
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
   )
-}
-
-// Helper function to convert File to base64 data URL
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
 }

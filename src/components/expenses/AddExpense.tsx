@@ -22,6 +22,7 @@ import { FileUpload, type AttachmentFile } from './FileUpload'
 import { ReceiptItemsManager, type ReceiptItem } from './ReceiptItemsManager'
 import { CreatorField } from '../shared/CreatorField'
 import { useAuth } from '../../contexts/AuthContext'
+import { addPendingUpload } from '../../db/blobStore'
 
 export function AddExpense() {
   const navigate = useNavigate()
@@ -161,15 +162,15 @@ export function AddExpense() {
           updatedAt: now,
         })
 
-        // 3. Insert attachments
+        // 3. Insert attachments (blob already in store from FileUpload)
         if (attachments.length > 0 && attachmentsCol) {
           for (const attachment of attachments) {
+            addPendingUpload(attachment.id)
             await attachmentsCol.insert({
               id: attachment.id,
               receiptId,
               fileName: attachment.fileName,
               mimeType: attachment.mimeType,
-              dataUrl: attachment.dataUrl,
               size: attachment.size,
               createdAt: now,
               updatedAt: now,

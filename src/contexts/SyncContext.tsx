@@ -3,6 +3,7 @@ import type { RxReplicationState } from 'rxdb/plugins/replication'
 import { useDatabase } from '../db/hooks'
 import { useAuth } from './AuthContext'
 import { setupCollectionReplication, stopReplication, suppressPushDeletions } from '../lib/sync/replication'
+import { blobStoreClearAll, clearPendingUploads } from '../db/blobStore'
 
 interface SyncContextType {
   isSyncing: boolean
@@ -126,6 +127,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         // preventing the stale checkpoint from skipping already-known data.
         const prevEpoch = parseInt(localStorage.getItem(`room_sync_clear_${roomId}`) ?? '0')
         localStorage.setItem(`room_sync_clear_${roomId}`, (prevEpoch + 1).toString())
+
+        // Clear blob store and pending-upload set for clean sync from new room
+        blobStoreClearAll().catch(e => console.error('Failed to clear blob store:', e))
+        clearPendingUploads()
 
         // Clear all local collections for fresh sync from new room
         for (const collectionName of COLLECTION_NAMES) {

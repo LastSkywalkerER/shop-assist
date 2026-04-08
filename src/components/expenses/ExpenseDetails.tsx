@@ -17,6 +17,7 @@ import { FileUpload, type AttachmentFile } from './FileUpload'
 import { ReceiptItemsManager, type ReceiptItem } from './ReceiptItemsManager'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { showBackButton } from '../../telegram/backButton'
+import { addPendingUpload, blobStoreRemove } from '../../db/blobStore'
 
 export function ExpenseDetails() {
   const { id } = useParams<{ id: string }>()
@@ -69,7 +70,6 @@ export function ExpenseDetails() {
         id: a.id,
         fileName: a.fileName,
         mimeType: a.mimeType,
-        dataUrl: a.dataUrl,
         size: a.size,
       }))
     )
@@ -141,14 +141,9 @@ export function ExpenseDetails() {
     let currentReceipt = receipt
     if (!currentReceipt && (newAttachments.length > 0 || localReceiptItems.length > 0)) {
       const receiptId = crypto.randomUUID()
-      await receiptsCol.insert({
-        id: receiptId,
-        expenseId: id,
-        createdAt: now,
-        updatedAt: now,
-      })
-      // Re-query to get the new receipt (will happen via reactive query)
-      return
+      const newReceipt = { id: receiptId, expenseId: id, createdAt: now, updatedAt: now }
+      await receiptsCol.insert(newReceipt)
+      currentReceipt = newReceipt as any
     }
 
     if (!currentReceipt) return
@@ -157,15 +152,15 @@ export function ExpenseDetails() {
     const oldIds = new Set(localAttachments.map((a) => a.id))
     const newIds = new Set(newAttachments.map((a) => a.id))
 
-    // Add new attachments
+    // Add new attachments (blob already in store from FileUpload)
     for (const attachment of newAttachments) {
       if (!oldIds.has(attachment.id)) {
+        addPendingUpload(attachment.id)
         await attachmentsCol.insert({
           id: attachment.id,
           receiptId: currentReceipt.id,
           fileName: attachment.fileName,
           mimeType: attachment.mimeType,
-          dataUrl: attachment.dataUrl,
           size: attachment.size,
           createdAt: now,
           updatedAt: now,
@@ -178,6 +173,7 @@ export function ExpenseDetails() {
       if (!newIds.has(attachment.id)) {
         const doc = await attachmentsCol.findOne(attachment.id).exec()
         if (doc) await doc.remove()
+        blobStoreRemove(attachment.id).catch(() => {})
       }
     }
 
@@ -200,14 +196,9 @@ export function ExpenseDetails() {
     let currentReceipt = receipt
     if (!currentReceipt && (newItems.length > 0 || localAttachments.length > 0)) {
       const receiptId = crypto.randomUUID()
-      await receiptsCol.insert({
-        id: receiptId,
-        expenseId: id,
-        createdAt: now,
-        updatedAt: now,
-      })
-      // Re-query to get the new receipt (will happen via reactive query)
-      return
+      const newReceipt = { id: receiptId, expenseId: id, createdAt: now, updatedAt: now }
+      await receiptsCol.insert(newReceipt)
+      currentReceipt = newReceipt as any
     }
 
     if (!currentReceipt) return
@@ -434,6 +425,7 @@ export function ExpenseDetails() {
         for (const att of expenseAttachments) {
           const doc = await attachmentsCol.findOne(att.id).exec()
           if (doc) await doc.remove()
+          blobStoreRemove(att.id).catch(() => {})
         }
       }
 
