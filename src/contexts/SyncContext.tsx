@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback, ty
 import type { RxReplicationState } from 'rxdb/plugins/replication'
 import { useDatabase } from '../db/hooks'
 import { useAuth } from './AuthContext'
-import { setupCollectionReplication, stopReplication, suppressPushDeletions } from '../lib/sync/replication'
+import { setupCollectionReplication, stopReplication, suppressPushDeletions, migrateLegacyAttachments } from '../lib/sync/replication'
 import { blobStoreClearAll, clearPendingUploads } from '../db/blobStore'
 
 interface SyncContextType {
@@ -98,6 +98,12 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
       replicationsRef.current = replicationStates
       console.log(`Sync started for ${replicationStates.length} collections`)
+
+      migrateLegacyAttachments(roomId, {
+        expenseAttachments: db.expenseAttachments as any,
+        purchaseAttachments: db.purchaseAttachments as any,
+      }).then(n => { if (n > 0) console.log(`Migrated ${n} legacy attachments to Storage`) })
+        .catch(e => console.error('Legacy attachment migration failed:', e))
     } catch (error) {
       console.error('Failed to start sync:', error)
       setSyncError(error instanceof Error ? error.message : 'Failed to start sync')

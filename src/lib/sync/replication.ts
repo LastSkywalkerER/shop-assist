@@ -196,6 +196,99 @@ export async function stopReplication(replicationState: RxReplicationState<any, 
 }
 
 // ---------------------------------------------------------------------------
+// One-time migration: move legacy base64 data_url → Supabase Storage
+// ---------------------------------------------------------------------------
+
+const LEGACY_MIGRATION_PREFIX = 'legacy_attachments_migrated_'
+
+interface AttachmentCollections {
+  expenseAttachments?: RxCollection
+  purchaseAttachments?: RxCollection
+}
+
+export async function migrateLegacyAttachments(
+  roomId: string,
+  collections: AttachmentCollections,
+): Promise<number> {
+  const flagKey = `${LEGACY_MIGRATION_PREFIX}${roomId}`
+  if (localStorage.getItem(flagKey) === 'done') return 0
+
+  const targets = [
+    { table: 'expense_attachments_sync' as const, collection: collections.expenseAttachments, folder: 'expense_attachments' },
+    { table: 'purchase_attachments_sync' as const, collection: collections.purchaseAttachments, folder: 'purchase_attachments' },
+  ]
+
+  let migrated = 0
+
+  for (const { table, collection, folder } of targets) {
+    if (!collection) continue
+
+    const { data: rows, error } = await supabase
+      .from(table)
+      .select('id')
+      .eq('room_id', roomId)
+      .is('storage_path', null)
+      .eq('_deleted', false)
+
+    if (error || !rows || rows.length === 0) continue
+
+    for (const { id } of rows) {
+      try {
+        let blob = await blobStoreGet(id)
+
+        if (!blob) {
+          const { data: fullRow } = await supabase
+            .from(table)
+            .select('data_url')
+            .eq('id', id)
+            .single()
+          if (fullRow?.data_url?.startsWith('data:')) {
+            blob = dataUrlToBlob(fullRow.data_url)
+            await blobStorePut(id, blob)
+          }
+        }
+
+        if (!blob) continue
+
+        const storagePath = `${roomId}/${folder}/${id}`
+
+        const { error: uploadErr } = await supabase.storage
+          .from(STORAGE_BUCKET)
+          .upload(storagePath, blob, {
+            upsert: true,
+            contentType: blob.type || 'application/octet-stream',
+          })
+        if (uploadErr) {
+          console.error(`Legacy migration: upload failed for ${id}:`, uploadErr)
+          continue
+        }
+
+        const { error: updateErr } = await supabase
+          .from(table)
+          .update({ storage_path: storagePath, data_url: '' })
+          .eq('id', id)
+        if (updateErr) {
+          console.error(`Legacy migration: row update failed for ${id}:`, updateErr)
+          continue
+        }
+
+        try {
+          const rxDoc = await collection.findOne(id).exec()
+          if (rxDoc) await rxDoc.patch({ storagePath })
+        } catch { /* local patch is best-effort */ }
+
+        migrated++
+      } catch (e) {
+        console.error(`Legacy migration: error for ${id}:`, e)
+      }
+    }
+  }
+
+  localStorage.setItem(flagKey, 'done')
+  return migrated
+}
+
+// ---------------------------------------------------------------------------
 // Attachment-specific helpers
 // ---------------------------------------------------------------------------
 
