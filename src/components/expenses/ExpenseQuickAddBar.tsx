@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useRxCollection } from '../../db/hooks'
 import type { ExpenseDocument } from '../../db/types'
 import { CURRENCIES, DEFAULT_CURRENCY } from '../../config/currencies'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface ExpenseQuickAddBarProps {
   expenses?: Array<{ name?: string; categoryId?: string; date?: string }>
@@ -14,6 +15,7 @@ const MAX_SUGGESTIONS = 5
 
 export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarProps) {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const [name, setName] = useState('')
   const [pickedCategoryId, setPickedCategoryId] = useState<string | undefined>(undefined)
@@ -90,6 +92,7 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
         currency,
         date: new Date().toISOString(),
         categoryId: pickedCategoryId,
+        creatorName: user?.first_name?.trim() || undefined,
         createdAt: now,
         updatedAt: now,
       })
