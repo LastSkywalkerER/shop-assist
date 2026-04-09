@@ -1,4 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
+import Lightbox from 'yet-another-react-lightbox'
+import Zoom from 'yet-another-react-lightbox/plugins/zoom'
 import { useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type { ProductDocument, StoreDocument, PurchaseDocument, PurchaseAttachmentDocument } from '../../db/types'
@@ -36,6 +38,7 @@ export function AddPurchase() {
   const [imageAttachment, setImageAttachment] = useState<{
     id: string; objectUrl: string; fileName: string; mimeType: string; size: number
   } | null>(null)
+  const [viewerOpen, setViewerOpen] = useState(false)
   const [urlMeta, setUrlMeta] = useState<UrlMeta | null>(null)
   const [saving, setSaving] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -250,7 +253,7 @@ export function AddPurchase() {
         <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
         {imageAttachment ? (
           <div className="relative">
-            <img src={imageAttachment.objectUrl} alt="Purchase" className="w-full rounded-xl object-cover max-h-48" />
+            <img src={imageAttachment.objectUrl} alt="Purchase" className="w-full rounded-xl object-cover max-h-48 cursor-zoom-in" onClick={() => setViewerOpen(true)} />
             <button
               onClick={() => {
                 if (imageAttachment) {
@@ -281,6 +284,15 @@ export function AddPurchase() {
           </button>
         )}
       </div>
+
+      {viewerOpen && imageAttachment && (
+        <Lightbox
+          open={viewerOpen}
+          close={() => setViewerOpen(false)}
+          slides={[{ src: imageAttachment.objectUrl }]}
+          plugins={[Zoom]}
+        />
+      )}
 
       {/* Submit */}
       <button

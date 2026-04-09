@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
+import Lightbox from 'yet-another-react-lightbox'
+import Zoom from 'yet-another-react-lightbox/plugins/zoom'
 import { Rating } from '../shared/Rating'
 import type { PurchaseDocument, ProductDocument, StoreDocument, PurchaseAttachmentDocument } from '../../db/types'
 import type { RxCollection } from 'rxdb'
@@ -48,6 +50,7 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
   const [newImageAttachment, setNewImageAttachment] = useState<{
     id: string; objectUrl: string; fileName: string; mimeType: string; size: number
   } | null | undefined>(undefined)
+  const [viewerOpen, setViewerOpen] = useState(false)
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -276,7 +279,7 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
         <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
         {displayedImage ? (
           <div className="relative">
-            <img src={displayedImage} alt="Purchase" className="w-full rounded-xl object-cover max-h-48" />
+            <img src={displayedImage} alt="Purchase" className="w-full rounded-xl object-cover max-h-48 cursor-zoom-in" onClick={() => setViewerOpen(true)} />
             <button
               onClick={() => {
                 if (newImageAttachment) {
@@ -307,6 +310,15 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
           </button>
         )}
       </div>
+
+      {viewerOpen && displayedImage && (
+        <Lightbox
+          open={viewerOpen}
+          close={() => setViewerOpen(false)}
+          slides={[{ src: displayedImage }]}
+          plugins={[Zoom]}
+        />
+      )}
 
       <div className="flex gap-2 pt-1">
         <button

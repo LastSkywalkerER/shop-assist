@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react'
+import Lightbox from 'yet-another-react-lightbox'
+import Zoom from 'yet-another-react-lightbox/plugins/zoom'
 import { blobStorePut } from '../../db/blobStore'
 import { useLocalBlobUrls } from '../../hooks/useLocalBlobUrls'
 
@@ -19,9 +21,11 @@ interface FileUploadProps {
 export function FileUpload({ attachments, onChange, maxSizeMB = 10 }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string>('')
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   const blobUrls = useLocalBlobUrls(attachments.map(a => a.id))
 
   const getPreviewUrl = (a: AttachmentFile) => a.objectUrl || blobUrls[a.id]
+  const previewUrls = attachments.map(a => getPreviewUrl(a)).filter(Boolean) as string[]
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -112,6 +116,14 @@ export function FileUpload({ attachments, onChange, maxSizeMB = 10 }: FileUpload
       )}
 
       {/* Attachments list */}
+      <Lightbox
+        open={viewerIndex !== null}
+        index={viewerIndex ?? 0}
+        close={() => setViewerIndex(null)}
+        slides={previewUrls.map(src => ({ src }))}
+        plugins={[Zoom]}
+      />
+
       {attachments.length > 0 && (
         <div className="space-y-2">
           {attachments.map((attachment) => {
@@ -127,7 +139,8 @@ export function FileUpload({ attachments, onChange, maxSizeMB = 10 }: FileUpload
                     <img
                       src={previewUrl}
                       alt={attachment.fileName}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover cursor-zoom-in"
+                      onClick={() => setViewerIndex(previewUrls.indexOf(previewUrl))}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-text-hint/40">

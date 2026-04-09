@@ -1,6 +1,7 @@
 import { StrictMode, useState, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/index.css'
+import 'yet-another-react-lightbox/styles.css'
 import { App } from './App'
 import { initTelegramApp } from './telegram/init'
 import { applyFallbackTheme } from './telegram/theme'

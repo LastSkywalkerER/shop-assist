@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
+import Lightbox from 'yet-another-react-lightbox'
+import Zoom from 'yet-another-react-lightbox/plugins/zoom'
 import { fetchPageMeta } from '../../lib/fetchMeta'
 
 export interface UrlMeta {
@@ -36,6 +38,7 @@ export function UrlInput({ value, onChange, label = 'Ссылка на това�
   const [inputText, setInputText] = useState('')
   const [loading, setLoading] = useState(false)
   const [metaFailed, setMetaFailed] = useState(false)
+  const [viewerSrc, setViewerSrc] = useState<string | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -149,8 +152,9 @@ export function UrlInput({ value, onChange, label = 'Ссылка на това�
                 <img
                   src={value.image}
                   alt=""
-                  className="w-14 h-14 rounded-lg object-cover shrink-0"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  className="w-14 h-14 rounded-lg object-cover shrink-0 cursor-zoom-in"
+                  onClick={() => setViewerSrc(value.image!)}
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; setViewerSrc(null) }}
                 />
               )}
             </>
@@ -173,7 +177,15 @@ export function UrlInput({ value, onChange, label = 'Ссылка на това�
             Удалить
           </button>
         </div>
-      </div>
+      {viewerSrc && (
+        <Lightbox
+          open={true}
+          close={() => setViewerSrc(null)}
+          slides={[{ src: viewerSrc }]}
+          plugins={[Zoom]}
+        />
+      )}
+    </div>
     )
   }
 
