@@ -31,7 +31,7 @@ function groupByDate(rows: ExpenseRowData[]): { label: string; key: string; rows
 
 function SkeletonCard() {
   return (
-    <div className="glass rounded-2xl px-3.5 py-3 border border-separator/10 animate-pulse">
+    <div className="glass-card rounded-2xl px-3.5 py-3 border border-separator/10 animate-pulse">
       <div className="flex items-center justify-between mb-2">
         <div className="h-4 bg-text/10 rounded-full w-1/2" />
         <div className="h-4 bg-text/10 rounded-full w-16" />
@@ -80,6 +80,7 @@ export function ExpenseTable({ data, loading, selectionMode, selectedIds, onTogg
   return (
     <GroupedVirtuoso
       customScrollParent={customScrollParent ?? undefined}
+      defaultItemHeight={68}
       increaseViewportBy={{ top: 600, bottom: 600 }}
       groupCounts={groupCounts}
       groupContent={(index) => (

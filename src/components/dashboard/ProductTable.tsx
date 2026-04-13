@@ -9,7 +9,7 @@ interface ProductTableProps {
 
 function SkeletonCard() {
   return (
-    <div className="glass rounded-2xl px-3.5 py-3 border border-separator/10 animate-pulse">
+    <div className="glass-card rounded-2xl px-3.5 py-3 border border-separator/10 animate-pulse">
       <div className="h-4 bg-text/10 rounded-full w-2/3 mb-2" />
       <div className="h-3 bg-text/8 rounded-full w-1/3" />
     </div>
@@ -42,6 +42,7 @@ export function ProductTable({ data, loading, customScrollParent }: ProductTable
   return (
     <Virtuoso
       customScrollParent={customScrollParent ?? undefined}
+      defaultItemHeight={76}
       increaseViewportBy={{ top: 600, bottom: 600 }}
       totalCount={data.length}
       itemContent={(index) => (

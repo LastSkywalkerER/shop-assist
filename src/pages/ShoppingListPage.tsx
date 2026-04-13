@@ -91,7 +91,7 @@ function ItemRow({ item, selectionMode, selected, onToggle, onToggleSelect, onLo
       onMouseDown={handlePressStart}
       onMouseUp={handlePressEnd}
       onMouseLeave={handlePressEnd}
-      className={`glass rounded-2xl px-3.5 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-separator/10 flex items-center gap-3 cursor-pointer active:opacity-80 transition-opacity ${selected ? 'ring-2 ring-primary' : ''}`}
+      className={`glass-card rounded-2xl px-3.5 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-separator/10 flex items-center gap-3 cursor-pointer active:opacity-80 transition-opacity ${selected ? 'ring-2 ring-primary' : ''}`}
     >
       {selectionMode && (
         <div className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-all ${selected ? 'bg-primary border-primary' : 'border-separator'}`}>
@@ -352,6 +352,7 @@ export function ShoppingListPage() {
             </div>
             <GroupedVirtuoso
               customScrollParent={scrollParent ?? undefined}
+              defaultItemHeight={52}
               increaseViewportBy={{ top: 600, bottom: 600 }}
               groupCounts={groupCounts}
               groupContent={(index) => (
