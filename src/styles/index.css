@@ -76,16 +76,20 @@
 }
 
 @layer utilities {
-  /* will-change: transform creates a compositing layer without a 3D context.
-     transform: translateZ(0) caused backdrop-filter to fail on Android Chrome / Telegram WebView
-     because it placed the element in a 3D compositing context that prevented correct backdrop capture. */
-  /* Use only unprefixed backdrop-filter: LightningCSS adds -webkit- in build.
-     Writing both caused LightningCSS to drop the standard property, breaking blur in some WebViews. */
+  /* .glass — solid semi-transparent card surface used on list items, modals, and misc UI.
+     No backdrop-filter: blur on every scrollable card is extremely expensive on mobile GPUs
+     (forces a full recomposite per item per frame). Headers and the tab bar keep their blur
+     via glass-strong / glass-tab / glass-chip which are few, non-scrolling elements.
+     will-change: transform is omitted here — it was only needed to create a compositing layer
+     for backdrop-filter, and having dozens of promoted layers hurts scroll compositor perf. */
   .glass {
-    background-color: color-mix(in srgb, var(--color-surface) 78%, transparent);
-    backdrop-filter: blur(20px) saturate(180%);
-    will-change: transform;
+    background-color: color-mix(in srgb, var(--color-surface) 92%, transparent);
   }
+
+  /* Use only unprefixed backdrop-filter: LightningCSS adds -webkit- in build.
+     Writing both caused LightningCSS to drop the standard property, breaking blur in some WebViews.
+     will-change: transform creates a compositing layer without a 3D context (safe for backdrop-filter).
+     transform: translateZ(0) broke backdrop-filter on Android Chrome / Telegram WebView. */
   .glass-strong {
     background-color: color-mix(in srgb, var(--color-header-bg) 85%, transparent);
     backdrop-filter: blur(24px) saturate(200%);
@@ -104,19 +108,9 @@
 
   /* Opaque fallback when backdrop-filter is unsupported (older Telegram WebView) */
   @supports not (backdrop-filter: blur(1px)) {
-    .glass { background-color: color-mix(in srgb, var(--color-surface) 95%, transparent); }
     .glass-strong { background-color: color-mix(in srgb, var(--color-header-bg) 98%, transparent); }
     .glass-tab { background-color: color-mix(in srgb, var(--color-surface) 97%, transparent); }
     .glass-chip { background-color: color-mix(in srgb, var(--color-surface) 90%, transparent); }
-  }
-
-  /* Disable backdrop-filter on list-item glass cards while the scroll container is scrolling.
-     This frees the GPU from re-compositing per-item blur on every frame, eliminating scroll jank.
-     glass-strong (sticky header) and glass-tab (tab bar) keep their blur — they are not
-     descendants of .is-scrolling containers (.glass-tab is in a portal on document.body). */
-  .is-scrolling .glass {
-    backdrop-filter: none;
-    background-color: color-mix(in srgb, var(--color-surface) 92%, transparent);
   }
 
   /* Theme-aware shadow for FAB (uses Telegram accent, avoids hardcoded blue) */
