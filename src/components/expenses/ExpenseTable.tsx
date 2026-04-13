@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { GroupedVirtuoso } from 'react-virtuoso'
 import { ExpenseRow, type ExpenseRowData } from './ExpenseRow'
 
 interface ExpenseTableProps {
@@ -9,7 +8,6 @@ interface ExpenseTableProps {
   selectedIds?: Set<string>
   onToggleSelect?: (id: string) => void
   onLongPress?: (id: string) => void
-  customScrollParent?: HTMLElement | null
 }
 
 function formatDateLabel(dateStr: string): string {
@@ -41,10 +39,8 @@ function SkeletonCard() {
   )
 }
 
-export function ExpenseTable({ data, loading, selectionMode, selectedIds, onToggleSelect, onLongPress, customScrollParent }: ExpenseTableProps) {
+export function ExpenseTable({ data, loading, selectionMode, selectedIds, onToggleSelect, onLongPress }: ExpenseTableProps) {
   const groups = useMemo(() => groupByDate(data), [data])
-  const groupCounts = useMemo(() => groups.map((g) => g.rows.length), [groups])
-  const flatItems = useMemo(() => groups.flatMap((g) => g.rows), [groups])
 
   if (loading) {
     return (
@@ -78,30 +74,27 @@ export function ExpenseTable({ data, loading, selectionMode, selectedIds, onTogg
   }
 
   return (
-    <GroupedVirtuoso
-      customScrollParent={customScrollParent ?? undefined}
-      defaultItemHeight={68}
-      increaseViewportBy={{ top: 600, bottom: 600 }}
-      groupCounts={groupCounts}
-      groupContent={(index) => (
-        <div className="text-[12px] text-text-hint font-medium px-5 pt-3 pb-1 bg-bg-secondary">
-          {groups[index].label}
-        </div>
-      )}
-      itemContent={(index) => {
-        const row = flatItems[index]
-        return (
-          <div className="mx-4 mb-3">
-            <ExpenseRow
-              data={row}
-              selectionMode={selectionMode}
-              selected={selectedIds?.has(row.expenseId)}
-              onToggleSelect={() => onToggleSelect?.(row.expenseId)}
-              onLongPress={() => onLongPress?.(row.expenseId)}
-            />
+    <div>
+      {groups.map((group) => (
+        <div key={group.key}>
+          <div className="text-[12px] text-text-hint font-medium px-5 pt-3 pb-1">
+            {group.label}
           </div>
-        )
-      }}
-    />
+          <div className="mx-4 flex flex-col gap-3">
+            {group.rows.map((row) => (
+              <ExpenseRow
+                key={row.expenseId}
+                data={row}
+                selectionMode={selectionMode}
+                selected={selectedIds?.has(row.expenseId)}
+                onToggleSelect={() => onToggleSelect?.(row.expenseId)}
+                onLongPress={() => onLongPress?.(row.expenseId)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="h-3" />
+    </div>
   )
 }

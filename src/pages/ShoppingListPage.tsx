@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { GroupedVirtuoso } from 'react-virtuoso'
 import { useDragSelect } from '../hooks/useDragSelect'
 import { TabBar } from '../components/layout/TabBar'
 import { useRxCollection, useRxQuery } from '../db/hooks'
@@ -168,7 +167,6 @@ export function ShoppingListPage() {
   const [deleting, setDeleting] = useState(false)
   const [addingUrl, setAddingUrl] = useState(false)
   const [urlPreview, setUrlPreview] = useState<LinkMeta | null>(null)
-  const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null)
   const creatorName = user?.first_name ?? ''
   const [hideOldDone, setHideOldDone] = useState(() => {
     const stored = localStorage.getItem('shopping-list-hide-old-done')
@@ -180,8 +178,6 @@ export function ShoppingListPage() {
     ? sortedItems.filter((item) => !(item.done && isOlderThanOneWeek(item.createdAt)))
     : sortedItems
   const groups = useMemo(() => groupByDate(filteredItems), [filteredItems])
-  const groupCounts = useMemo(() => groups.map((g) => g.items.length), [groups])
-  const flatItems = useMemo(() => groups.flatMap((g) => g.items), [groups])
 
   const handleHideOldDoneChange = (checked: boolean) => {
     setHideOldDone(checked)
@@ -318,7 +314,7 @@ export function ShoppingListPage() {
 
   return (
     <>
-      <div ref={setScrollParent} className="flex flex-col flex-1 pb-[136px] overflow-y-auto overscroll-y-contain">
+      <div className="flex flex-col flex-1 pb-[136px] overflow-y-auto overscroll-y-contain">
         {/* List */}
         {loading ? (
           <div className="mx-4 mt-3 flex flex-col gap-2">
@@ -350,20 +346,13 @@ export function ShoppingListPage() {
                 <span className="text-[11px] text-text-hint">Скрыть старые выполненные</span>
               </label>
             </div>
-            <GroupedVirtuoso
-              customScrollParent={scrollParent ?? undefined}
-              defaultItemHeight={52}
-              increaseViewportBy={{ top: 600, bottom: 600 }}
-              groupCounts={groupCounts}
-              groupContent={(index) => (
-                <div className="text-[12px] text-text-hint font-medium px-5 pt-2 pb-1 bg-bg-secondary">
-                  {groups[index].label}
+            {groups.map((group) => (
+              <div key={group.key}>
+                <div className="text-[12px] text-text-hint font-medium px-5 pt-2 pb-1">
+                  {group.label}
                 </div>
-              )}
-              itemContent={(index) => {
-                const item = flatItems[index]
-                return (
-                  <div className="mx-4 mb-2">
+                <div className="mx-4 flex flex-col gap-2">
+                  {group.items.map((item) => (
                     <ItemRow
                       key={item.id}
                       item={item}
@@ -373,10 +362,10 @@ export function ShoppingListPage() {
                       onToggleSelect={() => handleToggleSelect(item.id)}
                       onLongPress={() => handleLongPress(item.id)}
                     />
-                  </div>
-                )
-              }}
-            />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

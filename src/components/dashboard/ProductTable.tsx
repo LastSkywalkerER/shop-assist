@@ -1,10 +1,8 @@
-import { Virtuoso } from 'react-virtuoso'
 import { ProductRow, type ProductRowData } from './ProductRow'
 
 interface ProductTableProps {
   data: ProductRowData[]
   loading?: boolean
-  customScrollParent?: HTMLElement | null
 }
 
 function SkeletonCard() {
@@ -16,7 +14,7 @@ function SkeletonCard() {
   )
 }
 
-export function ProductTable({ data, loading, customScrollParent }: ProductTableProps) {
+export function ProductTable({ data, loading }: ProductTableProps) {
   if (loading) {
     return (
       <div className="mx-4 mt-2 flex flex-col gap-3">
@@ -40,16 +38,10 @@ export function ProductTable({ data, loading, customScrollParent }: ProductTable
   }
 
   return (
-    <Virtuoso
-      customScrollParent={customScrollParent ?? undefined}
-      defaultItemHeight={76}
-      increaseViewportBy={{ top: 600, bottom: 600 }}
-      totalCount={data.length}
-      itemContent={(index) => (
-        <div className={`mx-4 ${index === 0 ? 'mt-2' : 'mt-3'} ${index === data.length - 1 ? 'mb-2' : ''}`}>
-          <ProductRow data={data[index]} />
-        </div>
-      )}
-    />
+    <div className="mx-4 mt-2 mb-2 flex flex-col gap-3">
+      {data.map((item) => (
+        <ProductRow key={item.productId} data={item} />
+      ))}
+    </div>
   )
 }
