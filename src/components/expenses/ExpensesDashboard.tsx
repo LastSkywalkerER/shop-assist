@@ -155,7 +155,7 @@ export function ExpensesDashboard() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto min-h-0 overscroll-y-contain">
+    <div className="flex-1 flex flex-col min-h-0">
       <div className="glass-strong sticky top-0 z-10 border-b border-separator/15 pt-3">
         {loading ? (
           <div className="px-4 pb-2.5 flex gap-2">
@@ -171,16 +171,14 @@ export function ExpensesDashboard() {
           />
         )}
       </div>
-      <div className="pb-24">
-        <ExpenseTable
-          data={tableData}
-          loading={loading}
-          selectionMode={selectionMode}
-          selectedIds={selectedIds}
-          onToggleSelect={handleToggleSelect}
-          onLongPress={handleLongPress}
-        />
-      </div>
+      <ExpenseTable
+        data={tableData}
+        loading={loading}
+        selectionMode={selectionMode}
+        selectedIds={selectedIds}
+        onToggleSelect={handleToggleSelect}
+        onLongPress={handleLongPress}
+      />
 
       {/* FAB and delete button */}
       {selectionMode ? (

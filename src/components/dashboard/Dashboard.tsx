@@ -116,7 +116,7 @@ export function Dashboard() {
   }, [products, stores, purchases, search, selectedCategory])
 
   return (
-    <div className="flex-1 overflow-y-auto min-h-0 overscroll-y-contain">
+    <div className="flex-1 flex flex-col min-h-0">
       <div className="glass-strong sticky top-0 z-10 border-b border-separator/15">
         <SearchBar value={search} onChange={setSearch} />
         {loading ? (
@@ -133,9 +133,7 @@ export function Dashboard() {
           />
         )}
       </div>
-      <div className="pb-24">
-        <ProductTable data={tableData} loading={loading} />
-      </div>
+      <ProductTable data={tableData} loading={loading} />
       <FAB onClick={() => navigate('/add')} />
     </div>
   )

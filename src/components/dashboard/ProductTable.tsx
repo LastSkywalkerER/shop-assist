@@ -1,3 +1,4 @@
+import { Virtuoso } from 'react-virtuoso'
 import { ProductRow, type ProductRowData } from './ProductRow'
 
 interface ProductTableProps {
@@ -17,8 +18,10 @@ function SkeletonCard() {
 export function ProductTable({ data, loading }: ProductTableProps) {
   if (loading) {
     return (
-      <div className="mx-4 mt-2 flex flex-col gap-3">
-        {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-4 mt-2 flex flex-col gap-3">
+          {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
       </div>
     )
   }
@@ -38,10 +41,18 @@ export function ProductTable({ data, loading }: ProductTableProps) {
   }
 
   return (
-    <div className="mx-4 mt-2 mb-2 flex flex-col gap-3">
-      {data.map((item) => (
-        <ProductRow key={item.productId} data={item} />
-      ))}
-    </div>
+    <Virtuoso
+      style={{ flex: 1, overscrollBehavior: 'contain' }}
+      data={data}
+      fixedItemHeight={80}
+      itemContent={(_, item) => (
+        <div className="mx-4 pt-3">
+          <div className="h-[68px] overflow-hidden">
+            <ProductRow data={item} />
+          </div>
+        </div>
+      )}
+      components={{ Footer: () => <div className="h-24" /> }}
+    />
   )
 }

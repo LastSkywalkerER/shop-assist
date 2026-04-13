@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { GroupedVirtuoso } from 'react-virtuoso'
 import { ExpenseRow, type ExpenseRowData } from './ExpenseRow'
 
 interface ExpenseTableProps {
@@ -41,20 +42,24 @@ function SkeletonCard() {
 
 export function ExpenseTable({ data, loading, selectionMode, selectedIds, onToggleSelect, onLongPress }: ExpenseTableProps) {
   const groups = useMemo(() => groupByDate(data), [data])
+  const groupCounts = useMemo(() => groups.map((g) => g.rows.length), [groups])
+  const flatItems = useMemo(() => groups.flatMap((g) => g.rows), [groups])
 
   if (loading) {
     return (
-      <div className="mx-4 mt-2">
-        {[3, 2].map((count, gi) => (
-          <div key={gi}>
-            <div className="px-1 pt-3 pb-1">
-              <div className="h-3 bg-text/10 rounded-full w-36 animate-pulse" />
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-4 mt-2">
+          {[3, 2].map((count, gi) => (
+            <div key={gi}>
+              <div className="px-1 pt-3 pb-1">
+                <div className="h-3 bg-text/10 rounded-full w-36 animate-pulse" />
+              </div>
+              <div className="flex flex-col gap-3">
+                {Array.from({ length: count }).map((_, i) => <SkeletonCard key={i} />)}
+              </div>
             </div>
-            <div className="flex flex-col gap-3">
-              {Array.from({ length: count }).map((_, i) => <SkeletonCard key={i} />)}
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     )
   }
@@ -74,27 +79,32 @@ export function ExpenseTable({ data, loading, selectionMode, selectedIds, onTogg
   }
 
   return (
-    <div>
-      {groups.map((group) => (
-        <div key={group.key}>
-          <div className="text-[12px] text-text-hint font-medium px-5 pt-3 pb-1">
-            {group.label}
-          </div>
-          <div className="mx-4 flex flex-col gap-3">
-            {group.rows.map((row) => (
+    <GroupedVirtuoso
+      style={{ flex: 1, overscrollBehavior: 'contain' }}
+      fixedItemHeight={72}
+      groupCounts={groupCounts}
+      groupContent={(index) => (
+        <div style={{ height: 34 }} className="text-[12px] text-text-hint font-medium px-5 flex items-end pb-1 bg-bg-secondary">
+          {groups[index].label}
+        </div>
+      )}
+      itemContent={(index) => {
+        const row = flatItems[index]
+        return (
+          <div className="mx-4 pt-3">
+            <div className="h-[60px] overflow-hidden">
               <ExpenseRow
-                key={row.expenseId}
                 data={row}
                 selectionMode={selectionMode}
                 selected={selectedIds?.has(row.expenseId)}
                 onToggleSelect={() => onToggleSelect?.(row.expenseId)}
                 onLongPress={() => onLongPress?.(row.expenseId)}
               />
-            ))}
+            </div>
           </div>
-        </div>
-      ))}
-      <div className="h-3" />
-    </div>
+        )
+      }}
+      components={{ Footer: () => <div className="h-24" /> }}
+    />
   )
 }
