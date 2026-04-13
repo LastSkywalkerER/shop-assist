@@ -352,7 +352,7 @@ export function ShoppingListPage() {
             </div>
             <GroupedVirtuoso
               customScrollParent={scrollParent ?? undefined}
-              increaseViewportBy={{ main: 600, reverse: 600 }}
+              increaseViewportBy={{ top: 600, bottom: 600 }}
               groupCounts={groupCounts}
               groupContent={(index) => (
                 <div className="text-[12px] text-text-hint font-medium px-5 pt-2 pb-1 bg-bg-secondary">
