@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { GroupedVirtuoso } from 'react-virtuoso'
+import { Virtuoso } from 'react-virtuoso'
 import { useDragSelect } from '../hooks/useDragSelect'
 import { TabBar } from '../components/layout/TabBar'
 import { useRxCollection, useRxQuery } from '../db/hooks'
@@ -179,8 +179,18 @@ export function ShoppingListPage() {
     ? sortedItems.filter((item) => !(item.done && isOlderThanOneWeek(item.createdAt)))
     : sortedItems
   const groups = useMemo(() => groupByDate(filteredItems), [filteredItems])
-  const groupCounts = useMemo(() => groups.map((g) => g.items.length), [groups])
-  const flatItems = useMemo(() => groups.flatMap((g) => g.items), [groups])
+
+  type ShoppingFlatItem =
+    | { kind: 'header'; label: string }
+    | { kind: 'item'; item: ShoppingListItemDocument }
+
+  const flatList = useMemo((): ShoppingFlatItem[] =>
+    groups.flatMap((g) => [
+      { kind: 'header' as const, label: g.label },
+      ...g.items.map((item) => ({ kind: 'item' as const, item })),
+    ]),
+    [groups]
+  )
 
   const handleHideOldDoneChange = (checked: boolean) => {
     setHideOldDone(checked)
@@ -349,29 +359,29 @@ export function ShoppingListPage() {
                 <span className="text-[11px] text-text-hint">Скрыть старые выполненные</span>
               </label>
             </div>
-            <GroupedVirtuoso
+            <Virtuoso
               style={{ flex: 1, overscrollBehavior: 'contain' }}
-              fixedItemHeight={68}
-              groupCounts={groupCounts}
-              groupContent={(index) => (
-                <div style={{ height: 30 }} className="text-[12px] text-text-hint font-medium px-5 flex items-end pb-1 bg-bg-secondary">
-                  {groups[index].label}
-                </div>
-              )}
-              itemContent={(index) => {
-                const item = flatItems[index]
+              data={flatList}
+              defaultItemHeight={52}
+              increaseViewportBy={{ top: 1500, bottom: 1500 }}
+              itemContent={(_, entry) => {
+                if (entry.kind === 'header') {
+                  return (
+                    <div className="text-[12px] text-text-hint font-medium px-5 pt-2 pb-1">
+                      {entry.label}
+                    </div>
+                  )
+                }
                 return (
                   <div className="mx-4 pt-2">
-                    <div className="h-[60px] overflow-hidden">
-                      <ItemRow
-                        item={item}
-                        selectionMode={selectionMode}
-                        selected={selectedIds.has(item.id)}
-                        onToggle={() => handleToggle(item)}
-                        onToggleSelect={() => handleToggleSelect(item.id)}
-                        onLongPress={() => handleLongPress(item.id)}
-                      />
-                    </div>
+                    <ItemRow
+                      item={entry.item}
+                      selectionMode={selectionMode}
+                      selected={selectedIds.has(entry.item.id)}
+                      onToggle={() => handleToggle(entry.item)}
+                      onToggleSelect={() => handleToggleSelect(entry.item.id)}
+                      onLongPress={() => handleLongPress(entry.item.id)}
+                    />
                   </div>
                 )
               }}

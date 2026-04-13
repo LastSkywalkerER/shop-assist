@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { GroupedVirtuoso } from 'react-virtuoso'
+import { Virtuoso } from 'react-virtuoso'
 import { ExpenseRow, type ExpenseRowData } from './ExpenseRow'
 
 interface ExpenseTableProps {
@@ -16,16 +16,24 @@ function formatDateLabel(dateStr: string): string {
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-function groupByDate(rows: ExpenseRowData[]): { label: string; key: string; rows: ExpenseRowData[] }[] {
-  const map = new Map<string, ExpenseRowData[]>()
+type FlatItem =
+  | { kind: 'header'; label: string }
+  | { kind: 'expense'; row: ExpenseRowData }
+
+function buildFlatList(rows: ExpenseRowData[]): FlatItem[] {
+  const groups = new Map<string, ExpenseRowData[]>()
   for (const row of rows) {
     const key = row.date.slice(0, 10)
-    if (!map.has(key)) map.set(key, [])
-    map.get(key)!.push(row)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(row)
   }
-  return Array.from(map.entries())
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([key, rows]) => ({ key, label: formatDateLabel(key), rows }))
+  const sorted = Array.from(groups.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+  const flat: FlatItem[] = []
+  for (const [key, groupRows] of sorted) {
+    flat.push({ kind: 'header', label: formatDateLabel(key) })
+    for (const row of groupRows) flat.push({ kind: 'expense', row })
+  }
+  return flat
 }
 
 function SkeletonCard() {
@@ -41,9 +49,7 @@ function SkeletonCard() {
 }
 
 export function ExpenseTable({ data, loading, selectionMode, selectedIds, onToggleSelect, onLongPress }: ExpenseTableProps) {
-  const groups = useMemo(() => groupByDate(data), [data])
-  const groupCounts = useMemo(() => groups.map((g) => g.rows.length), [groups])
-  const flatItems = useMemo(() => groups.flatMap((g) => g.rows), [groups])
+  const flatList = useMemo(() => buildFlatList(data), [data])
 
   if (loading) {
     return (
@@ -79,28 +85,28 @@ export function ExpenseTable({ data, loading, selectionMode, selectedIds, onTogg
   }
 
   return (
-    <GroupedVirtuoso
+    <Virtuoso
       style={{ flex: 1, overscrollBehavior: 'contain' }}
-      fixedItemHeight={72}
-      groupCounts={groupCounts}
-      groupContent={(index) => (
-        <div style={{ height: 34 }} className="text-[12px] text-text-hint font-medium px-5 flex items-end pb-1 bg-bg-secondary">
-          {groups[index].label}
-        </div>
-      )}
-      itemContent={(index) => {
-        const row = flatItems[index]
+      data={flatList}
+      defaultItemHeight={68}
+      increaseViewportBy={{ top: 1500, bottom: 1500 }}
+      itemContent={(_, item) => {
+        if (item.kind === 'header') {
+          return (
+            <div className="text-[12px] text-text-hint font-medium px-5 pt-3 pb-1">
+              {item.label}
+            </div>
+          )
+        }
         return (
           <div className="mx-4 pt-3">
-            <div className="h-[60px] overflow-hidden">
-              <ExpenseRow
-                data={row}
-                selectionMode={selectionMode}
-                selected={selectedIds?.has(row.expenseId)}
-                onToggleSelect={() => onToggleSelect?.(row.expenseId)}
-                onLongPress={() => onLongPress?.(row.expenseId)}
-              />
-            </div>
+            <ExpenseRow
+              data={item.row}
+              selectionMode={selectionMode}
+              selected={selectedIds?.has(item.row.expenseId)}
+              onToggleSelect={() => onToggleSelect?.(item.row.expenseId)}
+              onLongPress={() => onLongPress?.(item.row.expenseId)}
+            />
           </div>
         )
       }}

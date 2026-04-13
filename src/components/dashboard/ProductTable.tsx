@@ -44,12 +44,11 @@ export function ProductTable({ data, loading }: ProductTableProps) {
     <Virtuoso
       style={{ flex: 1, overscrollBehavior: 'contain' }}
       data={data}
-      fixedItemHeight={80}
+      defaultItemHeight={72}
+      increaseViewportBy={{ top: 1500, bottom: 1500 }}
       itemContent={(_, item) => (
         <div className="mx-4 pt-3">
-          <div className="h-[68px] overflow-hidden">
-            <ProductRow data={item} />
-          </div>
+          <ProductRow data={item} />
         </div>
       )}
       components={{ Footer: () => <div className="h-24" /> }}
