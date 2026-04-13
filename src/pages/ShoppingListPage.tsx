@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { GroupedVirtuoso } from 'react-virtuoso'
@@ -169,7 +169,22 @@ export function ShoppingListPage() {
   const [addingUrl, setAddingUrl] = useState(false)
   const [urlPreview, setUrlPreview] = useState<LinkMeta | null>(null)
   const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null)
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const creatorName = user?.first_name ?? ''
+
+  useEffect(() => {
+    if (!scrollParent) return
+    const onScroll = () => {
+      scrollParent.classList.add('is-scrolling')
+      clearTimeout(scrollTimerRef.current!)
+      scrollTimerRef.current = setTimeout(() => scrollParent.classList.remove('is-scrolling'), 200)
+    }
+    scrollParent.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      scrollParent.removeEventListener('scroll', onScroll)
+      clearTimeout(scrollTimerRef.current!)
+    }
+  }, [scrollParent])
   const [hideOldDone, setHideOldDone] = useState(() => {
     const stored = localStorage.getItem('shopping-list-hide-old-done')
     return stored === null ? true : stored === 'true'

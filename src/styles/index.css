@@ -110,6 +110,15 @@
     .glass-chip { background-color: color-mix(in srgb, var(--color-surface) 90%, transparent); }
   }
 
+  /* Disable backdrop-filter on list-item glass cards while the scroll container is scrolling.
+     This frees the GPU from re-compositing per-item blur on every frame, eliminating scroll jank.
+     glass-strong (sticky header) and glass-tab (tab bar) keep their blur — they are not
+     descendants of .is-scrolling containers (.glass-tab is in a portal on document.body). */
+  .is-scrolling .glass {
+    backdrop-filter: none;
+    background-color: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  }
+
   /* Theme-aware shadow for FAB (uses Telegram accent, avoids hardcoded blue) */
   .fab-shadow {
     box-shadow: 0 4px 20px color-mix(in srgb, var(--tg-theme-button-color, #007aff) 40%, transparent);

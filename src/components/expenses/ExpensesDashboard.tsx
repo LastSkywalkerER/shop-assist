@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import { useDragSelect } from '../../hooks/useDragSelect'
 import type {
@@ -23,6 +23,21 @@ export function ExpensesDashboard() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null)
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!scrollParent) return
+    const onScroll = () => {
+      scrollParent.classList.add('is-scrolling')
+      clearTimeout(scrollTimerRef.current!)
+      scrollTimerRef.current = setTimeout(() => scrollParent.classList.remove('is-scrolling'), 200)
+    }
+    scrollParent.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      scrollParent.removeEventListener('scroll', onScroll)
+      clearTimeout(scrollTimerRef.current!)
+    }
+  }, [scrollParent])
 
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const storesCol = useRxCollection<StoreDocument>('stores')

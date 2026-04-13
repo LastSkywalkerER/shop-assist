@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type { ProductDocument, StoreDocument, PurchaseDocument } from '../../db/types'
@@ -12,7 +12,22 @@ export function Dashboard() {
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null)
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!scrollParent) return
+    const onScroll = () => {
+      scrollParent.classList.add('is-scrolling')
+      clearTimeout(scrollTimerRef.current!)
+      scrollTimerRef.current = setTimeout(() => scrollParent.classList.remove('is-scrolling'), 200)
+    }
+    scrollParent.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      scrollParent.removeEventListener('scroll', onScroll)
+      clearTimeout(scrollTimerRef.current!)
+    }
+  }, [scrollParent])
 
   const productsCol = useRxCollection<ProductDocument>('products')
   const storesCol = useRxCollection<StoreDocument>('stores')
