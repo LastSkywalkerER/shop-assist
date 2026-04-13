@@ -318,7 +318,7 @@ export function ShoppingListPage() {
 
   return (
     <>
-      <div ref={setScrollParent} className="flex flex-col flex-1 pb-[136px] overflow-y-auto">
+      <div ref={setScrollParent} className="flex flex-col flex-1 pb-[136px] overflow-y-auto overscroll-contain">
         {/* List */}
         {loading ? (
           <div className="mx-4 mt-3 flex flex-col gap-2">
@@ -353,6 +353,7 @@ export function ShoppingListPage() {
             <GroupedVirtuoso
               customScrollParent={scrollParent ?? undefined}
               groupCounts={groupCounts}
+              increaseViewportBy={{ top: 200, bottom: 400 }}
               groupContent={(index) => (
                 <div className="text-[12px] text-text-hint font-medium px-5 pt-2 pb-1 bg-bg-secondary">
                   {groups[index].label}

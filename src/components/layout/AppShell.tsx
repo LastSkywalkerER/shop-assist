@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Header } from './Header'
 import { UpdatePrompt } from './UpdatePrompt'
 import { useUpdatePrompt } from '../../pwa/useUpdatePrompt'
@@ -11,6 +12,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const { needRefresh, offlineReady, applyUpdate, dismissUpdate } = useUpdatePrompt()
   const { city, setCity } = useCity()
+  const location = useLocation()
 
   return (
     <div className="h-dvh flex flex-col bg-bg-secondary">
@@ -21,7 +23,7 @@ export function AppShell({ children }: AppShellProps) {
         onDismiss={dismissUpdate}
       />
       <Header city={city} onCityChange={setCity} />
-      <main className="flex-1 flex flex-col min-h-0 overflow-clip">
+      <main key={location.pathname} className="flex-1 flex flex-col min-h-0 overflow-clip animate-page-enter">
         {children}
       </main>
     </div>
