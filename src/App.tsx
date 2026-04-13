@@ -1,4 +1,4 @@
-import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
 import { CityProvider } from './config/CityContext'
 import { DashboardPage } from './pages/DashboardPage'
@@ -11,23 +11,32 @@ import { ExpenseDetailsPage } from './pages/ExpenseDetailsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ShoppingListPage } from './pages/ShoppingListPage'
 
+function AnimatedRoutes() {
+  const location = useLocation()
+  return (
+    <div key={location.key} className="animate-page-enter flex-1 flex flex-col min-h-0 overflow-clip">
+      <Routes>
+        <Route path="/" element={<ExpensesPage />} />
+        <Route path="/products" element={<DashboardPage />} />
+        <Route path="/add" element={<AddPurchasePage />} />
+        <Route path="/product/:id" element={<ProductPage />} />
+        <Route path="/stores" element={<StoresPage />} />
+        <Route path="/expenses" element={<ExpensesPage />} />
+        <Route path="/expenses/add" element={<AddExpensePage />} />
+        <Route path="/expenses/:id" element={<ExpenseDetailsPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/shopping-list" element={<ShoppingListPage />} />
+      </Routes>
+    </div>
+  )
+}
+
 export function App() {
   return (
     <CityProvider>
       <MemoryRouter>
         <AppShell>
-          <Routes>
-            <Route path="/" element={<ExpensesPage />} />
-            <Route path="/products" element={<DashboardPage />} />
-            <Route path="/add" element={<AddPurchasePage />} />
-            <Route path="/product/:id" element={<ProductPage />} />
-            <Route path="/stores" element={<StoresPage />} />
-            <Route path="/expenses" element={<ExpensesPage />} />
-            <Route path="/expenses/add" element={<AddExpensePage />} />
-            <Route path="/expenses/:id" element={<ExpenseDetailsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/shopping-list" element={<ShoppingListPage />} />
-          </Routes>
+          <AnimatedRoutes />
         </AppShell>
       </MemoryRouter>
     </CityProvider>

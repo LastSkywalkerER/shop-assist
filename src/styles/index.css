@@ -17,6 +17,7 @@
   --color-header-bg: var(--tg-theme-header-bg-color);
 
   --animate-slide-down: slide-down 0.3s ease-out;
+  --animate-page-enter: page-enter 0.2s ease-out;
 
   @keyframes slide-down {
     from {
@@ -26,6 +27,17 @@
     to {
       transform: translate(-50%, 0);
       opacity: 1;
+    }
+  }
+
+  @keyframes page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
 }

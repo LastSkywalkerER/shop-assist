@@ -156,7 +156,7 @@ export function ExpensesDashboard() {
   }
 
   return (
-    <div ref={setScrollParent} className="flex-1 overflow-y-auto min-h-0">
+    <div ref={setScrollParent} className="flex-1 overflow-y-auto min-h-0 overscroll-y-contain">
       <div className="glass-strong sticky top-0 z-10 border-b border-separator/15 pt-3">
         {loading ? (
           <div className="px-4 pb-2.5 flex gap-2">

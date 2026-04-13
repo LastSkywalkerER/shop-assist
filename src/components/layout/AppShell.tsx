@@ -21,7 +21,7 @@ export function AppShell({ children }: AppShellProps) {
         onDismiss={dismissUpdate}
       />
       <Header city={city} onCityChange={setCity} />
-      <main className="flex-1 flex flex-col min-h-0 overflow-clip">
+      <main className="flex-1 flex flex-col min-h-0">
         {children}
       </main>
     </div>

@@ -80,6 +80,7 @@ export function ExpenseTable({ data, loading, selectionMode, selectedIds, onTogg
   return (
     <GroupedVirtuoso
       customScrollParent={customScrollParent ?? undefined}
+      increaseViewportBy={{ main: 600, reverse: 600 }}
       groupCounts={groupCounts}
       groupContent={(index) => (
         <div className="text-[12px] text-text-hint font-medium px-5 pt-3 pb-1 bg-bg-secondary">
