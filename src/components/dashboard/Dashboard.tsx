@@ -117,7 +117,7 @@ export function Dashboard() {
   }, [products, stores, purchases, search, selectedCategory])
 
   return (
-    <div ref={setScrollParent} className="flex-1 overflow-y-auto min-h-0">
+    <div ref={setScrollParent} className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
       <div className="glass-strong sticky top-0 z-10 border-b border-separator/15">
         <SearchBar value={search} onChange={setSearch} />
         {loading ? (

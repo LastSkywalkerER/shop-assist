@@ -43,6 +43,7 @@ export function ProductTable({ data, loading, customScrollParent }: ProductTable
     <Virtuoso
       customScrollParent={customScrollParent ?? undefined}
       totalCount={data.length}
+      increaseViewportBy={{ top: 200, bottom: 400 }}
       itemContent={(index) => (
         <div className={`mx-4 ${index === 0 ? 'mt-2' : 'mt-3'} ${index === data.length - 1 ? 'mb-2' : ''}`}>
           <ProductRow data={data[index]} />
