@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { GroupedVirtuoso } from 'react-virtuoso'
+import { Virtuoso } from 'react-virtuoso'
 import { useDragSelect } from '../hooks/useDragSelect'
 import { TabBar } from '../components/layout/TabBar'
 import { useRxCollection, useRxQuery } from '../db/hooks'
@@ -91,7 +91,7 @@ function ItemRow({ item, selectionMode, selected, onToggle, onToggleSelect, onLo
       onMouseDown={handlePressStart}
       onMouseUp={handlePressEnd}
       onMouseLeave={handlePressEnd}
-      className={`glass rounded-2xl px-3.5 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-separator/10 flex items-center gap-3 cursor-pointer active:opacity-80 transition-opacity ${selected ? 'ring-2 ring-primary' : ''}`}
+      className={`glass-card rounded-2xl px-3.5 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-separator/10 flex items-center gap-3 cursor-pointer active:opacity-80 transition-opacity ${selected ? 'ring-2 ring-primary' : ''}`}
     >
       {selectionMode && (
         <div className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-all ${selected ? 'bg-primary border-primary' : 'border-separator'}`}>
@@ -168,7 +168,6 @@ export function ShoppingListPage() {
   const [deleting, setDeleting] = useState(false)
   const [addingUrl, setAddingUrl] = useState(false)
   const [urlPreview, setUrlPreview] = useState<LinkMeta | null>(null)
-  const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null)
   const creatorName = user?.first_name ?? ''
   const [hideOldDone, setHideOldDone] = useState(() => {
     const stored = localStorage.getItem('shopping-list-hide-old-done')
@@ -180,8 +179,18 @@ export function ShoppingListPage() {
     ? sortedItems.filter((item) => !(item.done && isOlderThanOneWeek(item.createdAt)))
     : sortedItems
   const groups = useMemo(() => groupByDate(filteredItems), [filteredItems])
-  const groupCounts = useMemo(() => groups.map((g) => g.items.length), [groups])
-  const flatItems = useMemo(() => groups.flatMap((g) => g.items), [groups])
+
+  type ShoppingFlatItem =
+    | { kind: 'header'; label: string }
+    | { kind: 'item'; item: ShoppingListItemDocument }
+
+  const flatList = useMemo((): ShoppingFlatItem[] =>
+    groups.flatMap((g) => [
+      { kind: 'header' as const, label: g.label },
+      ...g.items.map((item) => ({ kind: 'item' as const, item })),
+    ]),
+    [groups]
+  )
 
   const handleHideOldDoneChange = (checked: boolean) => {
     setHideOldDone(checked)
@@ -318,15 +327,16 @@ export function ShoppingListPage() {
 
   return (
     <>
-      <div ref={setScrollParent} className="flex flex-col flex-1 pb-[136px] overflow-y-auto">
-        {/* List */}
+      <div className="flex-1 flex flex-col min-h-0">
         {loading ? (
-          <div className="mx-4 mt-3 flex flex-col gap-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="glass rounded-2xl px-3.5 py-2.5 border border-separator/10 animate-pulse">
-                <div className="h-4 bg-text/10 rounded-full w-1/2" />
-              </div>
-            ))}
+          <div className="flex-1 overflow-y-auto">
+            <div className="mx-4 mt-3 flex flex-col gap-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="glass rounded-2xl px-3.5 py-2.5 border border-separator/10 animate-pulse">
+                  <div className="h-4 bg-text/10 rounded-full w-1/2" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : allItems.length === 0 ? (
           <div className="flex-1 flex items-center justify-center px-8">
@@ -337,9 +347,8 @@ export function ShoppingListPage() {
             </div>
           </div>
         ) : (
-          <div className="mt-3 flex-1">
-            {/* Hide old done toggle above list */}
-            <div className="flex items-center justify-end px-5 pb-1">
+          <>
+            <div className="flex items-center justify-end px-5 py-1">
               <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
                 <input
                   type="checkbox"
@@ -350,32 +359,35 @@ export function ShoppingListPage() {
                 <span className="text-[11px] text-text-hint">Скрыть старые выполненные</span>
               </label>
             </div>
-            <GroupedVirtuoso
-              customScrollParent={scrollParent ?? undefined}
-              groupCounts={groupCounts}
-              groupContent={(index) => (
-                <div className="text-[12px] text-text-hint font-medium px-5 pt-2 pb-1 bg-bg-secondary">
-                  {groups[index].label}
-                </div>
-              )}
-              itemContent={(index) => {
-                const item = flatItems[index]
+            <Virtuoso
+              style={{ flex: 1, overscrollBehavior: 'contain' }}
+              data={flatList}
+              defaultItemHeight={52}
+              increaseViewportBy={{ top: 1500, bottom: 1500 }}
+              itemContent={(_, entry) => {
+                if (entry.kind === 'header') {
+                  return (
+                    <div className="text-[12px] text-text-hint font-medium px-5 pt-2 pb-1">
+                      {entry.label}
+                    </div>
+                  )
+                }
                 return (
-                  <div className="mx-4 mb-2">
+                  <div className="mx-4 pt-2">
                     <ItemRow
-                      key={item.id}
-                      item={item}
+                      item={entry.item}
                       selectionMode={selectionMode}
-                      selected={selectedIds.has(item.id)}
-                      onToggle={() => handleToggle(item)}
-                      onToggleSelect={() => handleToggleSelect(item.id)}
-                      onLongPress={() => handleLongPress(item.id)}
+                      selected={selectedIds.has(entry.item.id)}
+                      onToggle={() => handleToggle(entry.item)}
+                      onToggleSelect={() => handleToggleSelect(entry.item.id)}
+                      onLongPress={() => handleLongPress(entry.item.id)}
                     />
                   </div>
                 )
               }}
+              components={{ Footer: () => <div className="h-[136px]" /> }}
             />
-          </div>
+          </>
         )}
       </div>
 

@@ -17,6 +17,7 @@
   --color-header-bg: var(--tg-theme-header-bg-color);
 
   --animate-slide-down: slide-down 0.3s ease-out;
+  --animate-page-enter: page-enter 0.2s ease-out;
 
   @keyframes slide-down {
     from {
@@ -26,6 +27,17 @@
     to {
       transform: translate(-50%, 0);
       opacity: 1;
+    }
+  }
+
+  @keyframes page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
 }
@@ -64,16 +76,23 @@
 }
 
 @layer utilities {
-  /* will-change: transform creates a compositing layer without a 3D context.
-     transform: translateZ(0) caused backdrop-filter to fail on Android Chrome / Telegram WebView
-     because it placed the element in a 3D compositing context that prevented correct backdrop capture. */
   /* Use only unprefixed backdrop-filter: LightningCSS adds -webkit- in build.
-     Writing both caused LightningCSS to drop the standard property, breaking blur in some WebViews. */
+     Writing both caused LightningCSS to drop the standard property, breaking blur in some WebViews.
+     will-change: transform creates a compositing layer without a 3D context (safe for backdrop-filter).
+     transform: translateZ(0) broke backdrop-filter on Android Chrome / Telegram WebView. */
   .glass {
     background-color: color-mix(in srgb, var(--color-surface) 78%, transparent);
     backdrop-filter: blur(20px) saturate(180%);
     will-change: transform;
   }
+
+  /* glass-card — for scrollable list item cards only. No backdrop-filter and no will-change:
+     blur on dozens of items forces the GPU to recomposite every card on every scroll frame,
+     causing jank. Static elements (inputs, modals, bottom bars) keep using .glass. */
+  .glass-card {
+    background-color: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  }
+
   .glass-strong {
     background-color: color-mix(in srgb, var(--color-header-bg) 85%, transparent);
     backdrop-filter: blur(24px) saturate(200%);

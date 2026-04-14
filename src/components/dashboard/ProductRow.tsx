@@ -31,7 +31,7 @@ export function ProductRow({ data }: ProductRowProps) {
 
   return (
     <div
-      className="glass rounded-2xl px-3.5 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-separator/10 active:opacity-80 transition-opacity cursor-pointer"
+      className="glass-card rounded-2xl px-3.5 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-separator/10 active:opacity-80 transition-opacity cursor-pointer"
       onClick={() => navigate(`/product/${data.productId}`)}
     >
       {/* Top line: name + chevron */}

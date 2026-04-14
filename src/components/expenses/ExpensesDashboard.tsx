@@ -22,7 +22,6 @@ export function ExpensesDashboard() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null)
 
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const storesCol = useRxCollection<StoreDocument>('stores')
@@ -156,7 +155,7 @@ export function ExpensesDashboard() {
   }
 
   return (
-    <div ref={setScrollParent} className="flex-1 overflow-y-auto min-h-0">
+    <div className="flex-1 flex flex-col min-h-0">
       <div className="glass-strong sticky top-0 z-10 border-b border-separator/15 pt-3">
         {loading ? (
           <div className="px-4 pb-2.5 flex gap-2">
@@ -172,17 +171,14 @@ export function ExpensesDashboard() {
           />
         )}
       </div>
-      <div className="pb-24">
-        <ExpenseTable
-          data={tableData}
-          loading={loading}
-          selectionMode={selectionMode}
-          selectedIds={selectedIds}
-          onToggleSelect={handleToggleSelect}
-          onLongPress={handleLongPress}
-          customScrollParent={scrollParent}
-        />
-      </div>
+      <ExpenseTable
+        data={tableData}
+        loading={loading}
+        selectionMode={selectionMode}
+        selectedIds={selectedIds}
+        onToggleSelect={handleToggleSelect}
+        onLongPress={handleLongPress}
+      />
 
       {/* FAB and delete button */}
       {selectionMode ? (

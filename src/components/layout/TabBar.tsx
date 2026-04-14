@@ -21,9 +21,7 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
             <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
           </svg>
           <span className="text-[10px] font-medium">Товары</span>
-          {activeTab === 'products' && (
-            <div className="absolute bottom-1.5 w-1 h-1 rounded-full bg-primary-text" />
-          )}
+          <div className={`absolute bottom-1.5 w-1 h-1 rounded-full bg-primary-text transition-opacity duration-200 ${activeTab === 'products' ? 'opacity-100' : 'opacity-0'}`} />
         </button>
 
         <button
@@ -37,9 +35,7 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
             <path d="M2 10h20" />
           </svg>
           <span className="text-[10px] font-medium">Расходы</span>
-          {activeTab === 'expenses' && (
-            <div className="absolute bottom-1.5 w-1 h-1 rounded-full bg-primary-text" />
-          )}
+          <div className={`absolute bottom-1.5 w-1 h-1 rounded-full bg-primary-text transition-opacity duration-200 ${activeTab === 'expenses' ? 'opacity-100' : 'opacity-0'}`} />
         </button>
 
         <button
@@ -54,9 +50,7 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
             <path d="M9 12h6M9 16h4" />
           </svg>
           <span className="text-[10px] font-medium">Список</span>
-          {activeTab === 'shopping-list' && (
-            <div className="absolute bottom-1.5 w-1 h-1 rounded-full bg-primary-text" />
-          )}
+          <div className={`absolute bottom-1.5 w-1 h-1 rounded-full bg-primary-text transition-opacity duration-200 ${activeTab === 'shopping-list' ? 'opacity-100' : 'opacity-0'}`} />
         </button>
       </div>
     </div>,

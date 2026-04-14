@@ -4,23 +4,24 @@ import { ProductRow, type ProductRowData } from './ProductRow'
 interface ProductTableProps {
   data: ProductRowData[]
   loading?: boolean
-  customScrollParent?: HTMLElement | null
 }
 
 function SkeletonCard() {
   return (
-    <div className="glass rounded-2xl px-3.5 py-3 border border-separator/10 animate-pulse">
+    <div className="glass-card rounded-2xl px-3.5 py-3 border border-separator/10 animate-pulse">
       <div className="h-4 bg-text/10 rounded-full w-2/3 mb-2" />
       <div className="h-3 bg-text/8 rounded-full w-1/3" />
     </div>
   )
 }
 
-export function ProductTable({ data, loading, customScrollParent }: ProductTableProps) {
+export function ProductTable({ data, loading }: ProductTableProps) {
   if (loading) {
     return (
-      <div className="mx-4 mt-2 flex flex-col gap-3">
-        {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-4 mt-2 flex flex-col gap-3">
+          {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
       </div>
     )
   }
@@ -41,13 +42,16 @@ export function ProductTable({ data, loading, customScrollParent }: ProductTable
 
   return (
     <Virtuoso
-      customScrollParent={customScrollParent ?? undefined}
-      totalCount={data.length}
-      itemContent={(index) => (
-        <div className={`mx-4 ${index === 0 ? 'mt-2' : 'mt-3'} ${index === data.length - 1 ? 'mb-2' : ''}`}>
-          <ProductRow data={data[index]} />
+      style={{ flex: 1, overscrollBehavior: 'contain' }}
+      data={data}
+      defaultItemHeight={72}
+      increaseViewportBy={{ top: 1500, bottom: 1500 }}
+      itemContent={(_, item) => (
+        <div className="mx-4 pt-3">
+          <ProductRow data={item} />
         </div>
       )}
+      components={{ Footer: () => <div className="h-24" /> }}
     />
   )
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type { ProductDocument, StoreDocument, PurchaseDocument } from '../../db/types'
@@ -11,7 +11,6 @@ import type { ProductRowData, StorePurchaseInfo } from './ProductRow'
 export function Dashboard() {
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
-  const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null)
   const navigate = useNavigate()
 
   const productsCol = useRxCollection<ProductDocument>('products')
@@ -117,7 +116,7 @@ export function Dashboard() {
   }, [products, stores, purchases, search, selectedCategory])
 
   return (
-    <div ref={setScrollParent} className="flex-1 overflow-y-auto min-h-0">
+    <div className="flex-1 flex flex-col min-h-0">
       <div className="glass-strong sticky top-0 z-10 border-b border-separator/15">
         <SearchBar value={search} onChange={setSearch} />
         {loading ? (
@@ -134,9 +133,7 @@ export function Dashboard() {
           />
         )}
       </div>
-      <div className="pb-24">
-        <ProductTable data={tableData} loading={loading} customScrollParent={scrollParent} />
-      </div>
+      <ProductTable data={tableData} loading={loading} />
       <FAB onClick={() => navigate('/add')} />
     </div>
   )

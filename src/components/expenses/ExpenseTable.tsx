@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { GroupedVirtuoso } from 'react-virtuoso'
+import { Virtuoso } from 'react-virtuoso'
 import { ExpenseRow, type ExpenseRowData } from './ExpenseRow'
 
 interface ExpenseTableProps {
@@ -9,7 +9,6 @@ interface ExpenseTableProps {
   selectedIds?: Set<string>
   onToggleSelect?: (id: string) => void
   onLongPress?: (id: string) => void
-  customScrollParent?: HTMLElement | null
 }
 
 function formatDateLabel(dateStr: string): string {
@@ -17,21 +16,29 @@ function formatDateLabel(dateStr: string): string {
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-function groupByDate(rows: ExpenseRowData[]): { label: string; key: string; rows: ExpenseRowData[] }[] {
-  const map = new Map<string, ExpenseRowData[]>()
+type FlatItem =
+  | { kind: 'header'; label: string }
+  | { kind: 'expense'; row: ExpenseRowData }
+
+function buildFlatList(rows: ExpenseRowData[]): FlatItem[] {
+  const groups = new Map<string, ExpenseRowData[]>()
   for (const row of rows) {
     const key = row.date.slice(0, 10)
-    if (!map.has(key)) map.set(key, [])
-    map.get(key)!.push(row)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(row)
   }
-  return Array.from(map.entries())
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([key, rows]) => ({ key, label: formatDateLabel(key), rows }))
+  const sorted = Array.from(groups.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+  const flat: FlatItem[] = []
+  for (const [key, groupRows] of sorted) {
+    flat.push({ kind: 'header', label: formatDateLabel(key) })
+    for (const row of groupRows) flat.push({ kind: 'expense', row })
+  }
+  return flat
 }
 
 function SkeletonCard() {
   return (
-    <div className="glass rounded-2xl px-3.5 py-3 border border-separator/10 animate-pulse">
+    <div className="glass-card rounded-2xl px-3.5 py-3 border border-separator/10 animate-pulse">
       <div className="flex items-center justify-between mb-2">
         <div className="h-4 bg-text/10 rounded-full w-1/2" />
         <div className="h-4 bg-text/10 rounded-full w-16" />
@@ -41,24 +48,24 @@ function SkeletonCard() {
   )
 }
 
-export function ExpenseTable({ data, loading, selectionMode, selectedIds, onToggleSelect, onLongPress, customScrollParent }: ExpenseTableProps) {
-  const groups = useMemo(() => groupByDate(data), [data])
-  const groupCounts = useMemo(() => groups.map((g) => g.rows.length), [groups])
-  const flatItems = useMemo(() => groups.flatMap((g) => g.rows), [groups])
+export function ExpenseTable({ data, loading, selectionMode, selectedIds, onToggleSelect, onLongPress }: ExpenseTableProps) {
+  const flatList = useMemo(() => buildFlatList(data), [data])
 
   if (loading) {
     return (
-      <div className="mx-4 mt-2">
-        {[3, 2].map((count, gi) => (
-          <div key={gi}>
-            <div className="px-1 pt-3 pb-1">
-              <div className="h-3 bg-text/10 rounded-full w-36 animate-pulse" />
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-4 mt-2">
+          {[3, 2].map((count, gi) => (
+            <div key={gi}>
+              <div className="px-1 pt-3 pb-1">
+                <div className="h-3 bg-text/10 rounded-full w-36 animate-pulse" />
+              </div>
+              <div className="flex flex-col gap-3">
+                {Array.from({ length: count }).map((_, i) => <SkeletonCard key={i} />)}
+              </div>
             </div>
-            <div className="flex flex-col gap-3">
-              {Array.from({ length: count }).map((_, i) => <SkeletonCard key={i} />)}
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     )
   }
@@ -78,28 +85,32 @@ export function ExpenseTable({ data, loading, selectionMode, selectedIds, onTogg
   }
 
   return (
-    <GroupedVirtuoso
-      customScrollParent={customScrollParent ?? undefined}
-      groupCounts={groupCounts}
-      groupContent={(index) => (
-        <div className="text-[12px] text-text-hint font-medium px-5 pt-3 pb-1 bg-bg-secondary">
-          {groups[index].label}
-        </div>
-      )}
-      itemContent={(index) => {
-        const row = flatItems[index]
+    <Virtuoso
+      style={{ flex: 1, overscrollBehavior: 'contain' }}
+      data={flatList}
+      defaultItemHeight={68}
+      increaseViewportBy={{ top: 1500, bottom: 1500 }}
+      itemContent={(_, item) => {
+        if (item.kind === 'header') {
+          return (
+            <div className="text-[12px] text-text-hint font-medium px-5 pt-3 pb-1">
+              {item.label}
+            </div>
+          )
+        }
         return (
-          <div className="mx-4 mb-3">
+          <div className="mx-4 pt-3">
             <ExpenseRow
-              data={row}
+              data={item.row}
               selectionMode={selectionMode}
-              selected={selectedIds?.has(row.expenseId)}
-              onToggleSelect={() => onToggleSelect?.(row.expenseId)}
-              onLongPress={() => onLongPress?.(row.expenseId)}
+              selected={selectedIds?.has(item.row.expenseId)}
+              onToggleSelect={() => onToggleSelect?.(item.row.expenseId)}
+              onLongPress={() => onLongPress?.(item.row.expenseId)}
             />
           </div>
         )
       }}
+      components={{ Footer: () => <div className="h-24" /> }}
     />
   )
 }
