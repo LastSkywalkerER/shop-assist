@@ -1,4 +1,5 @@
 import { Virtuoso } from 'react-virtuoso'
+import { useViewportHeight } from '../../hooks/useViewportHeight'
 import { ProductRow, type ProductRowData } from './ProductRow'
 
 interface ProductTableProps {
@@ -16,6 +17,8 @@ function SkeletonCard() {
 }
 
 export function ProductTable({ data, loading }: ProductTableProps) {
+  const vh = useViewportHeight()
+
   if (loading) {
     return (
       <div className="flex-1 overflow-y-auto">
@@ -45,7 +48,7 @@ export function ProductTable({ data, loading }: ProductTableProps) {
       style={{ flex: 1, overscrollBehavior: 'contain' }}
       data={data}
       defaultItemHeight={72}
-      increaseViewportBy={{ top: 1500, bottom: 1500 }}
+      increaseViewportBy={{ top: vh, bottom: vh }}
       itemContent={(_, item) => (
         <div className="mx-4 pt-3">
           <ProductRow data={item} />

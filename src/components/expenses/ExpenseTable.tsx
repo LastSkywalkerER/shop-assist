@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Virtuoso } from 'react-virtuoso'
+import { useViewportHeight } from '../../hooks/useViewportHeight'
 import { ExpenseRow, type ExpenseRowData } from './ExpenseRow'
 
 interface ExpenseTableProps {
@@ -9,6 +10,8 @@ interface ExpenseTableProps {
   selectedIds?: Set<string>
   onToggleSelect?: (id: string) => void
   onLongPress?: (id: string) => void
+  hasMore?: boolean
+  onLoadMore?: () => void
 }
 
 function formatDateLabel(dateStr: string): string {
@@ -48,7 +51,17 @@ function SkeletonCard() {
   )
 }
 
-export function ExpenseTable({ data, loading, selectionMode, selectedIds, onToggleSelect, onLongPress }: ExpenseTableProps) {
+export function ExpenseTable({
+  data,
+  loading,
+  selectionMode,
+  selectedIds,
+  onToggleSelect,
+  onLongPress,
+  hasMore,
+  onLoadMore,
+}: ExpenseTableProps) {
+  const vh = useViewportHeight()
   const flatList = useMemo(() => buildFlatList(data), [data])
 
   if (loading) {
@@ -89,7 +102,10 @@ export function ExpenseTable({ data, loading, selectionMode, selectedIds, onTogg
       style={{ flex: 1, overscrollBehavior: 'contain' }}
       data={flatList}
       defaultItemHeight={68}
-      increaseViewportBy={{ top: 1500, bottom: 1500 }}
+      increaseViewportBy={{ top: vh, bottom: vh }}
+      endReached={() => {
+        if (hasMore && onLoadMore) onLoadMore()
+      }}
       itemContent={(_, item) => {
         if (item.kind === 'header') {
           return (

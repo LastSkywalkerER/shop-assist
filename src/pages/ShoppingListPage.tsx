@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
 import { useDragSelect } from '../hooks/useDragSelect'
+import { useViewportHeight } from '../hooks/useViewportHeight'
 import { TabBar } from '../components/layout/TabBar'
 import { useRxCollection, useRxQuery } from '../db/hooks'
 import type { ShoppingListItemDocument } from '../db/types'
@@ -173,6 +174,7 @@ export function ShoppingListPage() {
     const stored = localStorage.getItem('shopping-list-hide-old-done')
     return stored === null ? true : stored === 'true'
   })
+  const vh = useViewportHeight()
 
   const sortedItems = [...allItems].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   const filteredItems = hideOldDone
@@ -363,7 +365,7 @@ export function ShoppingListPage() {
               style={{ flex: 1, overscrollBehavior: 'contain' }}
               data={flatList}
               defaultItemHeight={52}
-              increaseViewportBy={{ top: 1500, bottom: 1500 }}
+              increaseViewportBy={{ top: vh, bottom: vh }}
               itemContent={(_, entry) => {
                 if (entry.kind === 'header') {
                   return (

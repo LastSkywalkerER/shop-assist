@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
-import { useRxCollection, useRxQuery } from '../../db/hooks'
+import type { MangoQuery } from 'rxdb'
+import { useRxCollection, useRxPaginatedQuery, useRxQuery } from '../../db/hooks'
 import { useDragSelect } from '../../hooks/useDragSelect'
 import type {
   ExpenseDocument,
@@ -30,7 +31,31 @@ export function ExpensesDashboard() {
   const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
   const attachmentsCol = useRxCollection<ExpenseAttachmentDocument>('expenseAttachments')
 
-  const { data: expenses, loading } = useRxQuery(expensesCol)
+  const buildPagedExpenseQuery = useCallback(
+    (limit: number): MangoQuery<ExpenseDocument> => ({
+      selector: selectedCategoryId ? { categoryId: selectedCategoryId } : {},
+      sort: [{ date: 'desc' }],
+      limit,
+    }),
+    [selectedCategoryId],
+  )
+
+  const {
+    data: expenses,
+    loading: expensesLoading,
+    hasMore,
+    loadMore,
+  } = useRxPaginatedQuery(expensesCol, buildPagedExpenseQuery, {
+    pageSize: 50,
+    resetKey: selectedCategoryId ?? 'all',
+  })
+
+  /** Bounded slice for name suggestions in the quick-add bar (full collection not required). */
+  const { data: expensesForQuickAdd } = useRxQuery(expensesCol, {
+    sort: [{ date: 'desc' }],
+    limit: 400,
+  })
+
   const { data: stores } = useRxQuery(storesCol)
   const { data: categories } = useRxQuery(categoriesCol)
   const { data: receipts } = useRxQuery(receiptsCol)
@@ -54,15 +79,7 @@ export function ExpensesDashboard() {
       receiptHasAttachmentsMap.set(att.receiptId, true)
     }
 
-    const filtered = expenses.filter((e) => {
-      const matchesCategory = !selectedCategoryId || e.categoryId === selectedCategoryId
-      return matchesCategory
-    })
-
-    // Sort by date descending (newest first)
-    const sorted = [...filtered].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-
-    return sorted.map((expense): ExpenseRowData => {
+    return expenses.map((expense): ExpenseRowData => {
       const receipt = receiptMap.get(expense.id)
       const receiptItemsCount = receipt ? (receiptItemsCountMap.get(receipt.id) || 0) : 0
       const hasAttachments = receipt ? (receiptHasAttachmentsMap.get(receipt.id) || false) : false
@@ -80,7 +97,7 @@ export function ExpensesDashboard() {
         receiptItemsCount,
       }
     })
-  }, [expenses, stores, categories, receipts, receiptItems, attachments, selectedCategoryId])
+  }, [expenses, stores, categories, receipts, receiptItems, attachments])
 
   const handleToggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -157,7 +174,7 @@ export function ExpensesDashboard() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="glass-strong sticky top-0 z-10 border-b border-separator/15 pt-3">
-        {loading ? (
+        {expensesLoading ? (
           <div className="px-4 pb-2.5 flex gap-2">
             {[48, 64, 56].map((w, i) => (
               <div key={i} className="h-7 rounded-full animate-pulse bg-text/10 shrink-0" style={{ width: w }} />
@@ -173,11 +190,13 @@ export function ExpensesDashboard() {
       </div>
       <ExpenseTable
         data={tableData}
-        loading={loading}
+        loading={expensesLoading}
         selectionMode={selectionMode}
         selectedIds={selectedIds}
         onToggleSelect={handleToggleSelect}
         onLongPress={handleLongPress}
+        hasMore={hasMore}
+        onLoadMore={loadMore}
       />
 
       {/* FAB and delete button */}
@@ -211,7 +230,7 @@ export function ExpensesDashboard() {
           </button>
         </>
       ) : (
-        <ExpenseQuickAddBar expenses={expenses} />
+        <ExpenseQuickAddBar expenses={expensesForQuickAdd} />
       )}
 
       {/* Confirm delete modal */}
