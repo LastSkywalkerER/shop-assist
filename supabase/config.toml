@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.fetch-meta]
 verify_jwt = false
+
+[functions.fetch-nbrb-rates]
+verify_jwt = true
