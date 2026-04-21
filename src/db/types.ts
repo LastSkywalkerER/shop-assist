@@ -112,3 +112,14 @@ export interface PurchaseAttachmentDocument {
   createdAt: string
   updatedAt: string
 }
+
+export interface CurrencyRateDocument {
+  id: string
+  currency: string
+  date: string
+  rate: number
+  scale: number
+  source?: string
+  createdAt: string
+  updatedAt: string
+}

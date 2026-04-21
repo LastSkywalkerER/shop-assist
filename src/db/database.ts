@@ -11,6 +11,7 @@ import { receiptItemSchema } from './schemas/receiptItem.schema'
 import { expenseAttachmentSchema } from './schemas/expenseAttachment.schema'
 import { shoppingListItemSchema } from './schemas/shoppingListItem.schema'
 import { purchaseAttachmentSchema } from './schemas/purchaseAttachment.schema'
+import { currencyRateSchema } from './schemas/currencyRate.schema'
 import type { RxDatabase, RxCollection } from 'rxdb'
 import type {
   ProductDocument,
@@ -23,6 +24,7 @@ import type {
   ExpenseAttachmentDocument,
   ShoppingListItemDocument,
   PurchaseAttachmentDocument,
+  CurrencyRateDocument,
 } from './types'
 import { getDatabaseVersion, getStoredDbVersion, setStoredDbVersion } from './version'
 import { readRawIndexedDB, buildBackupFromRawData, downloadBackup } from './backup'
@@ -40,6 +42,7 @@ export type ShopAssistCollections = {
   expenseAttachments: RxCollection<ExpenseAttachmentDocument>
   shoppingListItems: RxCollection<ShoppingListItemDocument>
   purchaseAttachments: RxCollection<PurchaseAttachmentDocument>
+  currencyRates: RxCollection<CurrencyRateDocument>
 }
 
 export type ShopAssistDatabase = RxDatabase<ShopAssistCollections>
@@ -267,6 +270,15 @@ async function createDb(): Promise<ShopAssistDatabase> {
           }
         },
       },
+    },
+  })
+
+  // Currency rates — global collection (not room-scoped), pull-only from Supabase.
+  // Added in a separate addCollections call to avoid Dexie object-store version conflicts.
+  await db.addCollections({
+    currencyRates: {
+      schema: currencyRateSchema,
+      migrationStrategies: {},
     },
   })
 

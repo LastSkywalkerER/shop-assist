@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CITIES, type City } from '../../config/cities'
 import { useAuth } from '../../contexts/AuthContext'
+import { CurrencyRateIndicator } from './CurrencyRateIndicator'
 
 interface HeaderProps {
   city: City
@@ -76,6 +77,7 @@ export function Header({ city, onCityChange }: HeaderProps) {
               </div>
             )}
           </div>
+          <CurrencyRateIndicator />
         </div>
         <div className="flex items-center gap-1">
           <button

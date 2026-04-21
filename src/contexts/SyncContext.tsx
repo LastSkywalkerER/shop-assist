@@ -3,6 +3,7 @@ import type { RxReplicationState } from 'rxdb/plugins/replication'
 import { useDatabase } from '../db/hooks'
 import { useAuth } from './AuthContext'
 import { setupCollectionReplication, stopReplication, suppressPushDeletions, migrateLegacyAttachments } from '../lib/sync/replication'
+import { setupCurrencyRatesReplication, stopCurrencyRatesReplication } from '../lib/sync/currencyRatesReplication'
 import { blobStoreClearAll, clearPendingUploads } from '../db/blobStore'
 
 interface SyncContextType {
@@ -38,6 +39,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
   const replicationsRef = useRef<Array<RxReplicationState<any, { updated_at: string }>>>([])
+  const globalReplicationRef = useRef<RxReplicationState<any, { updated_at: string }> | null>(null)
   const prevRoomIdRef = useRef<string | null>(null)
 
   const stopSyncInternal = useCallback(async () => {
@@ -45,12 +47,21 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     // even if individual cancel calls fail below.
     const toStop = replicationsRef.current
     replicationsRef.current = []
+    const globalToStop = globalReplicationRef.current
+    globalReplicationRef.current = null
     setIsSyncing(false)
     for (const replicationState of toStop) {
       try {
         await stopReplication(replicationState)
       } catch (error) {
         console.error('Failed to stop replication:', error)
+      }
+    }
+    if (globalToStop) {
+      try {
+        await stopCurrencyRatesReplication(globalToStop)
+      } catch (error) {
+        console.error('Failed to stop currency rates replication:', error)
       }
     }
   }, [])
@@ -98,6 +109,19 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
       replicationsRef.current = replicationStates
       console.log(`Sync started for ${replicationStates.length} collections`)
+
+      // Global (non-room-scoped) pull-only replication for currency rates.
+      if (db.currencyRates) {
+        try {
+          const globalState = await setupCurrencyRatesReplication(db.currencyRates as any)
+          globalState.error$.subscribe((error: any) => {
+            if (error) console.error('Replication error for currencyRates:', error)
+          })
+          globalReplicationRef.current = globalState
+        } catch (e) {
+          console.error('Failed to start currencyRates replication:', e)
+        }
+      }
 
       migrateLegacyAttachments(roomId, {
         expenseAttachments: db.expenseAttachments as any,
