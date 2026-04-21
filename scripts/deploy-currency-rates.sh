@@ -11,7 +11,10 @@
 # Requirements:
 #   - supabase CLI installed and the project already linked
 #     (`supabase link --project-ref lmdjawmxlxpecxrnkyis` once).
-#   - SUPABASE_SERVICE_ROLE_KEY environment variable (for the backfill step only).
+#   - SUPABASE_SERVICE_ROLE_KEY (legacy service_role JWT) for the backfill step only.
+#     Loads from the environment; if a project `.env` exists, it is sourced first.
+#     You may also set SUPABASE_SECRET_KEY in `.env` to the same JWT value when
+#     the dashboard labels it that way — it must still be a JWT (eyJ...), not sb_secret_*.
 #
 # Usage:
 #   scripts/deploy-currency-rates.sh                  # all three steps, backfill 10 weekdays
@@ -33,7 +36,7 @@ for arg in "$@"; do
     --skip-backfill) SKIP_BACKFILL=true ;;
     --only-backfill) ONLY_BACKFILL=true ;;
     -h|--help)
-      sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '3,25p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "Unknown argument: $arg" >&2; exit 2 ;;
@@ -45,6 +48,14 @@ warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; exit 1; }
 
 cd "$(dirname "$0")/.."
+
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+SUPABASE_SERVICE_ROLE_KEY="${SUPABASE_SERVICE_ROLE_KEY:-${SUPABASE_SECRET_KEY:-}}"
 
 command -v supabase >/dev/null || fail "supabase CLI not found. Install: https://supabase.com/docs/guides/cli"
 
@@ -63,9 +74,7 @@ fi
 
 if [[ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
   warn "SUPABASE_SERVICE_ROLE_KEY not set — cannot run backfill."
-  warn "Export it and re-run with --only-backfill to populate history, e.g.:"
-  warn "  export SUPABASE_SERVICE_ROLE_KEY='eyJhbGci...'"
-  warn "  scripts/deploy-currency-rates.sh --only-backfill"
+  warn "Put the legacy service_role JWT in .env or export it, then re-run with --only-backfill."
   exit 0
 fi
 
