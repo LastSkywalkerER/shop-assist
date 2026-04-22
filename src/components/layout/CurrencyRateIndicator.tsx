@@ -31,6 +31,8 @@ export function CurrencyRateIndicator() {
   }
 
   const formatted = today.rate.toFixed(2)
+  const [, month, day] = today.date.split('-')
+  const shortDate = day && month ? `${day}.${month}` : ''
   const title = `USD → BYN: ${today.rate.toFixed(4)} on ${today.date}`
     + (data.length > 1 ? ` (${diff >= 0 ? '+' : ''}${diff.toFixed(4)} vs ${prev.date})` : '')
 
@@ -42,6 +44,7 @@ export function CurrencyRateIndicator() {
       <span className="text-text-hint">$</span>
       <span>{formatted}</span>
       <span className={color}>{arrow}</span>
+      {shortDate && <span className="text-text-hint ml-1">{shortDate}</span>}
     </span>
   )
 }
