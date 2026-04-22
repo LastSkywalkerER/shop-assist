@@ -10,6 +10,7 @@ export const CURRENCIES: Currency[] = [
   { code: 'RUB', symbol: '₽' },
   { code: 'PLN', symbol: 'zł' },
   { code: 'UAH', symbol: '₴' },
+  { code: 'IDR', symbol: 'Rp' },
 ]
 
 export const DEFAULT_CURRENCY = 'BYN'

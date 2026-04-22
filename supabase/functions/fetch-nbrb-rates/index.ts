@@ -7,7 +7,9 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const TRACKED_CURRENCIES = ['USD', 'EUR', 'RUB', 'PLN', 'UAH'] as const
+// NBRB sets most pairs daily; IDR (and some others) are monthly (periodicity=1) only.
+const DAILY_CURRENCIES = ['USD', 'EUR', 'RUB', 'PLN', 'UAH'] as const
+const MONTHLY_CURRENCIES = ['IDR'] as const
 
 interface NbrbRate {
   Cur_ID: number
@@ -18,8 +20,11 @@ interface NbrbRate {
   Cur_OfficialRate: number
 }
 
-async function fetchNbrbRates(ondate: string): Promise<NbrbRate[]> {
-  const url = `https://api.nbrb.by/exrates/rates?ondate=${ondate}&periodicity=0&parammode=2`
+async function fetchNbrbRates(
+  ondate: string,
+  periodicity: 0 | 1,
+): Promise<NbrbRate[]> {
+  const url = `https://api.nbrb.by/exrates/rates?ondate=${ondate}&periodicity=${periodicity}&parammode=2`
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -63,40 +68,53 @@ serve(async (req) => {
       ? body.ondate
       : new Date().toISOString().slice(0, 10)
 
-    const allRates = await fetchNbrbRates(ondate)
-    if (!Array.isArray(allRates) || allRates.length === 0) {
-      return new Response(
-        JSON.stringify({ ok: true, ondate, skipped: true, reason: 'no rates returned (weekend/holiday?)' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
-    }
+    const [dailyRates, monthlyRates] = await Promise.all([
+      fetchNbrbRates(ondate, 0),
+      fetchNbrbRates(ondate, 1),
+    ])
 
-    const rateDate = allRates[0]?.Date?.slice(0, 10) ?? ondate
     const nowIso = new Date().toISOString()
 
-    const rows = TRACKED_CURRENCIES
-      .map(code => {
-        const entry = allRates.find(r => r.Cur_Abbreviation === code)
-        if (!entry) return null
-        const scale = entry.Cur_Scale || 1
-        const rate = entry.Cur_OfficialRate / scale
-        return {
-          id: crypto.randomUUID(),
-          currency: code,
-          date: rateDate,
-          rate,
-          scale,
-          source: 'nbrb',
-          created_at: nowIso,
-          updated_at: nowIso,
-          _deleted: false,
-        }
-      })
-      .filter((r): r is NonNullable<typeof r> => r !== null)
+    function buildRow(
+      code: string,
+      entry: NbrbRate,
+    ) {
+      const scale = entry.Cur_Scale || 1
+      const rate = entry.Cur_OfficialRate / scale
+      const rateDate = entry.Date?.slice(0, 10) ?? ondate
+      return {
+        id: crypto.randomUUID(),
+        currency: code,
+        date: rateDate,
+        rate,
+        scale,
+        source: 'nbrb',
+        created_at: nowIso,
+        updated_at: nowIso,
+        _deleted: false,
+      }
+    }
+
+    const rows: ReturnType<typeof buildRow>[] = []
+
+    for (const code of DAILY_CURRENCIES) {
+      const entry = dailyRates.find(r => r.Cur_Abbreviation === code)
+      if (entry) rows.push(buildRow(code, entry))
+    }
+    for (const code of MONTHLY_CURRENCIES) {
+      const entry = monthlyRates.find(r => r.Cur_Abbreviation === code)
+      if (entry) rows.push(buildRow(code, entry))
+    }
 
     if (rows.length === 0) {
       return new Response(
-        JSON.stringify({ ok: true, ondate, skipped: true, reason: 'tracked currencies missing from NBRB response' }),
+        JSON.stringify({
+          ok: true,
+          ondate,
+          skipped: true,
+          reason: 'tracked currencies missing from NBRB response',
+          expected: [...DAILY_CURRENCIES, ...MONTHLY_CURRENCIES],
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
@@ -116,7 +134,13 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, ondate: rateDate, upserted: rows.length, currencies: rows.map(r => r.currency) }),
+      JSON.stringify({
+        ok: true,
+        ondate,
+        upserted: rows.length,
+        currencies: rows.map(r => r.currency),
+        dates: rows.map(r => ({ currency: r.currency, date: r.date })),
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     )
   } catch (err) {

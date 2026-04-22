@@ -12,6 +12,11 @@ All Supabase changes must be duplicated as local code for reproducibility:
 - **DB migrations** — keep in `supabase/migrations/<timestamp>_<name>.sql`
 - **RLS policies, triggers, types, extensions** — include in migration files
 
+### Supabase API keys (`.env`)
+
+- Prefer **`SUPABASE_SECRET_KEY`** from `.env` when calling Supabase over HTTP (e.g. `curl` to Edge Functions with a service key, scripts that need elevated access). In the dashboard this may appear as the newer “secret” style key.
+- **`SUPABASE_SERVICE_ROLE_KEY`** is **legacy** naming for the same role; keep supporting it in scripts via fallback only, but use `SUPABASE_SECRET_KEY` for new setup and docs.
+
 ## Data Protection
 
 Every schema or data change must preserve existing user data:
