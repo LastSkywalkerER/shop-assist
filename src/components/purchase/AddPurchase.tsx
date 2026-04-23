@@ -1,7 +1,7 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import Lightbox from 'yet-another-react-lightbox'
 import Zoom from 'yet-another-react-lightbox/plugins/zoom'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type { ProductDocument, StoreDocument, PurchaseDocument, PurchaseAttachmentDocument } from '../../db/types'
 import { ProductSelect } from './ProductSelect'
@@ -13,9 +13,20 @@ import { UrlInput, type UrlMeta } from './UrlInput'
 import { serializeLinkMeta } from '../../lib/linkMeta'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { blobStorePut, blobStoreRemove, addPendingUpload } from '../../db/blobStore'
+import { ScannerFlow } from '../scanner/ScannerFlow'
+import { useBarcodeScanFlow } from '../../hooks/useBarcodeScanFlow'
+import { useAuth } from '../../contexts/AuthContext'
+
+interface AddPurchaseLocationState {
+  productId?: string
+  manufacturer?: string
+}
 
 export function AddPurchase() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const prefill = (location.state as AddPurchaseLocationState | null) ?? null
+  const { isAuthenticated } = useAuth()
 
   const productsCol = useRxCollection<ProductDocument>('products')
   const storesCol = useRxCollection<StoreDocument>('stores')
@@ -29,7 +40,7 @@ export function AddPurchase() {
   const [selectedStore, setSelectedStore] = useState<StoreDocument | null>(null)
   const [price, setPrice] = useState('')
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY)
-  const [manufacturer, setManufacturer] = useState('')
+  const [manufacturer, setManufacturer] = useState(prefill?.manufacturer ?? '')
   const [packageVolume, setPackageVolume] = useState('')
   const [variety, setVariety] = useState('')
   const [rating, setRating] = useState<number | undefined>(undefined)
@@ -51,15 +62,31 @@ export function AddPurchase() {
     return Array.from(set).sort()
   }, [products])
 
+  useEffect(() => {
+    if (!prefill?.productId || selectedProduct) return
+    const match = products.find((p) => p.id === prefill.productId)
+    if (match) setSelectedProduct(match)
+  }, [prefill?.productId, products, selectedProduct])
+
+  const scanFlow = useBarcodeScanFlow({
+    onResolved: ({ product, lookup }) => {
+      setSelectedProduct(product)
+      if (lookup?.brand && !manufacturer.trim()) {
+        setManufacturer(lookup.brand)
+      }
+    },
+  })
+
   const canSubmit = selectedProduct && selectedStore && price && parseFloat(price) > 0
 
-  const handleCreateProduct = async (data: { name: string; category?: string }) => {
+  const handleCreateProduct = async (data: { name: string; category?: string; barcode?: string }) => {
     if (!productsCol) return
     const now = new Date().toISOString()
     const product: ProductDocument = {
       id: crypto.randomUUID(),
       name: data.name,
       category: data.category,
+      barcode: data.barcode,
       createdAt: now,
       updatedAt: now,
     }
@@ -168,6 +195,7 @@ export function AddPurchase() {
         selected={selectedProduct}
         onSelect={setSelectedProduct}
         onCreate={handleCreateProduct}
+        onScanOpen={isAuthenticated ? scanFlow.openScanner : undefined}
       />
 
       {/* Store selector */}
@@ -291,6 +319,19 @@ export function AddPurchase() {
           close={() => setViewerOpen(false)}
           slides={[{ src: imageAttachment.objectUrl }]}
           plugins={[Zoom]}
+        />
+      )}
+
+      {isAuthenticated && (
+        <ScannerFlow
+          stage={scanFlow.stage}
+          saving={scanFlow.saving}
+          categories={categories}
+          onDetected={scanFlow.handleDetected}
+          onCancel={scanFlow.close}
+          onConfirmLookup={scanFlow.confirmLookupResult}
+          onRejectLookup={scanFlow.rejectLookupResult}
+          onCreateManual={scanFlow.createProduct}
         />
       )}
 
