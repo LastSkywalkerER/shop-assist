@@ -9,6 +9,14 @@ export interface LookupResult {
   brand?: string
   category?: string
   imageUrl?: string
+  imageLargeUrl?: string
+  volume?: string
+  genericName?: string
+  stores?: string[]
+  labels?: string[]
+  nutriscoreGrade?: string
+  novaGroup?: number
+  officialUrl?: string
   source: LookupSource
   /** Set when lookup failed due to network / server error rather than a real miss. */
   offline?: boolean
@@ -33,6 +41,14 @@ export async function lookupBarcode(barcode: string): Promise<LookupResult> {
       brand: result.brand,
       category: result.category,
       imageUrl: result.imageUrl,
+      imageLargeUrl: result.imageLargeUrl,
+      volume: result.volume,
+      genericName: result.genericName,
+      stores: result.stores,
+      labels: result.labels,
+      nutriscoreGrade: result.nutriscoreGrade,
+      novaGroup: result.novaGroup,
+      officialUrl: result.officialUrl,
       source: result.source ?? null,
     }
   } catch {

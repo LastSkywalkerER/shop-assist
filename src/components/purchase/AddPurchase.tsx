@@ -16,10 +16,12 @@ import { blobStorePut, blobStoreRemove, addPendingUpload } from '../../db/blobSt
 import { ScannerFlow } from '../scanner/ScannerFlow'
 import { useBarcodeScanFlow } from '../../hooks/useBarcodeScanFlow'
 import { useAuth } from '../../contexts/AuthContext'
+import type { LookupResult } from '../../lib/barcode/lookup'
+import { buildLookupPrefill, fetchRemoteImage } from '../../lib/barcode/prefill'
 
 interface AddPurchaseLocationState {
   productId?: string
-  manufacturer?: string
+  lookup?: LookupResult
 }
 
 export function AddPurchase() {
@@ -40,7 +42,7 @@ export function AddPurchase() {
   const [selectedStore, setSelectedStore] = useState<StoreDocument | null>(null)
   const [price, setPrice] = useState('')
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY)
-  const [manufacturer, setManufacturer] = useState(prefill?.manufacturer ?? '')
+  const [manufacturer, setManufacturer] = useState('')
   const [packageVolume, setPackageVolume] = useState('')
   const [variety, setVariety] = useState('')
   const [rating, setRating] = useState<number | undefined>(undefined)
@@ -53,6 +55,7 @@ export function AddPurchase() {
   const [urlMeta, setUrlMeta] = useState<UrlMeta | null>(null)
   const [saving, setSaving] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  const appliedLookupsRef = useRef<Set<string>>(new Set())
 
   const categories = useMemo(() => {
     const set = new Set<string>()
@@ -62,18 +65,68 @@ export function AddPurchase() {
     return Array.from(set).sort()
   }, [products])
 
+  const applyLookup = (lookup: LookupResult) => {
+    const key = `${lookup.source ?? 'x'}:${lookup.barcode}`
+    if (appliedLookupsRef.current.has(key)) return
+    appliedLookupsRef.current.add(key)
+
+    const p = buildLookupPrefill(lookup)
+    if (p.manufacturer) setManufacturer((v) => v.trim() ? v : p.manufacturer!)
+    if (p.packageVolume) setPackageVolume((v) => v.trim() ? v : p.packageVolume!)
+    if (p.variety) setVariety((v) => v.trim() ? v : p.variety!)
+    if (p.notes) setNotes((v) => v.trim() ? v : p.notes!)
+    if (p.urlMeta) setUrlMeta((v) => v ?? p.urlMeta!)
+
+    if (p.suggestedStoreName) {
+      const needle = p.suggestedStoreName.toLowerCase()
+      setSelectedStore((curr) => {
+        if (curr) return curr
+        const match = stores.find((s) => {
+          const n = s.name.toLowerCase()
+          return n === needle || n.includes(needle) || needle.includes(n)
+        })
+        return match ?? curr
+      })
+    }
+
+    if (p.imageUrl) {
+      setImageAttachment((curr) => {
+        if (curr) return curr
+        void (async () => {
+          const file = await fetchRemoteImage(p.imageUrl!, lookup.barcode)
+          if (!file) return
+          setImageAttachment((latest) => {
+            if (latest) return latest
+            const id = crypto.randomUUID()
+            blobStorePut(id, file).catch(() => {})
+            return {
+              id,
+              objectUrl: URL.createObjectURL(file),
+              fileName: file.name,
+              mimeType: file.type || 'image/jpeg',
+              size: file.size,
+            }
+          })
+        })()
+        return curr
+      })
+    }
+  }
+
   useEffect(() => {
-    if (!prefill?.productId || selectedProduct) return
-    const match = products.find((p) => p.id === prefill.productId)
-    if (match) setSelectedProduct(match)
-  }, [prefill?.productId, products, selectedProduct])
+    if (prefill?.productId && !selectedProduct) {
+      const match = products.find((p) => p.id === prefill.productId)
+      if (match) setSelectedProduct(match)
+    }
+    if (prefill?.lookup) applyLookup(prefill.lookup)
+    // applyLookup is a stable-enough closure; include only the primitive triggers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill?.productId, prefill?.lookup, products])
 
   const scanFlow = useBarcodeScanFlow({
     onResolved: ({ product, lookup }) => {
       setSelectedProduct(product)
-      if (lookup?.brand && !manufacturer.trim()) {
-        setManufacturer(lookup.brand)
-      }
+      if (lookup) applyLookup(lookup)
     },
   })
 

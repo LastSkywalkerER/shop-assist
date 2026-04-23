@@ -16,7 +16,24 @@ interface LookupResult {
   name?: string
   brand?: string
   category?: string
+  /** Small thumbnail for inline preview. */
   imageUrl?: string
+  /** Large original image — used for auto-attaching to the purchase. */
+  imageLargeUrl?: string
+  /** Quantity / package volume as a human string ("1 L", "500 g"). */
+  volume?: string
+  /** Generic product name; useful as a "variety" suggestion. */
+  genericName?: string
+  /** Comma-separated or array of retailer tags (often European). */
+  stores?: string[]
+  /** Normalized label slugs ("organic", "fair-trade", ...). */
+  labels?: string[]
+  /** Nutri-Score letter A-E. */
+  nutriscoreGrade?: string
+  /** NOVA processing group 1-4. */
+  novaGroup?: number
+  /** Canonical product page on the source service. */
+  officialUrl?: string
   source: LookupSource
 }
 
@@ -46,32 +63,94 @@ async function fetchJson(url: string, timeoutMs = 6000): Promise<any | null> {
   }
 }
 
-function cleanCategoryTag(tag: string | undefined): string | undefined {
-  if (!tag) return undefined
+function pickLocalized(p: Record<string, unknown>, key: string): string | undefined {
+  const ru = p[`${key}_ru`]
+  if (typeof ru === 'string' && ru.trim()) return ru.trim()
+  const base = p[key]
+  if (typeof base === 'string' && base.trim()) return base.trim()
+  const en = p[`${key}_en`]
+  if (typeof en === 'string' && en.trim()) return en.trim()
+  return undefined
+}
+
+function cleanTag(tag: unknown): string | undefined {
+  if (typeof tag !== 'string') return undefined
   return tag.replace(/^[a-z]{2}:/, '').replace(/-/g, ' ').trim() || undefined
 }
 
 async function queryOpenFacts(host: string, source: Exclude<LookupSource, null | 'gs1'>, barcode: string): Promise<LookupResult | null> {
-  const fields = 'product_name,product_name_ru,brands,categories_tags,image_front_small_url'
+  const fields = [
+    'product_name', 'product_name_ru', 'product_name_en',
+    'generic_name', 'generic_name_ru', 'generic_name_en',
+    'brands',
+    'categories_tags',
+    'quantity',
+    'labels_tags',
+    'stores', 'stores_tags',
+    'nutriscore_grade',
+    'nova_group',
+    'image_front_small_url', 'image_front_url',
+  ].join(',')
   const url = `https://${host}/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${fields}`
   const data = await fetchJson(url)
   if (!data || data.status !== 1 || !data.product) return null
-  const p = data.product
+  const p = data.product as Record<string, unknown>
 
-  const name = typeof p.product_name_ru === 'string' && p.product_name_ru.trim()
-    ? p.product_name_ru.trim()
-    : typeof p.product_name === 'string' && p.product_name.trim()
-      ? p.product_name.trim()
-      : undefined
+  const name = pickLocalized(p, 'product_name')
   if (!name) return null
 
-  const brand = typeof p.brands === 'string' ? p.brands.split(',')[0]?.trim() || undefined : undefined
-  const category = Array.isArray(p.categories_tags) && p.categories_tags.length > 0
-    ? cleanCategoryTag(p.categories_tags[p.categories_tags.length - 1])
-    : undefined
-  const imageUrl = typeof p.image_front_small_url === 'string' ? p.image_front_small_url : undefined
+  const genericRaw = pickLocalized(p, 'generic_name')
+  const genericName = genericRaw && genericRaw.toLowerCase() !== name.toLowerCase() ? genericRaw : undefined
 
-  return { found: true, barcode, name, brand, category, imageUrl, source }
+  const brand = typeof p.brands === 'string' ? p.brands.split(',')[0]?.trim() || undefined : undefined
+
+  const category = Array.isArray(p.categories_tags) && p.categories_tags.length > 0
+    ? cleanTag(p.categories_tags[p.categories_tags.length - 1])
+    : undefined
+
+  const imageUrl = typeof p.image_front_small_url === 'string' ? p.image_front_small_url : undefined
+  const imageLargeUrl = typeof p.image_front_url === 'string' ? p.image_front_url : undefined
+
+  const volume = typeof p.quantity === 'string' && p.quantity.trim() ? p.quantity.trim() : undefined
+
+  const labelsFromTags = Array.isArray(p.labels_tags)
+    ? p.labels_tags.map(cleanTag).filter((v): v is string => !!v)
+    : []
+  const labels = labelsFromTags.length ? labelsFromTags.slice(0, 6) : undefined
+
+  let stores: string[] | undefined
+  if (Array.isArray(p.stores_tags) && p.stores_tags.length > 0) {
+    stores = p.stores_tags.map(cleanTag).filter((v): v is string => !!v).slice(0, 5)
+  } else if (typeof p.stores === 'string' && p.stores.trim()) {
+    stores = p.stores.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 5)
+  }
+
+  const nutriscoreGrade = typeof p.nutriscore_grade === 'string' && /^[a-e]$/i.test(p.nutriscore_grade)
+    ? p.nutriscore_grade.toLowerCase()
+    : undefined
+  const novaGroup = typeof p.nova_group === 'number' && p.nova_group >= 1 && p.nova_group <= 4
+    ? p.nova_group
+    : undefined
+
+  const officialUrl = `https://${host}/product/${encodeURIComponent(barcode)}`
+
+  return {
+    found: true,
+    barcode,
+    name,
+    brand,
+    category,
+    imageUrl,
+    imageLargeUrl,
+    volume,
+    genericName,
+    stores,
+    labels,
+    nutriscoreGrade,
+    novaGroup,
+    officialUrl,
+    source,
+  }
 }
 
 // Best-effort fallback: GS1 Digital Link resolver redirects a GTIN to a brand-owner URL.

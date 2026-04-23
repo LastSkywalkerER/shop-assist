@@ -39,7 +39,7 @@ export function Dashboard() {
       navigate('/add', {
         state: {
           productId: product.id,
-          manufacturer: lookup?.brand,
+          lookup,
         },
       })
     },
