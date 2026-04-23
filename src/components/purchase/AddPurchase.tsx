@@ -15,6 +15,7 @@ import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { blobStorePut, blobStoreRemove, addPendingUpload } from '../../db/blobStore'
 import { ScannerFlow } from '../scanner/ScannerFlow'
 import { useBarcodeScanFlow } from '../../hooks/useBarcodeScanFlow'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface AddPurchaseLocationState {
   productId?: string
@@ -25,6 +26,7 @@ export function AddPurchase() {
   const navigate = useNavigate()
   const location = useLocation()
   const prefill = (location.state as AddPurchaseLocationState | null) ?? null
+  const { isAuthenticated } = useAuth()
 
   const productsCol = useRxCollection<ProductDocument>('products')
   const storesCol = useRxCollection<StoreDocument>('stores')
@@ -193,7 +195,7 @@ export function AddPurchase() {
         selected={selectedProduct}
         onSelect={setSelectedProduct}
         onCreate={handleCreateProduct}
-        onScanOpen={scanFlow.openScanner}
+        onScanOpen={isAuthenticated ? scanFlow.openScanner : undefined}
       />
 
       {/* Store selector */}
@@ -320,16 +322,18 @@ export function AddPurchase() {
         />
       )}
 
-      <ScannerFlow
-        stage={scanFlow.stage}
-        saving={scanFlow.saving}
-        categories={categories}
-        onDetected={scanFlow.handleDetected}
-        onCancel={scanFlow.close}
-        onConfirmLookup={scanFlow.confirmLookupResult}
-        onRejectLookup={scanFlow.rejectLookupResult}
-        onCreateManual={scanFlow.createProduct}
-      />
+      {isAuthenticated && (
+        <ScannerFlow
+          stage={scanFlow.stage}
+          saving={scanFlow.saving}
+          categories={categories}
+          onDetected={scanFlow.handleDetected}
+          onCancel={scanFlow.close}
+          onConfirmLookup={scanFlow.confirmLookupResult}
+          onRejectLookup={scanFlow.rejectLookupResult}
+          onCreateManual={scanFlow.createProduct}
+        />
+      )}
 
       {/* Submit */}
       <button

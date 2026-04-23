@@ -9,12 +9,14 @@ import { FAB } from '../shared/FAB'
 import { ScanFAB } from '../scanner/ScanFAB'
 import { ScannerFlow } from '../scanner/ScannerFlow'
 import { useBarcodeScanFlow } from '../../hooks/useBarcodeScanFlow'
+import { useAuth } from '../../contexts/AuthContext'
 import type { ProductRowData, StorePurchaseInfo } from './ProductRow'
 
 export function Dashboard() {
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
 
   const productsCol = useRxCollection<ProductDocument>('products')
   const storesCol = useRxCollection<StoreDocument>('stores')
@@ -148,18 +150,20 @@ export function Dashboard() {
         )}
       </div>
       <ProductTable data={tableData} loading={loading} />
-      <ScanFAB onClick={scanFlow.openScanner} />
+      {isAuthenticated && <ScanFAB onClick={scanFlow.openScanner} />}
       <FAB onClick={() => navigate('/add')} />
-      <ScannerFlow
-        stage={scanFlow.stage}
-        saving={scanFlow.saving}
-        categories={categories}
-        onDetected={scanFlow.handleDetected}
-        onCancel={scanFlow.close}
-        onConfirmLookup={scanFlow.confirmLookupResult}
-        onRejectLookup={scanFlow.rejectLookupResult}
-        onCreateManual={scanFlow.createProduct}
-      />
+      {isAuthenticated && (
+        <ScannerFlow
+          stage={scanFlow.stage}
+          saving={scanFlow.saving}
+          categories={categories}
+          onDetected={scanFlow.handleDetected}
+          onCancel={scanFlow.close}
+          onConfirmLookup={scanFlow.confirmLookupResult}
+          onRejectLookup={scanFlow.rejectLookupResult}
+          onCreateManual={scanFlow.createProduct}
+        />
+      )}
     </div>
   )
 }
