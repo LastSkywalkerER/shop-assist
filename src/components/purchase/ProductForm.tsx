@@ -4,19 +4,30 @@ import { CategorySelect } from '../shared/CategorySelect'
 
 interface ProductFormProps {
   categories: string[]
-  onSave: (data: { name: string; category?: string }) => void
+  initialName?: string
+  initialCategory?: string
+  barcode?: string
+  onSave: (data: { name: string; category?: string; barcode?: string }) => void
   onCancel: () => void
 }
 
-export function ProductForm({ categories, onSave, onCancel }: ProductFormProps) {
-  const [name, setName] = useState('')
-  const [category, setCategory] = useState('')
+export function ProductForm({
+  categories,
+  initialName = '',
+  initialCategory = '',
+  barcode,
+  onSave,
+  onCancel,
+}: ProductFormProps) {
+  const [name, setName] = useState(initialName)
+  const [category, setCategory] = useState(initialCategory)
 
   const handleSubmit = () => {
     if (!name.trim()) return
     onSave({
       name: name.trim(),
       category: category.trim() || undefined,
+      barcode: barcode?.trim() || undefined,
     })
   }
 
@@ -25,6 +36,11 @@ export function ProductForm({ categories, onSave, onCancel }: ProductFormProps) 
       <div className="text-[13px] text-section-header font-medium pl-1">
         Новый продукт
       </div>
+      {barcode && (
+        <div className="text-[12px] text-text-hint pl-1">
+          Штрих-код: <span className="font-mono text-text">{barcode}</span>
+        </div>
+      )}
       <Input label="Название" value={name} onChange={(e) => setName(e.currentTarget.value)} placeholder="Молоко" />
       <CategorySelect
         categories={categories}

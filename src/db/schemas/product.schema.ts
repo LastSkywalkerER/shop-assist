@@ -2,7 +2,7 @@ import type { RxJsonSchema } from 'rxdb'
 import type { ProductDocument } from '../types'
 
 export const productSchema: RxJsonSchema<ProductDocument> = {
-  version: 1,
+  version: 2,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -15,5 +15,5 @@ export const productSchema: RxJsonSchema<ProductDocument> = {
     updatedAt: { type: 'string', maxLength: 30 },
   },
   required: ['id', 'name', 'createdAt', 'updatedAt'],
-  indexes: ['name', 'createdAt'],
+  indexes: ['name', 'createdAt', 'barcode'],
 }

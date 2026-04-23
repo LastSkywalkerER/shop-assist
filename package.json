@@ -1,7 +1,7 @@
 {
   "name": "shop-assist-temp",
   "private": true,
-  "version": "1.8.11",
+  "version": "1.9.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,8 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
     "@telegram-apps/sdk-react": "^3.3.9",
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3",
     "eruda": "^3.4.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

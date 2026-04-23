@@ -106,6 +106,7 @@ async function createDb(): Promise<ShopAssistDatabase> {
           delete doc.packageVolume
           return doc
         },
+        2: (oldDoc: any) => oldDoc,
       },
     },
     stores: {
