@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const USER_AGENT = 'ShopAssist/1.9.2 (https://github.com/LastSkywalkerer/shop-assist)'
+const USER_AGENT = 'ShopAssist/1.9.3 (https://github.com/LastSkywalkerer/shop-assist)'
 
 // GS1 Application Identifier `01` mandates a 14-digit GTIN; `id.gs1.org/01/<GTIN>`
 // returns 404 for shorter inputs (e.g. raw EAN-13). Pad on the left with zeros.
@@ -48,7 +48,7 @@ function isValidGtinChecksum(gtin: string): boolean {
   return ((10 - (sum % 10)) % 10) === check
 }
 
-type LookupSource = 'off' | 'obf' | 'opf' | 'gs1' | null
+type LookupSource = 'off' | 'obf' | 'opf' | 'vbg1' | 'gs1' | null
 
 interface LookupResult {
   found: boolean
@@ -193,6 +193,59 @@ async function queryOpenFacts(host: string, source: Exclude<LookupSource, null |
   }
 }
 
+// Verified-by-GS1: the global GS1 product registry. Accurate brand-authored
+// data exists here for many GTINs that are missing from Open Food Facts and
+// from the Digital Link resolver (notably Russian-prefix 460-469 items).
+// The public JSON API is member-only, so we scrape the HTML results page via
+// the fetch-meta edge function which handles antibot (ScrapingBee).
+async function queryVerifiedByGs1(barcode: string): Promise<LookupResult | null> {
+  const gtin14 = toGtin14(barcode)
+  const base = Deno.env.get('SUPABASE_URL')
+  const key = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!base || !key) return null
+
+  const resultsUrl = `https://www.gs1.org/services/verified-by-gs1/results?gtin=${gtin14}`
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+  try {
+    const res = await fetch(`${base}/functions/v1/fetch-meta`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${key}`,
+        apikey: key,
+      },
+      body: JSON.stringify({ url: resultsUrl, verifiedByGs1Gtin: gtin14 }),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const vbg = data?.verifiedByGs1
+    if (!vbg || !vbg.found) return null
+
+    // Prefer explicit Product description over OG title (the latter is usually
+    // "Verified by GS1 Results | GS1" — the page template's static title).
+    const name = (vbg.description || vbg.brand) as string | undefined
+    if (!name) return null
+
+    return {
+      found: true,
+      barcode,
+      name: name.slice(0, 200),
+      brand: vbg.brand,
+      category: vbg.category,
+      volume: vbg.volume,
+      officialUrl: resultsUrl,
+      source: 'vbg1',
+    }
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 // Best-effort fallback: GS1 Digital Link resolver redirects a GTIN to a brand-owner URL.
 // If that URL resolves to an HTML page, delegate to fetch-meta to extract OG title + image.
 async function queryGs1DigitalLink(barcode: string): Promise<LookupResult | null> {
@@ -299,6 +352,14 @@ serve(async (req) => {
           })
         }
       }
+    }
+
+    const vbg1 = await queryVerifiedByGs1(barcode)
+    console.log(`lookup ${barcode} @ vbg1: ${vbg1 ? 'HIT' : 'miss'}`)
+    if (vbg1) {
+      return new Response(JSON.stringify({ ...vbg1, barcode }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     const gs1 = await queryGs1DigitalLink(barcode)

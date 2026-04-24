@@ -1,6 +1,6 @@
 import { supabase } from '../supabase/client'
 
-export type LookupSource = 'off' | 'obf' | 'opf' | 'gs1' | null
+export type LookupSource = 'off' | 'obf' | 'opf' | 'vbg1' | 'gs1' | null
 
 export interface LookupResult {
   found: boolean
