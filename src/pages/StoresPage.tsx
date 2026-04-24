@@ -21,7 +21,7 @@ export function StoresPage() {
   const [deleteTarget, setDeleteTarget] = useState<StoreDocument | null>(null)
 
   useEffect(() => {
-    return showBackButton(() => navigate('/'))
+    return showBackButton(() => navigate(-1))
   }, [navigate])
 
   const storesCol = useRxCollection<StoreDocument>('stores')
@@ -66,7 +66,7 @@ export function StoresPage() {
       <div className="p-4 pb-2 flex items-center justify-between">
         <h2 className="text-[20px] font-bold text-text">Магазины</h2>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate(-1)}
           className="text-primary-text text-[15px] font-medium active:opacity-60 transition-opacity"
         >
           Назад

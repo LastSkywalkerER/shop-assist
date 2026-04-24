@@ -7,7 +7,7 @@ export function AddPurchasePage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    return showBackButton(() => navigate('/'))
+    return showBackButton(() => navigate(-1))
   }, [navigate])
 
   return <AddPurchase />

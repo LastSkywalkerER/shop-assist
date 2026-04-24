@@ -220,7 +220,7 @@ export function AddPurchase() {
           updatedAt: now,
         })
       }
-      navigate('/')
+      navigate(-1)
     } catch (err) {
       console.error('Failed to save purchase:', err)
     } finally {
@@ -234,7 +234,7 @@ export function AddPurchase() {
       <div className="flex items-center justify-between">
         <h2 className="text-[20px] font-bold text-text">Новая запись цены</h2>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate(-1)}
           className="text-primary-text text-[15px] font-medium active:opacity-60 transition-opacity"
         >
           Отмена

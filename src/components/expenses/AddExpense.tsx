@@ -265,7 +265,7 @@ export function AddExpense() {
         }
       }
 
-      navigate('/expenses')
+      navigate(-1)
     } catch (err) {
       console.error('Failed to save expense:', err)
     } finally {
@@ -279,7 +279,7 @@ export function AddExpense() {
       <div className="flex items-center justify-between">
         <h2 className="text-[20px] font-bold text-text">Новый расход</h2>
         <button
-          onClick={() => navigate('/expenses')}
+          onClick={() => navigate(-1)}
           className="text-primary-text text-[15px] font-medium active:opacity-60 transition-opacity"
         >
           Отмена
