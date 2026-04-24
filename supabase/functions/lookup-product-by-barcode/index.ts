@@ -235,6 +235,7 @@ serve(async (req) => {
 
     for (const { host, source } of FACTS_HOSTS) {
       const hit = await queryOpenFacts(host, source, barcode)
+      console.log(`lookup ${barcode} @ ${source}: ${hit ? 'HIT' : 'miss'}`)
       if (hit) {
         return new Response(JSON.stringify(hit), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -243,12 +244,14 @@ serve(async (req) => {
     }
 
     const gs1 = await queryGs1DigitalLink(barcode)
+    console.log(`lookup ${barcode} @ gs1: ${gs1 ? 'HIT' : 'miss'}`)
     if (gs1) {
       return new Response(JSON.stringify(gs1), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
+    console.log(`lookup ${barcode}: not found in any source`)
     const miss: LookupResult = { found: false, barcode, source: null }
     return new Response(JSON.stringify(miss), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
