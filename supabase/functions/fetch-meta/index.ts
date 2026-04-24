@@ -97,10 +97,14 @@ function extractVerifiedByGs1(html: string, expectedGtin: string): {
   }
 
   const gtinRendered = fieldByLabel('GTIN')?.replace(/\D/g, '')
+  // A GET to the results URL often returns an empty #product-container shell;
+  // the real markup appears after POST / client render. Without a GTIN cell we
+  // must not report found:true (would yield parserFound=true but no name).
+  if (!gtinRendered) return { found: false }
   // Echo check: rendered GTIN (with leading zero, GTIN-14) must match the
   // caller's expected GTIN-14 modulo leading zeros. Mismatch ⇒ reject the
   // whole record so we don't return wrong-product data.
-  if (gtinRendered && gtinRendered.replace(/^0+/, '') !== expectedGtin.replace(/^0+/, '')) {
+  if (gtinRendered.replace(/^0+/, '') !== expectedGtin.replace(/^0+/, '')) {
     return { found: false }
   }
 
