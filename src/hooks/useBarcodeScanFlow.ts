@@ -3,6 +3,7 @@ import { useRxCollection } from '../db/hooks'
 import type { ProductDocument } from '../db/types'
 import { lookupBarcode, type LookupResult } from '../lib/barcode/lookup'
 import { isValidBarcode } from '../lib/barcode/detector'
+import { extractGtin, normaliseGtin } from '../lib/barcode/gs1'
 
 export type ScanFlowStage =
   | { kind: 'idle' }
@@ -42,13 +43,15 @@ export function useBarcodeScanFlow({ onResolved }: UseBarcodeScanFlowOptions) {
   }, [productsCol])
 
   const handleDetected = useCallback(async (raw: string) => {
-    const barcode = raw.replace(/\D/g, '')
-    if (!isValidBarcode(barcode) && !/^[a-zA-Z0-9\-.:/]+$/.test(raw)) {
-      // fall through to manual entry
+    // Try to extract a GTIN from any of: bare numeric code, GS1 element
+    // string from a DataMatrix («Честный знак»), or GS1 Digital Link URL.
+    const gtin = extractGtin(raw)
+    const normalized = gtin ? normaliseGtin(gtin) : raw.replace(/\D/g, '')
+
+    if (!isValidBarcode(normalized)) {
       setStage({ kind: 'manual', barcode: '', hint: 'not-found' })
       return
     }
-    const normalized = isValidBarcode(barcode) ? barcode : raw
 
     setStage({ kind: 'lookup', barcode: normalized })
 
