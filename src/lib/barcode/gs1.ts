@@ -71,11 +71,42 @@ export function extractGtin(raw: string): string | null {
 }
 
 /**
- * Convert a 14-digit GTIN-14 to its 13-digit EAN form by stripping the
- * leading zero. OFF accepts both forms but EAN-13 is what most 1D scans
- * resolve to, so unifying helps cache hits and dedupe.
+ * Convert any GTIN (8/12/13/14 digits) to its canonical 13-digit EAN-13
+ * form when possible. GTIN-14 with a leading `0` trims down; GTIN-12
+ * (UPC-A) gets a leading `0`; GTIN-8 is left alone (EAN-8 has no 13-digit
+ * canonical). The result is what we persist locally, so the same product
+ * scanned once as UPC-A and once as EAN-13 deduplicates.
  */
 export function normaliseGtin(gtin: string): string {
   if (gtin.length === 14 && gtin.startsWith('0')) return gtin.slice(1)
+  if (gtin.length === 12) return '0' + gtin
   return gtin
+}
+
+/**
+ * Expand any GTIN to its 14-digit GTIN-14 form by zero-padding on the
+ * left. Required by GS1 Application Identifier `01`, which mandates
+ * exactly 14 digits — `id.gs1.org/01/<GTIN>` returns 404 for shorter
+ * inputs. Safe for GTIN-8/12/13; a real 14-digit input passes through.
+ */
+export function toGtin14(gtin: string): string {
+  if (gtin.length >= 14) return gtin
+  return gtin.padStart(14, '0')
+}
+
+/**
+ * Validate the mod-10 check digit of a GTIN-8/12/13/14. Weights alternate
+ * 3/1 from the rightmost payload digit. Returns false for non-numeric or
+ * wrong-length input. Used as a soft guard — we still attempt lookup on
+ * checksum failures but log a warning, since some industry codes (ITF-14
+ * carton codes re-using consumer GTIN payloads) occasionally drift.
+ */
+export function isValidGtinChecksum(gtin: string): boolean {
+  if (!/^\d{8}$|^\d{12,14}$/.test(gtin)) return false
+  const digits = gtin.split('').map((d) => Number(d))
+  const check = digits.pop() as number
+  // Weights: rightmost payload digit is ×3, then alternate ×1, ×3, ×1 ...
+  const sum = digits.reverse().reduce((acc, d, i) => acc + d * (i % 2 === 0 ? 3 : 1), 0)
+  const computed = (10 - (sum % 10)) % 10
+  return computed === check
 }
