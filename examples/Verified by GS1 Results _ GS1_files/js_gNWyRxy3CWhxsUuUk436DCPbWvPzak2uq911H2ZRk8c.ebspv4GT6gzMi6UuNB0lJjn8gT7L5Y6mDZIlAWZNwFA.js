@@ -1,0 +1,3 @@
+/* Source and licensing information for the line(s) below can be found at //gs1go2.azureedge.net/core/misc/drupalSettingsLoader.js. */
+(function(){const settingsElement=document.querySelector('head > script[type="application/json"][data-drupal-selector="drupal-settings-json"], body > script[type="application/json"][data-drupal-selector="drupal-settings-json"]',);window.drupalSettings={};if(settingsElement!==null){window.drupalSettings=JSON.parse(settingsElement.textContent);}})();
+/* Source and licensing information for the above line(s) can be found at //gs1go2.azureedge.net/core/misc/drupalSettingsLoader.js. */

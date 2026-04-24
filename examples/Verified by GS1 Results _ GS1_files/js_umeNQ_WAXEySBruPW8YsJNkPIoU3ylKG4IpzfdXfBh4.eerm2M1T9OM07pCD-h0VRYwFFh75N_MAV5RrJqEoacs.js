@@ -1,0 +1,3 @@
+/* Source and licensing information for the line(s) below can be found at //gs1go2.azureedge.net/core/assets/vendor/jquery.ui/ui/disable-selection-min.js. */
+!function(e){"use strict";"function"==typeof define&&define.amd?define(["jquery","./version"],e):e(jQuery)}((function(e){"use strict";return e.fn.extend({disableSelection:(n="onselectstart"in document.createElement("div")?"selectstart":"mousedown",function(){return this.on(n+".ui-disableSelection",(function(e){e.preventDefault()}))}),enableSelection:function(){return this.off(".ui-disableSelection")}});var n}));
+/* Source and licensing information for the above line(s) can be found at //gs1go2.azureedge.net/core/assets/vendor/jquery.ui/ui/disable-selection-min.js. */

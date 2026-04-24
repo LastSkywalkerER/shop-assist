@@ -1,0 +1,3 @@
+/* Source and licensing information for the line(s) below can be found at //gs1go2.azureedge.net/core/assets/vendor/jquery.ui/ui/data-min.js. */
+!function(e){"use strict";"function"==typeof define&&define.amd?define(["jquery","./version"],e):e(jQuery)}((function(e){"use strict";return e.extend(e.expr.pseudos,{data:e.expr.createPseudo((function(n){return function(t){return!!e.data(t,n)}}))})}));
+/* Source and licensing information for the above line(s) can be found at //gs1go2.azureedge.net/core/assets/vendor/jquery.ui/ui/data-min.js. */

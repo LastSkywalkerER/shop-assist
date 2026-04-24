@@ -1,0 +1,3 @@
+/* Source and licensing information for the line(s) below can be found at //gs1go2.azureedge.net/modules/contrib/google_tag/js/gtag.ajax.js. */
+(function(Drupal){Drupal.AjaxCommands.prototype.gtagEvent=function(ajax,response){gtag('event',response.event_name,response.data);};})(Drupal);
+/* Source and licensing information for the above line(s) can be found at //gs1go2.azureedge.net/modules/contrib/google_tag/js/gtag.ajax.js. */
