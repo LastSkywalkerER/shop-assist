@@ -28,7 +28,7 @@ export function ExpenseDetails() {
   const [localReceiptItems, setLocalReceiptItems] = useState<ReceiptItem[]>([])
 
   useEffect(() => {
-    return showBackButton(() => navigate('/expenses'))
+    return showBackButton(() => navigate(-1))
   }, [navigate])
 
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
@@ -439,7 +439,7 @@ export function ExpenseDetails() {
       const expenseDoc = await expensesCol.findOne(expense.id).exec()
       if (expenseDoc) await expenseDoc.remove()
 
-      navigate('/expenses')
+      navigate(-1)
     } catch (err) {
       console.error('Failed to delete expense:', err)
     } finally {
@@ -468,7 +468,7 @@ export function ExpenseDetails() {
             stores={stores}
             categories={categories}
             expenses={expenses}
-            onDone={() => navigate('/expenses')}
+            onDone={() => navigate(-1)}
             onCreateStore={handleCreateStore}
             onCreateCategory={handleCreateCategory}
           />

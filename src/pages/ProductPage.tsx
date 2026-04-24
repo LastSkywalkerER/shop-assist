@@ -18,7 +18,7 @@ export function ProductPage() {
   const [deletingProduct, setDeletingProduct] = useState(false)
 
   useEffect(() => {
-    return showBackButton(() => navigate('/'))
+    return showBackButton(() => navigate(-1))
   }, [navigate])
 
   const productsCol = useRxCollection<ProductDocument>('products')
@@ -57,7 +57,7 @@ export function ProductPage() {
         await doc.remove()
       }
       setConfirmState(null)
-      navigate('/')
+      navigate(-1)
     } catch (err) {
       console.error('Failed to delete product:', err)
     } finally {
@@ -105,7 +105,7 @@ export function ProductPage() {
               </svg>
             </div>
             <button
-              onClick={(e) => { e.stopPropagation(); navigate('/') }}
+              onClick={(e) => { e.stopPropagation(); navigate(-1) }}
               className="text-primary-text text-[15px] font-medium active:opacity-60 transition-opacity shrink-0 ml-2"
             >
               Назад
