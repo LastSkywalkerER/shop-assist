@@ -1,4 +1,0 @@
-/* Source and licensing information for the line(s) below can be found at //gs1go2.azureedge.net/core/misc/drupal.init.js. */
-if(window.jQuery){jQuery.noConflict();}
-document.documentElement.className+=' js';(function(Drupal,drupalSettings){const domReady=(callback)=>{const listener=()=>{callback();document.removeEventListener('DOMContentLoaded',listener);};if(document.readyState!=='loading'){setTimeout(callback,0);}else{document.addEventListener('DOMContentLoaded',listener);}};domReady(()=>{Drupal.attachBehaviors(document,drupalSettings);});})(Drupal,window.drupalSettings);
-/* Source and licensing information for the above line(s) can be found at //gs1go2.azureedge.net/core/misc/drupal.init.js. */

@@ -1,3 +1,0 @@
-/* Source and licensing information for the line(s) below can be found at //gs1go2.azureedge.net/modules/contrib/addtoany/js/addtoany.js. */
-(function(Drupal){'use strict';Drupal.behaviors.addToAny={attach:function(context,settings){if(context!==document&&window.a2a){a2a.init_all();}}};})(Drupal);
-/* Source and licensing information for the above line(s) can be found at //gs1go2.azureedge.net/modules/contrib/addtoany/js/addtoany.js. */

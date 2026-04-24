@@ -1,3 +1,0 @@
-/* Source and licensing information for the line(s) below can be found at //gs1go2.azureedge.net/modules/custom/gsone_verified_search/js/recaptcha-once-vbg.js. */
-function recaptchaCallback(){var form=document.querySelectorAll("form .form-wrapper .form-wrapper[data-drupal-states]");var elemToSubmit;form.forEach(function(elem){if(!elem.matches('.optional-fields')&&window.getComputedStyle(elem).display!=='none'){elemToSubmit=elem;}});jQuery(elemToSubmit).find('button.form-submit').mousedown();}
-/* Source and licensing information for the above line(s) can be found at //gs1go2.azureedge.net/modules/custom/gsone_verified_search/js/recaptcha-once-vbg.js. */

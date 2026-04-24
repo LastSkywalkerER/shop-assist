@@ -1,7 +1,0 @@
-/* Source and licensing information for the line(s) below can be found at //gs1go2.azureedge.net/themes/contrib/bootstrap_barrio/js/barrio.js. */
-(function(Drupal){'use strict';Drupal.behaviors.bootstrap_barrio={attach:function(context,settings){var position=window.scrollY;window.addEventListener('scroll',function(){if(window.scrollY>50){document.querySelector('body').classList.add("scrolled");}
-else{document.querySelector('body').classList.remove("scrolled");}
-var scroll=window.scrollY;if(scroll>position){document.querySelector('body').classList.add("scrolldown");document.querySelector('body').classList.remove("scrollup");}else{document.querySelector('body').classList.add("scrollup");document.querySelector('body').classList.remove("scrolldown");}
-position=scroll;});document.addEventListener('click',function(event){if(!event.target.matches('.dropdown-item a.dropdown-toggle'))return;event.preventDefault();toggle(event.target.next('ul'));event.stopPropagation();},false);var toggle=function(elem){if(window.getComputedStyle(elem).display==='block'){hide(elem);return;}
-show(elem);};var show=function(elem){elem.style.display='block';};var hide=function(elem){elem.style.display='none';};}};})(Drupal);
-/* Source and licensing information for the above line(s) can be found at //gs1go2.azureedge.net/themes/contrib/bootstrap_barrio/js/barrio.js. */

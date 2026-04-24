@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const USER_AGENT = 'ShopAssist/1.9.3 (https://github.com/LastSkywalkerer/shop-assist)'
+const USER_AGENT = 'ShopAssist/1.9.4 (https://github.com/LastSkywalkerer/shop-assist)'
 
 // GS1 Application Identifier `01` mandates a 14-digit GTIN; `id.gs1.org/01/<GTIN>`
 // returns 404 for shorter inputs (e.g. raw EAN-13). Pad on the left with zeros.

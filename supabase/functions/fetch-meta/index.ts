@@ -23,17 +23,28 @@ function stripTags(html: string): string {
 /**
  * Parse the Verified-by-GS1 results page for a single GTIN lookup.
  *
- * The page is server-rendered HTML. When the GTIN is registered, the
- * response contains a green confirmation banner ("This number is
- * registered to …") and a product details table with rows for GTIN,
- * Brand name, Product description, Global product category, Net content,
- * Country of sale. When the GTIN is unknown, that confirmation banner
- * is absent.
+ * Markup reference (saved page for GTIN 4607013795945, captured 2026-04):
+ *   <div id="product-container" class="verified-gs1-company results-gtin …">
+ *     …
+ *     This number is registered to <strong>ООО "НоваПродукт АГ"</strong>.
+ *     …
+ *     <div … id="productInformation" role="tabpanel">
+ *       <h3>Напиток из цикория "Чикорофф" по восточноу</h3>
+ *       <table class="company">
+ *         <tr><td>GTIN</td><td><strong>04607013795945</strong></td></tr>
+ *         <tr><td rowspan="1">Brand name</td><td class="value"><strong>(en) Chikoroff</strong></td></tr>
+ *         <tr><td rowspan="1">Product description</td><td class="value"><strong>(ru) …</strong></td></tr>
+ *         <tr><td>Product image URL</td><td class="wrapper-unknown"><strong>Unknown</strong></td></tr>
+ *         <tr><td>Global product category</td><td><strong>10006311 Coffee Substitutes – Soluble Instant</strong></td></tr>
+ *         <tr><td>Net content</td><td><strong>100 Gram</strong></td></tr>
+ *         <tr><td>Country of sale</td><td><strong>Russian Federation (the)</strong></td></tr>
+ *       </table>
  *
- * We key off the banner text as the positive signal and echo-check the
- * GTIN to guard against misleading matches. All individual field
- * parsers are best-effort — a missing row just omits that field rather
- * than rejecting the whole response.
+ * Positive signal: presence of `id="product-container"` (only emitted when
+ * the GTIN resolves to a registered product). We additionally echo-check
+ * the rendered GTIN against the caller's input to guard against partial
+ * page renders or stale caches. Individual field parsers are best-effort —
+ * a missing row just omits that field rather than rejecting the whole row.
  */
 function extractVerifiedByGs1(html: string, expectedGtin: string): {
   found: boolean
@@ -45,60 +56,78 @@ function extractVerifiedByGs1(html: string, expectedGtin: string): {
   country?: string
   registrant?: string
 } {
-  // Positive signal: the green "registered to <company>" banner.
-  // Allow both English and localised variants by also accepting the
-  // neighbouring strong-tagged company name pattern.
-  const registrant = html.match(/registered to[^<]*<[^>]*>([^<]{1,200})<\/[^>]+>/i)?.[1]
-  const registrantText = registrant ? decodeEntities(registrant).trim() : undefined
-  if (!registrantText) return { found: false }
+  // Scope all subsequent parsing to the product container — the page also
+  // contains site-chrome sections with <h3> and tables that would otherwise
+  // produce false matches.
+  const containerMatch = html.match(/<div\s+id=["']product-container["'][^>]*>([\s\S]*?)<\/main>/i)
+    ?? html.match(/<div\s+id=["']product-container["'][^>]*>([\s\S]+)$/i)
+  if (!containerMatch) return { found: false }
+  const container = containerMatch[1]
+
+  // Optional but informative: pull the registrant company from the green banner.
+  // The banner text "This number is registered to <strong>NAME</strong>" appears
+  // before the tabs, so it lives inside the container slice.
+  const registrantMatch = container.match(/registered to\s*<strong[^>]*>([\s\S]{1,300}?)<\/strong>/i)
+  const registrant = registrantMatch ? decodeEntities(stripTags(registrantMatch[1])) : undefined
+
+  // Product Information tab pane — scope title and table extraction here so
+  // that the Company tab's <h3> and table don't shadow product fields.
+  const productPaneMatch = container.match(/id=["']productInformation["'][^>]*>([\s\S]*?)<\/div>\s*<div[^>]*id=["']companyInformation["']/i)
+    ?? container.match(/id=["']productInformation["'][^>]*>([\s\S]+)$/i)
+  const productPane = productPaneMatch ? productPaneMatch[1] : container
+
+  // Product title — the first <h3> inside the productInformation pane.
+  const titleMatch = productPane.match(/<h3[^>]*>([\s\S]{1,500}?)<\/h3>/i)
+  const titleText = titleMatch ? decodeEntities(stripTags(titleMatch[1])) : undefined
 
   const fieldByLabel = (label: string): string | undefined => {
-    // Matches table rows like `<th>LABEL</th><td>VALUE</td>`,
-    // `<dt>LABEL</dt><dd>VALUE</dd>`, or div-based `<div>LABEL</div><div>VALUE</div>`.
     const labelEsc = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const patterns = [
-      new RegExp(`<(?:th|dt)[^>]*>\\s*${labelEsc}\\s*<\\/(?:th|dt)>\\s*<(?:td|dd)[^>]*>([\\s\\S]{1,800}?)<\\/(?:td|dd)>`, 'i'),
-      new RegExp(`${labelEsc}\\s*<\\/[^>]+>\\s*<[^>]+>([\\s\\S]{1,800}?)<\\/[^>]+>`, 'i'),
-    ]
-    for (const re of patterns) {
-      const m = html.match(re)
-      if (m) {
-        const text = stripTags(m[1])
-        if (text && text.toLowerCase() !== 'unknown') return text
-      }
-    }
-    return undefined
+    // Match a <tr> row whose first <td> contains exactly the label and whose
+    // following <td> holds the value (typically wrapped in <strong>). The
+    // value cell may carry class="value" or class="wrapper-unknown".
+    const rowRe = new RegExp(
+      `<tr[^>]*>\\s*<td[^>]*>\\s*${labelEsc}\\s*<\\/td>[\\s\\S]{0,2000}?<td[^>]*>([\\s\\S]{1,800}?)<\\/td>`,
+      'i',
+    )
+    const m = productPane.match(rowRe)
+    if (!m) return undefined
+    const text = decodeEntities(stripTags(m[1]))
+    if (!text || text.toLowerCase() === 'unknown') return undefined
+    return text
   }
 
-  const gtin = fieldByLabel('GTIN')?.replace(/\D/g, '')
-  // Echo check: the returned GTIN must match the caller's 14-digit form.
-  // This prevents false positives if the page re-rendered against a
-  // stale query or if a different row somehow leaked through.
-  if (gtin && gtin.replace(/^0+/, '') !== expectedGtin.replace(/^0+/, '')) {
+  const gtinRendered = fieldByLabel('GTIN')?.replace(/\D/g, '')
+  // Echo check: rendered GTIN (with leading zero, GTIN-14) must match the
+  // caller's expected GTIN-14 modulo leading zeros. Mismatch ⇒ reject the
+  // whole record so we don't return wrong-product data.
+  if (gtinRendered && gtinRendered.replace(/^0+/, '') !== expectedGtin.replace(/^0+/, '')) {
     return { found: false }
   }
 
-  const brandRaw = fieldByLabel('Brand name')
-  // "(en) Chikoroff" → strip the localisation prefix.
-  const brand = brandRaw?.replace(/^\([a-z]{2}\)\s*/i, '').trim() || undefined
+  const stripLocale = (s: string | undefined) =>
+    s ? s.replace(/^\(\s*[a-z]{2}\s*\)\s*/i, '').trim() || undefined : undefined
 
-  const descRaw = fieldByLabel('Product description')
-  const description = descRaw?.replace(/^\([a-z]{2}\)\s*/i, '').trim() || undefined
+  const brand = stripLocale(fieldByLabel('Brand name'))
+  const description = stripLocale(fieldByLabel('Product description'))
+  // GPC categories arrive as "<8-digit code> <Category Name>"; drop the code.
+  const category = fieldByLabel('Global product category')?.replace(/^\d{6,10}\s+/, '').trim() || undefined
+  const volume = fieldByLabel('Net content')
+  const country = fieldByLabel('Country of sale')
 
-  const category = fieldByLabel('Global product category')?.replace(/^\d+\s+/, '').trim() || undefined
-
-  const volume = fieldByLabel('Net content')?.trim() || undefined
-  const country = fieldByLabel('Country of sale')?.trim() || undefined
+  // Use the H3 title as a fallback description if the localised row is
+  // missing or shorter than the title. The H3 is what GS1 surfaces as the
+  // canonical product label on the page.
+  const finalDescription = description || titleText
 
   return {
     found: true,
-    gtin,
+    gtin: gtinRendered,
     brand,
-    description,
+    description: finalDescription,
     category,
     volume,
     country,
-    registrant: registrantText,
+    registrant,
   }
 }
 
