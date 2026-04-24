@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const USER_AGENT = 'ShopAssist/1.9.4 (https://github.com/LastSkywalkerer/shop-assist)'
+const USER_AGENT = 'ShopAssist/1.9.5 (https://github.com/LastSkywalkerer/shop-assist)'
 
 // GS1 Application Identifier `01` mandates a 14-digit GTIN; `id.gs1.org/01/<GTIN>`
 // returns 404 for shorter inputs (e.g. raw EAN-13). Pad on the left with zeros.
@@ -201,13 +201,19 @@ async function queryOpenFacts(host: string, source: Exclude<LookupSource, null |
 async function queryVerifiedByGs1(barcode: string): Promise<LookupResult | null> {
   const gtin14 = toGtin14(barcode)
   const base = Deno.env.get('SUPABASE_URL')
-  const key = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-  if (!base || !key) return null
+  // Prefer service-role for edge-to-edge calls; fall back to anon only if it's
+  // all we have. Both work, but service-role avoids edge cases where fetch-meta
+  // has JWT verification tightened.
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY')
+  if (!base || !key) {
+    console.warn(`vbg1 ${gtin14}: missing env (base=${!!base} key=${!!key}) — skipping`)
+    return null
+  }
 
   const resultsUrl = `https://www.gs1.org/services/verified-by-gs1/results?gtin=${gtin14}`
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 15000)
+  const timeout = setTimeout(() => controller.abort(), 20000)
   try {
     const res = await fetch(`${base}/functions/v1/fetch-meta`, {
       method: 'POST',
@@ -219,15 +225,38 @@ async function queryVerifiedByGs1(barcode: string): Promise<LookupResult | null>
       },
       body: JSON.stringify({ url: resultsUrl, verifiedByGs1Gtin: gtin14 }),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.warn(`vbg1 ${gtin14}: fetch-meta HTTP ${res.status}`)
+      return null
+    }
     const data = await res.json()
-    const vbg = data?.verifiedByGs1
-    if (!vbg || !vbg.found) return null
+    if (!data || typeof data !== 'object') {
+      console.warn(`vbg1 ${gtin14}: fetch-meta returned non-object`)
+      return null
+    }
+    if (data.error) {
+      // fetch-meta couldn't load the page (antibot, no ScrapingBee key, etc).
+      console.warn(`vbg1 ${gtin14}: fetch-meta error="${data.error}"`)
+      return null
+    }
+    const vbg = data.verifiedByGs1
+    if (!vbg) {
+      // Legacy fetch-meta deploy without verifiedByGs1 support.
+      console.warn(`vbg1 ${gtin14}: fetch-meta response lacks verifiedByGs1 field (is it deployed?)`)
+      return null
+    }
+    if (!vbg.found) {
+      console.log(`vbg1 ${gtin14}: parser reported not found (page has no product-container or GTIN mismatch)`)
+      return null
+    }
 
     // Prefer explicit Product description over OG title (the latter is usually
     // "Verified by GS1 Results | GS1" — the page template's static title).
     const name = (vbg.description || vbg.brand) as string | undefined
-    if (!name) return null
+    if (!name) {
+      console.warn(`vbg1 ${gtin14}: parser found page but no usable name`)
+      return null
+    }
 
     return {
       found: true,
@@ -239,7 +268,9 @@ async function queryVerifiedByGs1(barcode: string): Promise<LookupResult | null>
       officialUrl: resultsUrl,
       source: 'vbg1',
     }
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.warn(`vbg1 ${gtin14}: exception "${msg}"`)
     return null
   } finally {
     clearTimeout(timeout)

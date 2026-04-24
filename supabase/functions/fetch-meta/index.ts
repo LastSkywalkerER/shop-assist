@@ -310,6 +310,7 @@ serve(async (req) => {
     }
 
     const targetUrl = parsedUrl.toString()
+    const tag = isVerifiedByGs1 ? `vbg1 ${verifiedByGs1Gtin}` : 'fetch-meta'
 
     // Verified-by-GS1 renders product data in the <body>, not the <head>,
     // so disable the usual early-stop-at-</head> streaming and read the
@@ -321,17 +322,22 @@ serve(async (req) => {
     // Primary: direct fetch
     const { html: directHtml, antiBotBlocked } = await fetchDirect(targetUrl, readOpts)
     let html: string | null = directHtml
+    let via: 'direct' | 'scrapingbee' | null = directHtml ? 'direct' : null
 
     // Fallback to ScrapingBee when blocked by antibot protection or direct fetch failed
     if (!html && antiBotBlocked) {
       const scrapingBeeKey = Deno.env.get('SCRAPINGBEE_API_KEY')
       if (scrapingBeeKey) {
         html = await fetchViaScrapingBee(targetUrl, scrapingBeeKey, readOpts)
+        if (html) via = 'scrapingbee'
+      } else {
+        console.warn(`${tag}: direct fetch blocked (antibot) and SCRAPINGBEE_API_KEY is not set`)
       }
     }
 
     if (!html) {
-      return new Response(JSON.stringify({ error: 'Failed to fetch page' }), {
+      console.warn(`${tag}: failed to fetch page (antiBotBlocked=${antiBotBlocked})`)
+      return new Response(JSON.stringify({ error: 'Failed to fetch page', antiBotBlocked }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -341,6 +347,17 @@ serve(async (req) => {
     const verifiedByGs1 = isVerifiedByGs1
       ? extractVerifiedByGs1(html, verifiedByGs1Gtin as string)
       : undefined
+
+    if (isVerifiedByGs1) {
+      // Diagnostic: page fetched but parser failed to find a product. Surface
+      // enough detail in the logs to tell whether the page was blocked,
+      // returned a captcha shell, or legitimately lists no product.
+      const hasContainer = /id=["']product-container["']/i.test(html)
+      const hasBanner = /registered to/i.test(html)
+      console.log(
+        `${tag}: via=${via} htmlLen=${html.length} productContainer=${hasContainer} registeredBanner=${hasBanner} parserFound=${verifiedByGs1?.found ?? false}`,
+      )
+    }
 
     return new Response(JSON.stringify({ ...meta, verifiedByGs1 }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
