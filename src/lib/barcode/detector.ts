@@ -1,6 +1,7 @@
 export type BarcodeFormat =
   | 'ean_13' | 'ean_8' | 'upc_a' | 'upc_e'
-  | 'code_128' | 'code_39' | 'itf' | 'qr_code'
+  | 'code_128' | 'code_39' | 'itf'
+  | 'qr_code' | 'data_matrix' | 'aztec' | 'pdf417'
 
 export interface BarcodeScanner {
   start(video: HTMLVideoElement, onResult: (barcode: string) => void): Promise<void>
@@ -16,7 +17,14 @@ interface NativeBarcodeDetectorCtor {
   getSupportedFormats?: () => Promise<string[]>
 }
 
-const NATIVE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'qr_code']
+const NATIVE_FORMATS = [
+  'ean_13', 'ean_8', 'upc_a', 'upc_e',
+  'code_128', 'code_39', 'itf',
+  'qr_code', 'data_matrix', 'aztec', 'pdf417',
+]
+
+// Formats that decode to free-form text (URL, GS1 AI string, etc.) — never numeric only.
+const FREE_FORM_FORMATS = new Set(['qr_code', 'data_matrix', 'aztec', 'pdf417'])
 
 function hasNativeDetector(): boolean {
   return typeof window !== 'undefined' && 'BarcodeDetector' in window
@@ -48,8 +56,9 @@ function createNativeScanner(): BarcodeScanner {
             if (results.length > 0) {
               const raw = results[0].rawValue
               const format = results[0].format
-              const code = format === 'qr_code' ? raw : normalize(raw)
-              if (code && (format === 'qr_code' || isValidLength(code))) {
+              const isFreeForm = FREE_FORM_FORMATS.has(format)
+              const code = isFreeForm ? raw : normalize(raw)
+              if (code && (isFreeForm || isValidLength(code))) {
                 onResult(code)
                 return
               }
@@ -86,8 +95,17 @@ async function createZxingScanner(): Promise<BarcodeScanner> {
     lib.BarcodeFormat.CODE_39,
     lib.BarcodeFormat.ITF,
     lib.BarcodeFormat.QR_CODE,
+    lib.BarcodeFormat.DATA_MATRIX,
+    lib.BarcodeFormat.AZTEC,
+    lib.BarcodeFormat.PDF_417,
   ])
   hints.set(lib.DecodeHintType.TRY_HARDER, true)
+  const FREE_FORM_BF = new Set([
+    lib.BarcodeFormat.QR_CODE,
+    lib.BarcodeFormat.DATA_MATRIX,
+    lib.BarcodeFormat.AZTEC,
+    lib.BarcodeFormat.PDF_417,
+  ])
 
   const reader = new BrowserMultiFormatReader(hints)
   let controls: { stop: () => void } | null = null
@@ -98,9 +116,10 @@ async function createZxingScanner(): Promise<BarcodeScanner> {
         if (!result) return
         const raw = result.getText()
         const format = result.getBarcodeFormat()
-        const code = format === lib.BarcodeFormat.QR_CODE ? raw : normalize(raw)
+        const isFreeForm = FREE_FORM_BF.has(format)
+        const code = isFreeForm ? raw : normalize(raw)
         if (!code) return
-        if (format !== lib.BarcodeFormat.QR_CODE && !isValidLength(code)) return
+        if (!isFreeForm && !isValidLength(code)) return
         ctrl.stop()
         onResult(code)
       })
