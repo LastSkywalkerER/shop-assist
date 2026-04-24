@@ -6,9 +6,49 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const USER_AGENT = 'ShopAssist/1.9.0 (https://github.com/LastSkywalkerer/shop-assist)'
+const USER_AGENT = 'ShopAssist/1.9.4 (https://github.com/LastSkywalkerer/shop-assist)'
 
-type LookupSource = 'off' | 'obf' | 'opf' | 'gs1' | null
+// GS1 Application Identifier `01` mandates a 14-digit GTIN; `id.gs1.org/01/<GTIN>`
+// returns 404 for shorter inputs (e.g. raw EAN-13). Pad on the left with zeros.
+function toGtin14(code: string): string {
+  if (code.length >= 14) return code
+  return code.padStart(14, '0')
+}
+
+// Canonical EAN-13 form: a 14-digit GTIN with a leading `0` trims down,
+// 12-digit UPC-A gets a leading `0`, shorter inputs pass through.
+function toCanonical(code: string): string {
+  if (code.length === 14 && code.startsWith('0')) return code.slice(1)
+  if (code.length === 12) return '0' + code
+  return code
+}
+
+// Build the ordered set of GTIN length variants to try against a length-
+// agnostic source like Open Food Facts: canonical EAN-13 first (best cache
+// hit rate), GTIN-14 second (some entries are indexed that way), raw input
+// last (already covered by the first two but kept for non-12/13/14 inputs).
+function gtinVariants(code: string): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const push = (v: string) => {
+    if (!seen.has(v)) { seen.add(v); out.push(v) }
+  }
+  push(toCanonical(code))
+  push(toGtin14(code))
+  push(code)
+  return out
+}
+
+// Mod-10 check digit — soft diagnostic so a mis-scan shows up in logs.
+function isValidGtinChecksum(gtin: string): boolean {
+  if (!/^\d{8}$|^\d{12,14}$/.test(gtin)) return false
+  const digits = gtin.split('').map((d) => Number(d))
+  const check = digits.pop() as number
+  const sum = digits.reverse().reduce((acc, d, i) => acc + d * (i % 2 === 0 ? 3 : 1), 0)
+  return ((10 - (sum % 10)) % 10) === check
+}
+
+type LookupSource = 'off' | 'obf' | 'opf' | 'vbg1' | 'gs1' | null
 
 interface LookupResult {
   found: boolean
@@ -153,23 +193,83 @@ async function queryOpenFacts(host: string, source: Exclude<LookupSource, null |
   }
 }
 
+// Verified-by-GS1: the global GS1 product registry. Accurate brand-authored
+// data exists here for many GTINs that are missing from Open Food Facts and
+// from the Digital Link resolver (notably Russian-prefix 460-469 items).
+// The public JSON API is member-only, so we scrape the HTML results page via
+// the fetch-meta edge function which handles antibot (ScrapingBee).
+async function queryVerifiedByGs1(barcode: string): Promise<LookupResult | null> {
+  const gtin14 = toGtin14(barcode)
+  const base = Deno.env.get('SUPABASE_URL')
+  const key = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!base || !key) return null
+
+  const resultsUrl = `https://www.gs1.org/services/verified-by-gs1/results?gtin=${gtin14}`
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+  try {
+    const res = await fetch(`${base}/functions/v1/fetch-meta`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${key}`,
+        apikey: key,
+      },
+      body: JSON.stringify({ url: resultsUrl, verifiedByGs1Gtin: gtin14 }),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const vbg = data?.verifiedByGs1
+    if (!vbg || !vbg.found) return null
+
+    // Prefer explicit Product description over OG title (the latter is usually
+    // "Verified by GS1 Results | GS1" — the page template's static title).
+    const name = (vbg.description || vbg.brand) as string | undefined
+    if (!name) return null
+
+    return {
+      found: true,
+      barcode,
+      name: name.slice(0, 200),
+      brand: vbg.brand,
+      category: vbg.category,
+      volume: vbg.volume,
+      officialUrl: resultsUrl,
+      source: 'vbg1',
+    }
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 // Best-effort fallback: GS1 Digital Link resolver redirects a GTIN to a brand-owner URL.
 // If that URL resolves to an HTML page, delegate to fetch-meta to extract OG title + image.
 async function queryGs1DigitalLink(barcode: string): Promise<LookupResult | null> {
+  // AI `01` requires exactly 14 digits — without this pad, a 13-digit EAN-13
+  // always returns 404 and the fallback silently fails.
+  const gtin14 = toGtin14(barcode)
   let redirectUrl: string | null = null
   const resolveController = new AbortController()
   const resolveTimeout = setTimeout(() => resolveController.abort(), 5000)
   try {
-    const res = await fetch(`https://id.gs1.org/01/${encodeURIComponent(barcode)}`, {
-      method: 'HEAD',
+    // GET + manual-redirect: some brand-owner servers behind the resolver
+    // don't honor HEAD (return 405 or strip Location). We only read headers,
+    // so the body is never consumed.
+    const res = await fetch(`https://id.gs1.org/01/${encodeURIComponent(gtin14)}`, {
+      method: 'GET',
       redirect: 'manual',
       signal: resolveController.signal,
-      headers: { 'User-Agent': USER_AGENT },
+      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
     })
     const loc = res.headers.get('location')
     if (res.status >= 300 && res.status < 400 && loc && /^https?:\/\//i.test(loc) && !loc.includes('id.gs1.org')) {
       redirectUrl = loc
     }
+    try { res.body?.cancel() } catch { /* best-effort */ }
   } catch {
     return null
   } finally {
@@ -232,21 +332,40 @@ serve(async (req) => {
     }
 
     const barcode = rawBarcode
+    if (!isValidGtinChecksum(barcode)) {
+      console.warn(`lookup ${barcode}: invalid GTIN check digit (continuing anyway)`)
+    }
 
+    const variants = gtinVariants(barcode)
+
+    // Open*Facts is length-agnostic but returns a specific row per stored
+    // length. Try canonical form first, then GTIN-14, to catch both.
     for (const { host, source } of FACTS_HOSTS) {
-      const hit = await queryOpenFacts(host, source, barcode)
-      console.log(`lookup ${barcode} @ ${source}: ${hit ? 'HIT' : 'miss'}`)
-      if (hit) {
-        return new Response(JSON.stringify(hit), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+      for (const variant of variants) {
+        const hit = await queryOpenFacts(host, source, variant)
+        console.log(`lookup ${barcode}[${variant}] @ ${source}: ${hit ? 'HIT' : 'miss'}`)
+        if (hit) {
+          // Always return the caller's original barcode string so the client
+          // can match its local DB row without caring about length variants.
+          return new Response(JSON.stringify({ ...hit, barcode }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
       }
+    }
+
+    const vbg1 = await queryVerifiedByGs1(barcode)
+    console.log(`lookup ${barcode} @ vbg1: ${vbg1 ? 'HIT' : 'miss'}`)
+    if (vbg1) {
+      return new Response(JSON.stringify({ ...vbg1, barcode }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     const gs1 = await queryGs1DigitalLink(barcode)
     console.log(`lookup ${barcode} @ gs1: ${gs1 ? 'HIT' : 'miss'}`)
     if (gs1) {
-      return new Response(JSON.stringify(gs1), {
+      return new Response(JSON.stringify({ ...gs1, barcode }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }

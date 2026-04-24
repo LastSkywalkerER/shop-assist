@@ -3,7 +3,7 @@ import { useRxCollection } from '../db/hooks'
 import type { ProductDocument } from '../db/types'
 import { lookupBarcode, type LookupResult } from '../lib/barcode/lookup'
 import { isValidBarcode } from '../lib/barcode/detector'
-import { extractGtin, normaliseGtin } from '../lib/barcode/gs1'
+import { extractGtin, normaliseGtin, toGtin14 } from '../lib/barcode/gs1'
 
 export type ScanFlowStage =
   | { kind: 'idle' }
@@ -38,7 +38,11 @@ export function useBarcodeScanFlow({ onResolved }: UseBarcodeScanFlowOptions) {
 
   const findLocal = useCallback(async (barcode: string): Promise<ProductDocument | null> => {
     if (!productsCol) return null
-    const doc = await productsCol.findOne({ selector: { barcode } }).exec()
+    // A product might have been saved historically under a different length
+    // variant (GTIN-14 DataMatrix vs EAN-13 1D scan). Match any of them so
+    // the user doesn't see duplicate creation prompts for the same GTIN.
+    const variants = Array.from(new Set([barcode, normaliseGtin(barcode), toGtin14(barcode)]))
+    const doc = await productsCol.findOne({ selector: { barcode: { $in: variants } } }).exec()
     return doc ? (doc.toJSON() as ProductDocument) : null
   }, [productsCol])
 
