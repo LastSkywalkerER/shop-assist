@@ -45,6 +45,11 @@ BackupFile {
 }
 ```
 
+## Workflow
+
+- Before committing, pushing, applying a database migration, deploying an edge function, or any other action with non-trivial side effects, **explain first what you found, why the action is needed, and what it will change** — then wait for the user to confirm. This applies especially to destructive steps (DELETE, DROP, removal of records, force operations). Do not chain "fix" actions silently.
+- Do not leave untracked files in the repo without explaining what they are and whether they should be committed or removed.
+
 ## Code Style
 
 - All comments and documentation must be in English
