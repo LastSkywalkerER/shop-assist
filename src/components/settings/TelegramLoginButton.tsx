@@ -1,18 +1,24 @@
 import { useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import { confirmNewAccountOrAbort } from '../../lib/supabase/accountHint'
+import { useConfirm } from '../../contexts/ConfirmDialogContext'
+import { getNewAccountWarning, clearAccountHint } from '../../lib/supabase/accountHint'
 import type { TelegramAuthData } from '../../lib/supabase/types'
 
 export function TelegramLoginButton() {
   const { login } = useAuth()
   const { showToast } = useToast()
+  const confirm = useConfirm()
 
   useEffect(() => {
     // Создать глобальную функцию для callback
     (window as any).onTelegramAuth = async (user: TelegramAuthData) => {
-      const ok = await confirmNewAccountOrAbort('telegram')
-      if (!ok) return
+      const warning = getNewAccountWarning('telegram')
+      if (warning) {
+        const ok = await confirm({ ...warning, destructive: true })
+        if (!ok) return
+        clearAccountHint()
+      }
       try {
         await login(user)
         showToast('Успешная авторизация!', 'success')
@@ -44,7 +50,7 @@ export function TelegramLoginButton() {
       }
       delete (window as any).onTelegramAuth
     }
-  }, [login])
+  }, [login, confirm, showToast])
 
   return <div id="telegram-login-container" className="mb-4" />
 }

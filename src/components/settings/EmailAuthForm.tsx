@@ -1,13 +1,15 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import { confirmNewAccountOrAbort } from '../../lib/supabase/accountHint'
+import { useConfirm } from '../../contexts/ConfirmDialogContext'
+import { getNewAccountWarning, clearAccountHint } from '../../lib/supabase/accountHint'
 
 type Mode = 'signin' | 'signup'
 
 export function EmailAuthForm() {
   const { signUpWithEmail, signInWithEmail } = useAuth()
   const { showToast } = useToast()
+  const confirm = useConfirm()
   const [mode, setMode] = useState<Mode>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -16,8 +18,12 @@ export function EmailAuthForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (busy) return
-    const ok = await confirmNewAccountOrAbort('email')
-    if (!ok) return
+    const warning = getNewAccountWarning('email')
+    if (warning) {
+      const ok = await confirm({ ...warning, destructive: true })
+      if (!ok) return
+      clearAccountHint()
+    }
     setBusy(true)
     try {
       if (mode === 'signup') {

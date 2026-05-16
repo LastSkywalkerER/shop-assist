@@ -48,3 +48,7 @@ BackupFile {
 ## Code Style
 
 - All comments and documentation must be in English
+- **Never use `window.confirm` / `window.alert` / `window.prompt`** or any other native browser dialogs. Use the project's shared UI:
+  - Yes/no confirmations → `useConfirm()` from `src/contexts/ConfirmDialogContext.tsx` (Promise-based, renders `ConfirmModal`).
+  - One-line feedback → `useToast()` from `src/contexts/ToastContext.tsx`.
+  - Text input or richer flows → build on top of `src/components/shared/ConfirmModal.tsx` / sibling modals; do not fall back to native dialogs.

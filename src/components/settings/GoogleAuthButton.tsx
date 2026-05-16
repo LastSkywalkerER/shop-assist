@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import { confirmNewAccountOrAbort } from '../../lib/supabase/accountHint'
+import { useConfirm } from '../../contexts/ConfirmDialogContext'
+import { getNewAccountWarning, clearAccountHint } from '../../lib/supabase/accountHint'
 
 interface Props {
   mode: 'signin' | 'link'
@@ -11,13 +12,18 @@ interface Props {
 export function GoogleAuthButton({ mode, label }: Props) {
   const { signInWithGoogle, linkGoogle } = useAuth()
   const { showToast } = useToast()
+  const confirm = useConfirm()
   const [busy, setBusy] = useState(false)
 
   const handleClick = async () => {
     if (busy) return
     if (mode === 'signin') {
-      const ok = await confirmNewAccountOrAbort('google')
-      if (!ok) return
+      const warning = getNewAccountWarning('google')
+      if (warning) {
+        const ok = await confirm({ ...warning, destructive: true })
+        if (!ok) return
+        clearAccountHint()
+      }
     }
     setBusy(true)
     try {

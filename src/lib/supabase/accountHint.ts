@@ -67,30 +67,31 @@ export function clearAccountHint(): void {
   try { localStorage.removeItem(HINT_KEY) } catch { /* ignore */ }
 }
 
+export interface NewAccountWarning {
+  title: string
+  message: string
+  confirmLabel: string
+  cancelLabel: string
+}
+
 /**
- * Returns a confirmation message if signing in via `target` would likely create
+ * Returns confirm-dialog content if signing in via `target` would likely create
  * a new account separate from the one this device used most recently.
  * Returns null when no hint exists or the target provider is already known.
  */
-export function getNewAccountWarning(target: Provider): string | null {
+export function getNewAccountWarning(target: Provider): NewAccountWarning | null {
   const hint = getAccountHint()
   if (!hint || hint.providers.length === 0) return null
   if (hint.providers.includes(target)) return null
 
   const knownList = hint.providers.map(providerLabel).join(' и ')
-  return (
-    `На этом устройстве вы недавно входили как «${hint.displayName}» через ${knownList}.\n\n` +
-    `Если продолжите вход через ${providerLabel(target)}, создастся НОВЫЙ аккаунт — данные старого никуда не денутся, но их не будет видно в новом.\n\n` +
-    `Чтобы добавить ${providerLabel(target)} к существующему аккаунту: войдите прежним способом (${knownList}) и нажмите «Привязать ${providerLabel(target)}» в Настройках.\n\n` +
-    `Всё равно создать новый аккаунт?`
-  )
-}
-
-/** Run a confirm before invoking an action that could fork the account. */
-export async function confirmNewAccountOrAbort(target: Provider): Promise<boolean> {
-  const warning = getNewAccountWarning(target)
-  if (!warning) return true
-  const ok = typeof window !== 'undefined' && window.confirm(warning)
-  if (ok) clearAccountHint()
-  return ok
+  return {
+    title: 'Создать новый аккаунт?',
+    message:
+      `На этом устройстве вы недавно входили как «${hint.displayName}» через ${knownList}. ` +
+      `Вход через ${providerLabel(target)} создаст НОВЫЙ аккаунт — данные старого не потеряются, но их не будет видно в новом. ` +
+      `Чтобы добавить ${providerLabel(target)} к существующему аккаунту, войдите прежним способом и нажмите «Привязать ${providerLabel(target)}» в Настройках.`,
+    confirmLabel: 'Создать новый',
+    cancelLabel: 'Отмена',
+  }
 }

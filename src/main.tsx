@@ -10,6 +10,7 @@ import { DatabaseContext } from './db/hooks'
 import { AuthProvider } from './contexts/AuthContext'
 import { SyncProvider } from './contexts/SyncContext'
 import { ToastProvider } from './contexts/ToastContext'
+import { ConfirmDialogProvider } from './contexts/ConfirmDialogContext'
 import { RecoveryScreen } from './components/RecoveryScreen'
 import { restoreBackupToDb, type BackupFile } from './db/backup'
 import eruda from 'eruda'
@@ -88,13 +89,15 @@ function Root() {
   return (
     <StrictMode>
       <ToastProvider>
-        <AuthProvider>
-          <DatabaseContext.Provider value={initState.db}>
-            <SyncProvider>
-              <App />
-            </SyncProvider>
-          </DatabaseContext.Provider>
-        </AuthProvider>
+        <ConfirmDialogProvider>
+          <AuthProvider>
+            <DatabaseContext.Provider value={initState.db}>
+              <SyncProvider>
+                <App />
+              </SyncProvider>
+            </DatabaseContext.Provider>
+          </AuthProvider>
+        </ConfirmDialogProvider>
       </ToastProvider>
     </StrictMode>
   )
