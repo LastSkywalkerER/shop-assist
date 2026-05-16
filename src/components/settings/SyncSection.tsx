@@ -2,8 +2,9 @@ import { useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useSync } from '../../contexts/SyncContext'
 import { useToast } from '../../contexts/ToastContext'
-import { TelegramLoginButton } from './TelegramLoginButton'
+import { AuthMethods } from './AuthMethods'
 import { SyncToggle } from './SyncToggle'
+import { getDisplayName, getAvatarUrl } from '../../lib/supabase/userDisplay'
 
 function formatRelativeTime(date: Date): string {
   const now = new Date()
@@ -59,7 +60,7 @@ export function SyncSection() {
         {!isAuthenticated ? (
           <>
             <div className="px-4 py-3">
-              <TelegramLoginButton />
+              <AuthMethods />
             </div>
             <div className="h-px bg-separator/20" />
             <div className="px-4 py-3">
@@ -68,16 +69,16 @@ export function SyncSection() {
             <div className="h-px bg-separator/20" />
             <div className="px-4 py-3">
               <p className="text-[13px] text-text-hint">
-                Войдите через Telegram для синхронизации данных между устройствами
+                Войдите через Telegram, Email или Google, чтобы синхронизировать данные между устройствами
               </p>
             </div>
           </>
         ) : (
           <>
             <div className="px-4 py-3 flex items-center gap-3">
-              {user?.photo_url ? (
+              {getAvatarUrl(user) ? (
                 <img
-                  src={user.photo_url}
+                  src={getAvatarUrl(user)!}
                   alt="Avatar"
                   className="w-10 h-10 rounded-full object-cover shrink-0"
                 />
@@ -87,7 +88,7 @@ export function SyncSection() {
                 </div>
               )}
               <p className="text-[15px] text-text font-medium">
-                {user?.username ? `@${user.username}` : user?.first_name}
+                {getDisplayName(user)}
               </p>
             </div>
 

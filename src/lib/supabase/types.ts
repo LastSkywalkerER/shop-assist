@@ -1,11 +1,16 @@
 export interface User {
   id: string
-  telegram_id: number
+  telegram_id?: number
   username?: string
-  first_name: string
+  first_name?: string
   last_name?: string
   photo_url?: string
-  auth_date: number
+  auth_date?: number
+  email?: string
+  google_id?: string
+  display_name?: string
+  avatar_url?: string
+  auth_user_id?: string
   created_at: string
   updated_at: string
 }
@@ -84,6 +89,12 @@ export interface AcceptInviteResponse {
 export interface RoomMember {
   userId: string
   displayName: string
-  telegramId: number
+  telegramId?: number
   photoUrl?: string
+}
+
+export interface AccountContext {
+  user: User
+  personal_room_id: string
+  rooms: RoomWithRole[]
 }

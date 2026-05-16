@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { retrieveLaunchParams } from '@telegram-apps/sdk-react'
 import {
   loginWithTelegram,
@@ -11,7 +11,15 @@ import {
   switchRoom as apiSwitchRoom,
   fetchUserRooms,
   acceptInvite,
+  signUpWithEmail as authSignUpWithEmail,
+  signInWithEmail as authSignInWithEmail,
+  signInWithGoogle as authSignInWithGoogle,
+  linkGoogleProvider as authLinkGoogleProvider,
+  setEmailPassword as authSetEmailPassword,
+  completeAccount,
+  type EmailSignUpResult,
 } from '../lib/supabase/auth'
+import { supabase } from '../lib/supabase/client'
 import type { User, TelegramAuthData, RoomWithRole, InviteResult } from '../lib/supabase/types'
 
 interface AuthContextType {
@@ -23,6 +31,11 @@ interface AuthContextType {
   isLoading: boolean
   inviteResult: InviteResult | null
   login: (telegramData: TelegramAuthData) => Promise<void>
+  signUpWithEmail: (email: string, password: string, displayName?: string) => Promise<EmailSignUpResult>
+  signInWithEmail: (email: string, password: string) => Promise<void>
+  signInWithGoogle: () => Promise<void>
+  linkGoogle: () => Promise<void>
+  setEmailPassword: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   switchRoom: (roomId: string) => Promise<void>
   refreshRooms: () => Promise<void>
@@ -110,6 +123,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [rooms, setRooms] = useState<RoomWithRole[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null)
+  // Avoid re-running completeAccount on every USER_UPDATED firing for the same auth user.
+  const lastCompletedAuthUserId = useRef<string | null>(null)
 
   const currentRoom = rooms.find(r => r.id === roomId) || null
 
@@ -120,6 +135,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('auth_rooms', JSON.stringify(freshRooms))
     } catch (e) {
       console.error('Failed to refresh rooms:', e)
+    }
+  }, [])
+
+  const applyAccountContext = useCallback(async (authUserId: string) => {
+    if (lastCompletedAuthUserId.current === authUserId) return
+    try {
+      const ctx = await completeAccount()
+      lastCompletedAuthUserId.current = authUserId
+      setUser(ctx.user)
+      const storedRoomId = localStorage.getItem('auth_room_id')
+      setRoomId(storedRoomId || ctx.personal_room_id)
+      setRooms(ctx.rooms)
+    } catch (e) {
+      console.error('completeAccount failed:', e)
     }
   }, [])
 
@@ -151,11 +180,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const storedUser = getStoredUser()
           const storedRoomId = getStoredRoomId()
           const storedRooms = getStoredRooms()
+          const sessionAuthUserId = session.user.id
+          const storedMatches = storedUser && storedUser.auth_user_id === sessionAuthUserId
 
-          if (storedUser && storedRoomId) {
+          if (storedMatches && storedRoomId) {
             setUser(storedUser)
             setRoomId(storedRoomId)
             setRooms(storedRooms)
+            lastCompletedAuthUserId.current = sessionAuthUserId
             setIsLoading(false)
             // Handle URL invite if present
             if (urlInviteCode) {
@@ -169,6 +201,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
             return
           }
+
+          // Session exists (e.g. returned from Google OAuth or email confirm)
+          // but stored state is empty/stale → finish account bootstrap.
+          await applyAccountContext(sessionAuthUserId)
+          if (urlInviteCode) handleUrlInvite(urlInviteCode)
+          return
         }
 
         // Try Mini App auto-login (all sources are synchronous, no delay needed)
@@ -196,11 +234,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     initAuth()
-  }, [])
+  }, [applyAccountContext])
+
+  // React to OAuth callback / email-confirm / linkIdentity / updateUser by re-running completeAccount.
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session?.user?.id) return
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
+        applyAccountContext(session.user.id)
+      }
+    })
+    return () => { data.subscription.unsubscribe() }
+  }, [applyAccountContext])
 
   const login = async (telegramData: TelegramAuthData) => {
     try {
       const response = await loginWithTelegram(telegramData)
+      lastCompletedAuthUserId.current = null
       setUser(response.user)
       setRoomId(response.room_id)
       setRooms(response.rooms || [])
@@ -210,9 +260,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const signUpWithEmail = async (email: string, password: string, displayName?: string) => {
+    return authSignUpWithEmail(email, password, displayName)
+    // If email confirmation is required, no session yet — onAuthStateChange will fire after confirm.
+    // If confirmation is off, SIGNED_IN fires immediately and applyAccountContext takes over.
+  }
+
+  const signInWithEmail = async (email: string, password: string) => {
+    const ctx = await authSignInWithEmail(email, password)
+    lastCompletedAuthUserId.current = ctx.user.auth_user_id ?? null
+    setUser(ctx.user)
+    setRoomId(localStorage.getItem('auth_room_id') || ctx.personal_room_id)
+    setRooms(ctx.rooms)
+  }
+
+  const signInWithGoogle = async () => {
+    await authSignInWithGoogle()
+    // Browser redirects to Google; on return, onAuthStateChange handles the rest.
+  }
+
+  const linkGoogle = async () => {
+    await authLinkGoogleProvider()
+  }
+
+  const setEmailPassword = async (email: string, password: string) => {
+    await authSetEmailPassword(email, password)
+    // USER_UPDATED fires; applyAccountContext will sync_account_email + refresh metadata.
+    // Force re-run because the auth user id is unchanged but data changed.
+    lastCompletedAuthUserId.current = null
+  }
+
   const logout = async () => {
     try {
       await authLogout()
+      lastCompletedAuthUserId.current = null
       setUser(null)
       setRoomId(null)
       setRooms([])
@@ -246,6 +327,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         inviteResult,
         login,
+        signUpWithEmail,
+        signInWithEmail,
+        signInWithGoogle,
+        linkGoogle,
+        setEmailPassword,
         logout,
         switchRoom,
         refreshRooms,
