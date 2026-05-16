@@ -1,5 +1,6 @@
 import { supabase } from './client'
 import type { TelegramAuthData, AuthResponse, SwitchRoomResponse, InviteResponse, AcceptInviteResponse, RoomWithRole, RoomMember, AccountContext } from './types'
+import { writeAccountHint } from './accountHint'
 
 const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 
@@ -48,6 +49,7 @@ export async function loginWithTelegram(authData: TelegramAuthData): Promise<Aut
 
   const data: AuthResponse = await response.json()
   await setSessionAndStore(data)
+  await writeAccountHint(data.user)
   return data
 }
 
@@ -65,6 +67,7 @@ export async function loginWithMiniApp(initDataRaw: string): Promise<AuthRespons
 
   const data: AuthResponse = await response.json()
   await setSessionAndStore(data)
+  await writeAccountHint(data.user)
   return data
 }
 
@@ -261,6 +264,10 @@ export async function completeAccount(): Promise<AccountContext> {
   localStorage.setItem('auth_user', JSON.stringify(ctx.user))
   localStorage.setItem('auth_room_id', roomId)
   localStorage.setItem('auth_rooms', JSON.stringify(ctx.rooms))
+
+  // Remember which providers this device has signed in with so we can warn
+  // the user before unintentionally creating a parallel account next time.
+  await writeAccountHint(ctx.user)
 
   return { user: ctx.user, personal_room_id: ctx.personal_room_id, rooms: ctx.rooms }
 }

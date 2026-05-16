@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
+import { confirmNewAccountOrAbort } from '../../lib/supabase/accountHint'
 import type { TelegramAuthData } from '../../lib/supabase/types'
 
 export function TelegramLoginButton() {
@@ -10,6 +11,8 @@ export function TelegramLoginButton() {
   useEffect(() => {
     // Создать глобальную функцию для callback
     (window as any).onTelegramAuth = async (user: TelegramAuthData) => {
+      const ok = await confirmNewAccountOrAbort('telegram')
+      if (!ok) return
       try {
         await login(user)
         showToast('Успешная авторизация!', 'success')

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
+import { confirmNewAccountOrAbort } from '../../lib/supabase/accountHint'
 
 type Mode = 'signin' | 'signup'
 
@@ -15,6 +16,8 @@ export function EmailAuthForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (busy) return
+    const ok = await confirmNewAccountOrAbort('email')
+    if (!ok) return
     setBusy(true)
     try {
       if (mode === 'signup') {

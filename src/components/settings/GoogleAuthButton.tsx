@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
+import { confirmNewAccountOrAbort } from '../../lib/supabase/accountHint'
 
 interface Props {
   mode: 'signin' | 'link'
@@ -14,6 +15,10 @@ export function GoogleAuthButton({ mode, label }: Props) {
 
   const handleClick = async () => {
     if (busy) return
+    if (mode === 'signin') {
+      const ok = await confirmNewAccountOrAbort('google')
+      if (!ok) return
+    }
     setBusy(true)
     try {
       if (mode === 'link') {
