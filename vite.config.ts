@@ -41,9 +41,24 @@ export default defineConfig({
       },
       workbox: {
         cleanupOutdatedCaches: true,
-        globPatterns: ['**/*.{js,css,svg,png,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webp,ico,woff2}'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api/],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.origin === 'https://telegram.org',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'telegram-cdn',
+              expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: ({ url }) => url.hostname.endsWith('.supabase.co') && /\/functions\/v1\//.test(url.pathname),
+            handler: 'NetworkOnly',
+          },
+        ],
       },
     }),
   ],
