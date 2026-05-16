@@ -71,6 +71,20 @@ export async function loginWithMiniApp(initDataRaw: string): Promise<AuthRespons
   return data
 }
 
+export async function linkTelegram(authData: TelegramAuthData): Promise<void> {
+  const headers = await getAuthHeader()
+  const response = await fetch(`${FUNCTIONS_URL}/telegram-auth`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(authData),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.error || 'Failed to link Telegram')
+  }
+}
+
 export async function switchRoom(roomId: string): Promise<SwitchRoomResponse> {
   const headers = await getAuthHeader()
   const response = await fetch(`${FUNCTIONS_URL}/switch-room`, {

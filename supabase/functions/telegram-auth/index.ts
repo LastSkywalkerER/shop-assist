@@ -83,6 +83,21 @@ async function findAuthUserByEmail(supabase: any, email: string): Promise<any | 
   }
 }
 
+/** Resolve and verify caller from a Bearer token. Returns the auth user id or null. */
+async function getAuthUserIdFromHeader(supabase: any, req: Request): Promise<string | null> {
+  const header = req.headers.get('Authorization') || req.headers.get('authorization')
+  if (!header || !header.startsWith('Bearer ')) return null
+  const token = header.slice(7).trim()
+  if (!token) return null
+  try {
+    const { data, error } = await supabase.auth.getUser(token)
+    if (error || !data?.user?.id) return null
+    return data.user.id
+  } catch {
+    return null
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -93,6 +108,17 @@ serve(async (req) => {
     const botToken = Deno.env.get('BOT_TOKEN')
     if (!botToken) throw new Error('BOT_TOKEN not configured')
 
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    )
+
+    // Detect link mode: a valid Bearer token attaches the Telegram identity to
+    // the current authenticated user instead of creating/replacing a session.
+    const callerAuthUserId = await getAuthUserIdFromHeader(supabase, req)
+    const isLinkMode = !!callerAuthUserId
+
+    // Verify Telegram auth payload (works for both sign-in and link mode).
     let userData: any
     let startParam: string | null = null
 
@@ -109,10 +135,62 @@ serve(async (req) => {
       userData = body
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+    // -----------------------------------------------------------------------
+    // LINK MODE
+    // -----------------------------------------------------------------------
+    if (isLinkMode) {
+      // Find caller's public.users row.
+      const { data: callerRow, error: callerErr } = await supabase
+        .from('users')
+        .select('id, auth_user_id, telegram_id')
+        .eq('auth_user_id', callerAuthUserId!)
+        .maybeSingle()
+
+      if (callerErr) throw callerErr
+      if (!callerRow) {
+        return new Response(JSON.stringify({ error: 'User row not found for current session' }), {
+          status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+
+      // Is this Telegram id already attached to someone else?
+      const { data: existingTgRow } = await supabase
+        .from('users')
+        .select('id, auth_user_id')
+        .eq('telegram_id', userData.id)
+        .maybeSingle()
+
+      if (existingTgRow && existingTgRow.id !== callerRow.id) {
+        return new Response(JSON.stringify({
+          error: 'This Telegram account is already linked to another user'
+        }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+
+      // Attach Telegram fields to the caller's row.
+      const { data: updated, error: updateErr } = await supabase
+        .from('users')
+        .update({
+          telegram_id: userData.id,
+          username: userData.username,
+          first_name: userData.first_name,
+          last_name: userData.last_name,
+          photo_url: userData.photo_url,
+          auth_date: userData.auth_date || Math.floor(Date.now() / 1000),
+        })
+        .eq('id', callerRow.id)
+        .select()
+        .single()
+
+      if (updateErr) throw updateErr
+
+      return new Response(JSON.stringify({ status: 'linked', user: updated }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    // -----------------------------------------------------------------------
+    // SIGN-IN MODE (existing flow)
+    // -----------------------------------------------------------------------
 
     // Upsert app user record
     const { data: user, error: userError } = await supabase
@@ -206,8 +284,8 @@ serve(async (req) => {
 
     const rooms = (memberships || []).map((m: any) => ({ ...m.rooms, role: m.role }))
 
-    // Resolve auth user: prefer stored auth_user_id, then search by email, then create
-    const email = `${userData.id}@telegram.user`
+    // Resolve auth user: prefer stored auth_user_id, then search by synthetic email, then create
+    const syntheticEmail = `${userData.id}@telegram.user`
     const tempPassword = `tg_${userData.id}_${Date.now()}`
 
     let authUserId: string
@@ -217,10 +295,15 @@ serve(async (req) => {
     if (user.auth_user_id) {
       authUserId = user.auth_user_id
 
+      // Read the auth user once and reuse for email + stored room_id resolution.
+      const existingAuthUser = await supabase.auth.admin.getUserById(authUserId)
+      // Use the real auth.users.email (could be a real email if the account was
+      // linked to Google/email; otherwise it's the synthetic @telegram.user form).
+      const realEmail = existingAuthUser.data?.user?.email || syntheticEmail
+
       // If no invite override, preserve the room_id already stored in JWT metadata
       // (user may have switched rooms previously — don't reset it to personal room)
       if (!inviteResult) {
-        const existingAuthUser = await supabase.auth.admin.getUserById(authUserId)
         const storedRoomId = existingAuthUser.data?.user?.user_metadata?.room_id
         if (storedRoomId) {
           // Verify the stored room is still a valid membership
@@ -246,18 +329,18 @@ serve(async (req) => {
       })
 
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email, password: tempPassword
+        email: realEmail, password: tempPassword
       })
       if (signInError) throw signInError
       accessToken = signInData.session!.access_token
       refreshToken = signInData.session!.refresh_token
     } else {
       // No stored auth_user_id — try to find existing auth user or create one
-      let existingAuthUser = await findAuthUserByEmail(supabase, email)
+      let existingAuthUser = await findAuthUserByEmail(supabase, syntheticEmail)
 
       if (!existingAuthUser) {
         const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-          email,
+          email: syntheticEmail,
           password: tempPassword,
           email_confirm: true,
           user_metadata: {
@@ -271,7 +354,7 @@ serve(async (req) => {
 
         if (authError) {
           if (authError.message?.toLowerCase().includes('already') || authError.message?.toLowerCase().includes('registered')) {
-            existingAuthUser = await findAuthUserByEmail(supabase, email)
+            existingAuthUser = await findAuthUserByEmail(supabase, syntheticEmail)
             if (!existingAuthUser) throw new Error(`Auth user exists but cannot be found: ${authError.message}`)
           } else {
             throw authError
@@ -295,7 +378,7 @@ serve(async (req) => {
       })
 
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email, password: tempPassword
+        email: syntheticEmail, password: tempPassword
       })
       if (signInError) throw signInError
       accessToken = signInData.session!.access_token

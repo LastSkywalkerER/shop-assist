@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { fetchAuthIdentities } from '../../lib/supabase/auth'
 import { GoogleAuthButton } from './GoogleAuthButton'
+import { TelegramLinkButton } from './TelegramLinkButton'
 
 type ProviderState = {
   email: { linked: boolean; value?: string; synthetic: boolean }
@@ -100,20 +101,9 @@ export function LinkedProvidersSection() {
         <ProviderRow
           icon="✈️"
           title="Telegram"
-          subtitle={providers.telegram.linked ? 'Привязан' : 'Скоро будет доступно'}
+          subtitle={providers.telegram.linked ? 'Привязан' : 'Привязать через Telegram-виджет'}
           linked={providers.telegram.linked}
-          action={
-            providers.telegram.linked ? null : (
-              <button
-                type="button"
-                disabled
-                title="Привязка Telegram к существующему аккаунту появится в следующем обновлении"
-                className="text-[13px] text-text-hint font-medium opacity-60 cursor-not-allowed"
-              >
-                Скоро
-              </button>
-            )
-          }
+          action={providers.telegram.linked ? null : <TelegramLinkButton />}
         />
       </div>
     </section>

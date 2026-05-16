@@ -15,6 +15,7 @@ import {
   signInWithEmail as authSignInWithEmail,
   signInWithGoogle as authSignInWithGoogle,
   linkGoogleProvider as authLinkGoogleProvider,
+  linkTelegram as authLinkTelegram,
   setEmailPassword as authSetEmailPassword,
   completeAccount,
   type EmailSignUpResult,
@@ -35,6 +36,7 @@ interface AuthContextType {
   signInWithEmail: (email: string, password: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
   linkGoogle: () => Promise<void>
+  linkTelegram: (authData: TelegramAuthData) => Promise<void>
   setEmailPassword: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   switchRoom: (roomId: string) => Promise<void>
@@ -283,6 +285,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await authLinkGoogleProvider()
   }
 
+  const linkTelegram = async (authData: TelegramAuthData) => {
+    await authLinkTelegram(authData)
+    // public.users was updated server-side without changing auth state, so
+    // onAuthStateChange won't fire. Force-refresh the context.
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user?.id) {
+      lastCompletedAuthUserId.current = null
+      await applyAccountContext(session.user.id)
+    }
+  }
+
   const setEmailPassword = async (email: string, password: string) => {
     await authSetEmailPassword(email, password)
     // USER_UPDATED fires; applyAccountContext will sync_account_email + refresh metadata.
@@ -331,6 +344,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInWithEmail,
         signInWithGoogle,
         linkGoogle,
+        linkTelegram,
         setEmailPassword,
         logout,
         switchRoom,
