@@ -1,22 +1,24 @@
-import { useState, useEffect } from 'react'
-import { initPWA, applyUpdate, checkForUpdate } from './register'
+import { useSyncExternalStore } from 'react'
+import {
+  applyUpdate,
+  checkForUpdate,
+  dismissOfflineReady,
+  dismissUpdate,
+  getPWAState,
+  subscribePWA,
+} from './register'
 
 export function useUpdatePrompt() {
-  const [needRefresh, setNeedRefresh] = useState(false)
-  const [offlineReady, setOfflineReady] = useState(false)
-
-  useEffect(() => {
-    initPWA({
-      onNeedRefresh: () => setNeedRefresh(true),
-      onOfflineReady: () => setOfflineReady(true),
-    })
-  }, [])
+  const state = useSyncExternalStore(subscribePWA, getPWAState, getPWAState)
 
   return {
-    needRefresh,
-    offlineReady,
+    needRefresh: state.needRefresh,
+    offlineReady: state.offlineReady,
     applyUpdate,
     checkForUpdate,
-    dismissUpdate: () => setNeedRefresh(false),
+    dismissUpdate: () => {
+      dismissUpdate()
+      dismissOfflineReady()
+    },
   }
 }
