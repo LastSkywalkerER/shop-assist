@@ -69,6 +69,10 @@ interface ReceiptMatches {
   expenseLabel: string | null
   /** Picked from categoryNames if there's a fit, otherwise null. */
   expenseCategoryName: string | null
+  /** Verbatim entry of catalog.storeNames if the receipt's store matches one
+   * the user already has. Otherwise null — client will create a new store
+   * from receipt.store.name. */
+  storeName: string | null
 }
 
 interface ReceiptPayload {
@@ -138,8 +142,9 @@ const RECEIPT_JSON_SCHEMA = {
           },
           expenseLabel: { type: ['string', 'null'] },
           expenseCategoryName: { type: ['string', 'null'] },
+          storeName: { type: ['string', 'null'] },
         },
-        required: ['items', 'expenseLabel', 'expenseCategoryName'],
+        required: ['items', 'expenseLabel', 'expenseCategoryName', 'storeName'],
       },
     },
     required: ['store', 'date', 'currency', 'total', 'items', 'confidence', 'needsEscalation', 'matches'],
@@ -191,7 +196,11 @@ B) Заполни matches. ВСЕГДА давай лучший доступны
 
    matches.expenseCategoryName — РОВНО строка из catalog.categoryNames которая лучше всего описывает чек по типу товаров (одежда → "Одежда"; продукты → "Еда"; аптека → "Здоровье"). Если ни одна не подходит — null.
 
-ВАЖНО: productName и expenseCategoryName — ТОЛЬКО точная подстановка из caталога, либо null. expenseLabel и cleanedName можно генерировать если в catalog нет подходящего.`
+   matches.storeName — определи магазин из receipt.store.name:
+     - Если в catalog.storeNames есть имя обозначающее тот же магазин (учти орфографию, перестановки, "Евроопт" ≈ "Евроопт гипер", "Лодэ" ≈ "ЛОДЭ", торговую марку без юр-формы) — берём его буква в букву.
+     - Если ни одного похожего — null (клиент создаст новый магазин из receipt.store.name).
+
+ВАЖНО: productName, expenseCategoryName, storeName — ТОЛЬКО точная подстановка из caталога, либо null. expenseLabel и cleanedName можно генерировать если в catalog нет подходящего.`
 
 function base64Bytes(b64: string): number {
   const padding = (b64.match(/=+$/)?.[0]?.length ?? 0)
@@ -359,6 +368,7 @@ async function callOpenRouter(
     if (!Array.isArray(m.items)) m.items = []
     if (m.expenseLabel === undefined) m.expenseLabel = null
     if (m.expenseCategoryName === undefined) m.expenseCategoryName = null
+    if (m.storeName === undefined) m.storeName = null
     for (const it of m.items) {
       if (typeof it.cleanedName !== 'string') it.cleanedName = ''
       if (it.productName === undefined) it.productName = null
@@ -375,6 +385,7 @@ async function callOpenRouter(
     match_items: parsed.matches?.items?.length ?? 0,
     expenseLabel: parsed.matches?.expenseLabel ?? null,
     expenseCategoryName: parsed.matches?.expenseCategoryName ?? null,
+    storeName: parsed.matches?.storeName ?? null,
     item_cleaned_names: parsed.matches?.items?.map((i) => i.cleanedName) ?? [],
   })
   log.block('openrouter:parsed_full', 'normalized payload', JSON.stringify(parsed, null, 2))
@@ -582,7 +593,9 @@ serve(async (req) => {
   try {
     log.step('openrouter:call', { pass: body.pass, model: body.model })
     result = await callOpenRouter(openrouterKey, body.model, messages, log, {
-      reasoningEffort: body.pass === 'validate' ? 'low' : undefined,
+      // medium keeps category/label matching correct; low confused the model
+      // on similar categories. 120s client timeout has plenty of headroom.
+      reasoningEffort: body.pass === 'validate' ? 'medium' : undefined,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'OpenRouter error'

@@ -29,6 +29,9 @@ export interface ReceiptMatches {
   expenseLabel: string | null
   /** Picked verbatim from catalog.categoryNames, or null. */
   expenseCategoryName: string | null
+  /** Picked verbatim from catalog.storeNames, or null if no existing store
+   * matches — in that case the client creates a new one from receipt.store. */
+  storeName: string | null
 }
 
 export interface ParsedReceipt {

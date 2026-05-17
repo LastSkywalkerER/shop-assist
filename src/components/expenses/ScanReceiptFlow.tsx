@@ -130,7 +130,6 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
       // Continue without the attachment — user can re-attach in the form.
     }
 
-    const matchedStore = matchStore(parsed.store?.name, stores)
     const modelMatches = parsed.matches ?? null
 
     // Lookup helpers — model returns names, we resolve to ids by exact
@@ -139,6 +138,20 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
     for (const p of products) productByName.set(p.name.trim().toLowerCase(), p)
     const categoryByName = new Map<string, ExpenseCategoryDocument>()
     for (const c of expenseCategories) categoryByName.set(c.name.trim().toLowerCase(), c)
+    const storeByName = new Map<string, StoreDocument>()
+    for (const s of stores) storeByName.set(s.name.trim().toLowerCase(), s)
+
+    // Store: trust the model's pick if it matched something in storeNames,
+    // otherwise fall back to local fuzzy match against receipt.store.name.
+    let matchedStore: { storeId: string } | null = null
+    if (modelMatches?.storeName) {
+      const s = storeByName.get(modelMatches.storeName.trim().toLowerCase())
+      if (s) matchedStore = { storeId: s.id }
+    }
+    if (!matchedStore) {
+      const local = matchStore(parsed.store?.name, stores)
+      if (local) matchedStore = { storeId: local.storeId }
+    }
 
     // Duplicate detection runs entirely locally — store+date+total triple.
     const dupMatch = matchExpenseForReceipt(parsed, matchedStore?.storeId ?? null, expenses)
@@ -212,7 +225,10 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
         manufacturer: it.manufacturer,
         packageVolume: it.packageVolume,
         variety,
-        addToProducts: !!bindPurchaseId,
+        // Always add scanned items to the product catalog so they appear on
+        // the main tab. If we matched an existing purchase, link to it;
+        // otherwise a new product/purchase will be created on save.
+        addToProducts: true,
         existingPurchaseId: bindPurchaseId,
       }
     })
