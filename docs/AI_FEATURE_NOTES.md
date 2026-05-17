@@ -107,7 +107,59 @@ CREATE POLICY my_table_select ON my_table FOR SELECT TO authenticated
 - Deploy `ocr-receipt` (any change to the prompt = re-deploy needed).
 - Bump `package.json` version per project rule.
 
-## Debugging the validate prompt
+## Debugging — Edge Function logs
+
+The deployed `ocr-receipt` function emits a structured log line at every
+step. Each line is prefixed with `[ocr-receipt:<reqId>:<step>:+<ms>]`
+where `<reqId>` is an 8-char id unique per request, so a single OCR
+scan can be grepped out of the log stream end-to-end.
+
+Steps you can expect, in order:
+
+```
+request:start                  — method + url
+env:check                      — flags for the three required env vars
+auth:ok                        — { auth_user_id, email }
+user_lookup                    — implicit on success (no extra line)
+jwt:metadata                   — { user_id, room_id }
+rate_limit:check               — { perMinute, perDay, limits }
+body:received                  — pass, model, sizes, flags
+prep:image                     — extract/escalate: decoded byte count
+prep:extract_prompt            — extract/escalate: full prompt as a multi-line block
+prep:catalog_stats             — validate: per-list counts
+prep:catalog_productNames_sample
+prep:catalog_categoryNames
+prep:catalog_storeNames
+prep:catalog_expenseLabels
+prep:catalog_recentExpenses    — full recentExpenses array
+prep:validate_receipt          — full receipt JSON entering validate
+prep:validate_catalog          — full catalog JSON entering validate
+prep:validate_prompt_size      — total chars + approx tokens
+prep:validate_prompt           — final user message verbatim
+openrouter:call                — { pass, model }
+openrouter:request_summary
+openrouter:msg                 — one block per message part (image_url is
+                                 logged with the data: prefix only, payload bytes count)
+openrouter:response_meta       — { http, ms }
+openrouter:usage               — token counts from the provider
+openrouter:content             — raw assistant content verbatim
+openrouter:parsed_summary      — counts + match hints
+openrouter:parsed_full         — normalized payload pretty-printed
+cost:estimate                  — { model, cost_usd, usage }
+usage_log:inserted             — or :insert_failed
+request:done                   — final summary
+```
+
+Errors and warnings appear as `console.warn`/`console.error` with the
+same prefix; in the Supabase dashboard they're tagged as `WARN`/`ERROR`.
+
+Reading the logs:
+- **Supabase Dashboard** → Edge Functions → `ocr-receipt` → Logs tab.
+- **From here** (via MCP): `get_logs(service: 'edge-function')` then
+  grep the response for `ocr-receipt:<reqId>` once you have a request
+  id (it shows up in the first log line of any scan).
+
+## Debugging — local script
 
 `scripts/debug-ocr-prompt.mjs` builds the exact catalog the client would
 send for a room and prints the full validate-pass user message
