@@ -6,6 +6,7 @@ import { isMiniApp } from '../../telegram/detect'
 import {
   getPushStatus,
   isPushSupported,
+  sendTestPush,
   setNotificationPreference,
   subscribeToPush,
   unsubscribeFromPush,
@@ -81,6 +82,29 @@ export function NotificationChannelsSection() {
     }
   }
 
+  const handleTestPush = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const res = await sendTestPush(user.id)
+      if (res.ok > 0) {
+        showToast(
+          `Отправлено ${res.ok} из ${res.total}. Если не пришло — проверь оптимизацию батареи для Chrome/ShopAssist.`,
+          'success',
+        )
+      } else if (res.gone === res.total && res.total > 0) {
+        showToast('Подписки устарели — переподпишись', 'error')
+      } else {
+        showToast(`Ошибка отправки: ${res.lastError ?? 'неизвестно'}`, 'error')
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showToast(`Не удалось отправить: ${msg}`, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleUnsubscribeDevice = async () => {
     if (busy) return
     const ok = await confirm({
@@ -137,6 +161,7 @@ export function NotificationChannelsSection() {
               busy={busy}
               onToggle={handleTogglePwa}
               onUnsubscribeDevice={handleUnsubscribeDevice}
+              onTestPush={handleTestPush}
             />
             <div className="h-px bg-separator/20" />
           </>
@@ -165,12 +190,14 @@ function PwaRow({
   busy,
   onToggle,
   onUnsubscribeDevice,
+  onTestPush,
 }: {
   status: PushSubscriptionStatus | null
   enabled: boolean
   busy: boolean
   onToggle: (v: boolean) => void
   onUnsubscribeDevice: () => void
+  onTestPush: () => void
 }) {
   const denied = status?.permission === 'denied'
   const vapidMissing = status ? !status.vapidConfigured : false
@@ -184,28 +211,43 @@ function PwaRow({
   })()
 
   const toggleDisabled = busy || vapidMissing || denied
+  const canTest = !!status?.hasSubscription && enabled && !busy
 
   return (
-    <Row
-      icon="🔔"
-      title="Push в PWA"
-      subtitle={subtitle}
-      action={
-        <div className="flex items-center gap-3">
-          <Toggle enabled={enabled} disabled={toggleDisabled} onChange={onToggle} />
-          {status?.hasSubscription && (
-            <button
-              type="button"
-              onClick={onUnsubscribeDevice}
-              disabled={busy}
-              className="text-[13px] text-danger font-medium disabled:opacity-50"
-            >
-              Отписать
-            </button>
-          )}
+    <>
+      <Row
+        icon="🔔"
+        title="Push в PWA"
+        subtitle={subtitle}
+        action={
+          <div className="flex items-center gap-3">
+            <Toggle enabled={enabled} disabled={toggleDisabled} onChange={onToggle} />
+            {status?.hasSubscription && (
+              <button
+                type="button"
+                onClick={onUnsubscribeDevice}
+                disabled={busy}
+                className="text-[13px] text-danger font-medium disabled:opacity-50"
+              >
+                Отписать
+              </button>
+            )}
+          </div>
+        }
+      />
+      {status?.hasSubscription && (
+        <div className="px-4 pb-3 -mt-1">
+          <button
+            type="button"
+            onClick={onTestPush}
+            disabled={!canTest}
+            className="text-[13px] text-primary font-medium disabled:opacity-50"
+          >
+            Отправить тестовый пуш
+          </button>
         </div>
-      }
-    />
+      )}
+    </>
   )
 }
 

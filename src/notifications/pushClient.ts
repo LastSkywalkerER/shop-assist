@@ -116,3 +116,22 @@ export async function setNotificationPreference(
   const { error } = await supabase.from('users').update({ [field]: value }).eq('id', userId)
   if (error) throw error
 }
+
+/**
+ * Triggers a real Web Push delivery to all of the current user's registered
+ * subscriptions via the edge function. Returns per-subscription stats so the
+ * UI can show "FCM accepted N pushes" vs "all failed".
+ */
+export async function sendTestPush(userId: string): Promise<{
+  total: number
+  ok: number
+  gone: number
+  failed: number
+  lastError?: string
+}> {
+  const { data, error } = await supabase.functions.invoke('send-notification', {
+    body: { action: 'test_push', user_id: userId },
+  })
+  if (error) throw error
+  return data as { total: number; ok: number; gone: number; failed: number; lastError?: string }
+}
