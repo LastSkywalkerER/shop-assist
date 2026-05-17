@@ -21,6 +21,7 @@ import {
   type EmailSignUpResult,
 } from '../lib/supabase/auth'
 import { supabase } from '../lib/supabase/client'
+import { getMiniAppInitData } from '../telegram/detect'
 import type { User, TelegramAuthData, RoomWithRole, InviteResult } from '../lib/supabase/types'
 
 interface AuthContextType {
@@ -45,35 +46,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
-
-/** Try to get Mini App initDataRaw from all available sources (all synchronous). */
-function getMiniAppInitData(): string | null {
-  // Method 1: @telegram-apps/sdk-react
-  try {
-    const launchParams = retrieveLaunchParams() as Record<string, unknown>
-    const raw = launchParams.initDataRaw as string | undefined
-    const hasUser = !!(launchParams.initData as { user?: unknown })?.user
-    if (raw && hasUser) return raw
-  } catch { /* not available */ }
-
-  // Method 2: window.Telegram.WebApp
-  if (typeof window !== 'undefined') {
-    const webApp = (window as { Telegram?: { WebApp?: Record<string, unknown> } }).Telegram?.WebApp
-    if (webApp) {
-      const raw = webApp.initData as string | undefined
-      const hasUser = !!(webApp.initDataUnsafe as { user?: unknown })?.user
-      if (raw && hasUser) return raw
-    }
-  }
-
-  // Method 3: window.__telegram__initParams
-  if (typeof window !== 'undefined') {
-    const initParams = (window as Window & { __telegram__initParams?: { tgWebAppData?: string } }).__telegram__initParams
-    if (initParams?.tgWebAppData) return initParams.tgWebAppData
-  }
-
-  return null
-}
 
 /** Extract invite code from URL query param (?invite=CODE) and clean the URL. */
 function extractInviteFromUrl(): string | null {

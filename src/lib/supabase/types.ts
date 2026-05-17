@@ -11,8 +11,21 @@ export interface User {
   display_name?: string
   avatar_url?: string
   auth_user_id?: string
+  notify_via_pwa?: boolean
+  notify_via_telegram?: boolean
   created_at: string
   updated_at: string
+}
+
+export interface PushSubscriptionRow {
+  id: string
+  user_id: string
+  endpoint: string
+  p256dh: string
+  auth: string
+  user_agent?: string
+  created_at: string
+  last_used_at: string
 }
 
 export interface Room {
