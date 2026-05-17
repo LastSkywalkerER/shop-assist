@@ -24,11 +24,24 @@ const MODEL_PRICES: Record<string, { in: number; out: number }> = {
 
 type Pass = 'extract' | 'validate' | 'escalate'
 
+interface CatalogExpenseLabel {
+  name: string
+  categories: string[]
+  stores: string[]
+  items: string[]
+}
+
+interface CatalogProduct {
+  name: string
+  categories: string[]
+  stores: string[]
+}
+
 interface Catalog {
-  productNames?: string[]
   categoryNames?: string[]
   storeNames?: string[]
-  expenseLabels?: string[]
+  expenseLabels?: CatalogExpenseLabel[]
+  products?: CatalogProduct[]
 }
 
 interface RequestBody {
@@ -167,11 +180,11 @@ const EXTRACT_PROMPT = `Ты — парсер кассовых чеков. На 
 
 const VALIDATE_PROMPT = `Ты валидатор и подбиратор связей для JSON-чека. Тебе дают:
 1) JSON-чек после OCR (поле receipt);
-2) catalog — ТОЛЬКО списки уникальных имён из пользовательской базы:
-   - productNames: имена существующих товаров (то как пользователь их пишет)
-   - categoryNames: имена категорий расходов
-   - storeNames: имена магазинов
-   - expenseLabels: имена которыми пользователь обычно называл расходы
+2) catalog — пользовательская база группированная по двум индексам:
+   - categoryNames: канонический плоский список категорий расходов (для поля expenseCategoryName);
+   - storeNames: канонический плоский список магазинов (для поля storeName);
+   - expenseLabels: индекс по уникальным меткам расходов. Каждая запись { name, categories[], stores[], items[] } — это label которым пользователь раньше называл такие расходы, и всё что с ним когда-либо ассоциировалось (категории, магазины, и имена товаров из чеков прикреплённых к таким расходам);
+   - products: индекс по уникальным товарам. Каждая запись { name, categories[], stores[] } — это товар который пользователь уже заводил, плюс категории расходов в которых он встречался и магазины в которых его покупали.
 
 A) Очисти receipt — НЕ добавляй и НЕ удаляй позиции:
    - сумма items[].amount ≈ total (допуск 1%); если total нет — посчитай.
@@ -181,26 +194,38 @@ A) Очисти receipt — НЕ добавляй и НЕ удаляй пози�
 
 B) Заполни matches. ВСЕГДА давай лучший доступный вариант — не оставляй null если есть хоть какой-то разумный кандидат.
 
-   matches.items: для КАЖДОЙ позиции по itemIndex (0-based):
-     1. cleanedName — ОБЯЗАТЕЛЬНО, короткое читаемое имя позиции (2-4 слова), очищенное от артикулов/штрих-кодов/размеров/серийников. Алгоритм выбора:
-        - Если в catalog.productNames есть имя которое описывает тот же товар (по смыслу) — берём его буква в букву.
-        - Иначе — формируем обобщённое название из читаемой части (например "футболка женская BF2621120062 (40/100/96, L, 9, 170)" → "Футболка женская"; "молоко Савушкин 1л 3.6%" → "Молоко").
-     2. productName — РОВНО строка из catalog.productNames если cleanedName взято оттуда. Иначе null.
-     3. variety — всё что вырезали в шаг 1 (артикул, размер, цвет, кодировка); null если вырезать нечего.
-     4. confidence — насколько уверены что productName указывает на тот же товар. ≥ 0.85 только при явном совпадении (название + бренд/объём/категория сходятся). Если productName=null — 0.
+   matches.items: для КАЖДОЙ позиции по itemIndex (0-based). Алгоритм подбора productName:
+     ШАГ 1. Скан catalog.products[] — ищем запись где products[i].name семантически соответствует позиции чека (тот же товар по смыслу: учти бренд/объём/категорию).
+     ШАГ 2. Если кандидатов несколько или сомневаешься — усиливай сигнал через ВЛОЖЕННЫЕ ПОЛЯ записи:
+        2a. в первую очередь — пересекается ли products[i].categories с типом товаров в чеке/категорией всего расхода (см. шаг расчёта expenseLabel ниже);
+        2b. во вторую — пересекается ли products[i].stores с магазином чека (receipt.store.name).
+        Эти пересечения повышают confidence; их отсутствие — понижают.
+     ШАГ 3. Заполни поля позиции:
+        - cleanedName — ОБЯЗАТЕЛЬНО, короткое читаемое имя (2-4 слова), без артикулов/штрих-кодов/размеров.
+          • Если нашли подходящий products[i] на шагах 1-2 — берём его name буква-в-букву.
+          • Иначе — формируем обобщённое имя из читаемой части ("футболка женская BF2621120062 (40/100/96, L, 9, 170)" → "Футболка женская"; "молоко Савушкин 1л 3.6%" → "Молоко").
+        - productName — РОВНО строка products[i].name если cleanedName взято оттуда, иначе null.
+        - variety — всё что вырезали в шаге 3.cleanedName (артикул, размер, цвет, кодировка); null если резать нечего.
+        - confidence — уверенность что productName = тот же товар. ≥ 0.85 только при явном совпадении (название + ВЛОЖЕННЫЕ категории/магазины сходятся). Если productName=null — 0.
 
-   matches.expenseLabel — лучший label для этого расхода:
-     - Если в catalog.expenseLabels есть подходящий (по смыслу содержимого чека) — берём ровно его.
-     - Иначе — генерируем короткое (1-3 слова) обобщённое имя в стиле каталога (например "Одежда", "Аптека", "Заправка"). Лучше использовать слово которое есть в categoryNames.
-     - null только если совсем нечего предложить.
+   matches.expenseLabel + matches.expenseCategoryName. Алгоритм:
+     ШАГ 1. Скан catalog.expenseLabels[] — ищем запись где expenseLabels[i].name семантически близок к ЧЕКУ В ЦЕЛОМ (по типу товаров, по магазину, по сумме). Например чек с одеждой → ищем label типа "Рубашки"/"Одежда"; чек с продуктами → "Магаз"/"Продукты".
+     ШАГ 2. Если кандидатов несколько или сомневаешься — усиливай через ВЛОЖЕННЫЕ ПОЛЯ:
+        2a. в ПЕРВУЮ очередь — пересекается ли expenseLabels[i].categories с типом товаров в чеке (если в чеке еда — категории расхода тяготеют к "Еда");
+        2b. во ВТОРУЮ — пересекается ли expenseLabels[i].items с позициями чека (если позиции "Молоко"/"Творог" встречаются в items label-а "Магаз" — сильный сигнал что это "Магаз");
+        2c. в ТРЕТЬЮ — пересекается ли expenseLabels[i].stores с магазином чека.
+     ШАГ 3. Если нашли подходящий expenseLabels[i]:
+        - expenseLabel = его name буква-в-букву;
+        - expenseCategoryName = одна из expenseLabels[i].categories (та что лучше соответствует чеку). Если их несколько — выбираем самую релевантную; если только одна — её.
+     ШАГ 4. Если ничего не нашли:
+        - expenseLabel — генерируем короткое (1-3 слова) обобщённое имя в стиле каталога ("Одежда", "Аптека", "Заправка"). Лучше использовать слово которое есть в categoryNames;
+        - expenseCategoryName — РОВНО строка из плоского catalog.categoryNames которая лучше всего описывает чек (одежда → "Одежда"; продукты → "Еда"; аптека → "Здоровье"). Если ни одна не подходит — null.
 
-   matches.expenseCategoryName — РОВНО строка из catalog.categoryNames которая лучше всего описывает чек по типу товаров (одежда → "Одежда"; продукты → "Еда"; аптека → "Здоровье"). Если ни одна не подходит — null.
-
-   matches.storeName — определи магазин из receipt.store.name:
-     - Если в catalog.storeNames есть имя обозначающее тот же магазин (учти орфографию, перестановки, "Евроопт" ≈ "Евроопт гипер", "Лодэ" ≈ "ЛОДЭ", торговую марку без юр-формы) — берём его буква в букву.
+   matches.storeName. Алгоритм:
+     - Если в catalog.storeNames есть имя обозначающее тот же магазин что receipt.store.name (учти орфографию, перестановки, "Евроопт" ≈ "Евроопт гипер", "Лодэ" ≈ "ЛОДЭ", торговую марку без юр-формы) — берём его буква-в-букву.
      - Если ни одного похожего — null (клиент создаст новый магазин из receipt.store.name).
 
-ВАЖНО: productName, expenseCategoryName, storeName — ТОЛЬКО точная подстановка из caталога, либо null. expenseLabel и cleanedName можно генерировать если в catalog нет подходящего.`
+ВАЖНО: productName, expenseCategoryName, storeName — ТОЛЬКО точная подстановка из соответствующего источника (products[].name / categoryNames / storeNames), либо null. expenseLabel и cleanedName можно генерировать если в catalog нет подходящего.`
 
 function base64Bytes(b64: string): number {
   const padding = (b64.match(/=+$/)?.[0]?.length ?? 0)
@@ -265,10 +290,10 @@ function shortId(): string {
 
 function catalogStats(catalog: Catalog): Record<string, number> {
   return {
-    productNames: catalog.productNames?.length ?? 0,
     categoryNames: catalog.categoryNames?.length ?? 0,
     storeNames: catalog.storeNames?.length ?? 0,
     expenseLabels: catalog.expenseLabels?.length ?? 0,
+    products: catalog.products?.length ?? 0,
   }
 }
 
@@ -570,10 +595,10 @@ serve(async (req) => {
     const catalog = body.catalog ?? {}
     const stats = catalogStats(catalog)
     log.step('prep:catalog_stats', stats)
-    if (catalog.productNames) log.step('prep:catalog_productNames_sample', catalog.productNames.slice(0, 20))
     if (catalog.categoryNames) log.step('prep:catalog_categoryNames', catalog.categoryNames)
     if (catalog.storeNames) log.step('prep:catalog_storeNames', catalog.storeNames)
-    if (catalog.expenseLabels) log.step('prep:catalog_expenseLabels', catalog.expenseLabels)
+    if (catalog.expenseLabels) log.step('prep:catalog_expenseLabels_names', catalog.expenseLabels.map((e) => e.name))
+    if (catalog.products) log.step('prep:catalog_products_names', catalog.products.map((p) => p.name))
 
     const receiptStr = JSON.stringify(body.previousJson, null, 2)
     const catalogStr = JSON.stringify(catalog, null, 2)

@@ -47,15 +47,36 @@ export interface ParsedReceipt {
 }
 
 /**
- * Names-only catalog. Just the user's unique strings — no IDs, no raw
- * rows. The client resolves the names the model returns back to RxDB
- * ids and runs duplicate-detection locally.
+ * Grouped catalog. Flat name lists (categoryNames, storeNames) are sent
+ * for fields the model must return verbatim. The expenseLabels[] and
+ * products[] indexes give the model context about how the user has
+ * historically grouped things, so it can match across stores/items not
+ * just by surface name similarity.
  */
 export interface OcrCatalog {
-  productNames: string[]
+  /** Canonical expense categories (for matches.expenseCategoryName). */
   categoryNames: string[]
+  /** Canonical stores (for matches.storeName). */
   storeNames: string[]
-  expenseLabels: string[]
+  /** Unique expense labels with everything historically attached. */
+  expenseLabels: Array<{
+    name: string
+    /** Expense categories ever set on expenses with this label. */
+    categories: string[]
+    /** Stores where expenses with this label were incurred. */
+    stores: string[]
+    /** Product names (via receipt items converted to purchases) that
+     * appeared in receipts attached to expenses with this label. */
+    items: string[]
+  }>
+  /** Unique products with cross-referenced context. */
+  products: Array<{
+    name: string
+    /** Expense categories of expenses whose receipts contained this product. */
+    categories: string[]
+    /** Stores where this product was bought (from purchase.storeId). */
+    stores: string[]
+  }>
 }
 
 export type Pass = 'extract' | 'validate' | 'escalate'

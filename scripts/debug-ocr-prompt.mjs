@@ -60,11 +60,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 // the deployed function actually sends.
 const VALIDATE_PROMPT = `Ты валидатор и подбиратор связей для JSON-чека. Тебе дают:
 1) JSON-чек после OCR (поле receipt);
-2) catalog — ТОЛЬКО списки уникальных имён из пользовательской базы:
-   - productNames: имена существующих товаров (то как пользователь их пишет)
-   - categoryNames: имена категорий расходов
-   - storeNames: имена магазинов
-   - expenseLabels: имена которыми пользователь обычно называл расходы
+2) catalog — пользовательская база группированная по двум индексам:
+   - categoryNames: канонический плоский список категорий расходов (для поля expenseCategoryName);
+   - storeNames: канонический плоский список магазинов (для поля storeName);
+   - expenseLabels: индекс по уникальным меткам расходов. Каждая запись { name, categories[], stores[], items[] } — это label которым пользователь раньше называл такие расходы, и всё что с ним когда-либо ассоциировалось (категории, магазины, и имена товаров из чеков прикреплённых к таким расходам);
+   - products: индекс по уникальным товарам. Каждая запись { name, categories[], stores[] } — это товар который пользователь уже заводил, плюс категории расходов в которых он встречался и магазины в которых его покупали.
 
 A) Очисти receipt — НЕ добавляй и НЕ удаляй позиции:
    - сумма items[].amount ≈ total (допуск 1%); если total нет — посчитай.
@@ -74,22 +74,38 @@ A) Очисти receipt — НЕ добавляй и НЕ удаляй пози�
 
 B) Заполни matches. ВСЕГДА давай лучший доступный вариант — не оставляй null если есть хоть какой-то разумный кандидат.
 
-   matches.items: для КАЖДОЙ позиции по itemIndex (0-based):
-     1. cleanedName — ОБЯЗАТЕЛЬНО, короткое читаемое имя позиции (2-4 слова), очищенное от артикулов/штрих-кодов/размеров/серийников. Алгоритм выбора:
-        - Если в catalog.productNames есть имя которое описывает тот же товар (по смыслу) — берём его буква в букву.
-        - Иначе — формируем обобщённое название из читаемой части (например "футболка женская BF2621120062 (40/100/96, L, 9, 170)" → "Футболка женская"; "молоко Савушкин 1л 3.6%" → "Молоко").
-     2. productName — РОВНО строка из catalog.productNames если cleanedName взято оттуда. Иначе null.
-     3. variety — всё что вырезали в шаг 1 (артикул, размер, цвет, кодировка); null если вырезать нечего.
-     4. confidence — насколько уверены что productName указывает на тот же товар. ≥ 0.85 только при явном совпадении (название + бренд/объём/категория сходятся). Если productName=null — 0.
+   matches.items: для КАЖДОЙ позиции по itemIndex (0-based). Алгоритм подбора productName:
+     ШАГ 1. Скан catalog.products[] — ищем запись где products[i].name семантически соответствует позиции чека (тот же товар по смыслу: учти бренд/объём/категорию).
+     ШАГ 2. Если кандидатов несколько или сомневаешься — усиливай сигнал через ВЛОЖЕННЫЕ ПОЛЯ записи:
+        2a. в первую очередь — пересекается ли products[i].categories с типом товаров в чеке/категорией всего расхода (см. шаг расчёта expenseLabel ниже);
+        2b. во вторую — пересекается ли products[i].stores с магазином чека (receipt.store.name).
+        Эти пересечения повышают confidence; их отсутствие — понижают.
+     ШАГ 3. Заполни поля позиции:
+        - cleanedName — ОБЯЗАТЕЛЬНО, короткое читаемое имя (2-4 слова), без артикулов/штрих-кодов/размеров.
+          • Если нашли подходящий products[i] на шагах 1-2 — берём его name буква-в-букву.
+          • Иначе — формируем обобщённое имя из читаемой части ("футболка женская BF2621120062 (40/100/96, L, 9, 170)" → "Футболка женская"; "молоко Савушкин 1л 3.6%" → "Молоко").
+        - productName — РОВНО строка products[i].name если cleanedName взято оттуда, иначе null.
+        - variety — всё что вырезали в шаге 3.cleanedName (артикул, размер, цвет, кодировка); null если резать нечего.
+        - confidence — уверенность что productName = тот же товар. ≥ 0.85 только при явном совпадении (название + ВЛОЖЕННЫЕ категории/магазины сходятся). Если productName=null — 0.
 
-   matches.expenseLabel — лучший label для этого расхода:
-     - Если в catalog.expenseLabels есть подходящий (по смыслу содержимого чека) — берём ровно его.
-     - Иначе — генерируем короткое (1-3 слова) обобщённое имя в стиле каталога (например "Одежда", "Аптека", "Заправка"). Лучше использовать слово которое есть в categoryNames.
-     - null только если совсем нечего предложить.
+   matches.expenseLabel + matches.expenseCategoryName. Алгоритм:
+     ШАГ 1. Скан catalog.expenseLabels[] — ищем запись где expenseLabels[i].name семантически близок к ЧЕКУ В ЦЕЛОМ (по типу товаров, по магазину, по сумме). Например чек с одеждой → ищем label типа "Рубашки"/"Одежда"; чек с продуктами → "Магаз"/"Продукты".
+     ШАГ 2. Если кандидатов несколько или сомневаешься — усиливай через ВЛОЖЕННЫЕ ПОЛЯ:
+        2a. в ПЕРВУЮ очередь — пересекается ли expenseLabels[i].categories с типом товаров в чеке (если в чеке еда — категории расхода тяготеют к "Еда");
+        2b. во ВТОРУЮ — пересекается ли expenseLabels[i].items с позициями чека (если позиции "Молоко"/"Творог" встречаются в items label-а "Магаз" — сильный сигнал что это "Магаз");
+        2c. в ТРЕТЬЮ — пересекается ли expenseLabels[i].stores с магазином чека.
+     ШАГ 3. Если нашли подходящий expenseLabels[i]:
+        - expenseLabel = его name буква-в-букву;
+        - expenseCategoryName = одна из expenseLabels[i].categories (та что лучше соответствует чеку). Если их несколько — выбираем самую релевантную; если только одна — её.
+     ШАГ 4. Если ничего не нашли:
+        - expenseLabel — генерируем короткое (1-3 слова) обобщённое имя в стиле каталога ("Одежда", "Аптека", "Заправка"). Лучше использовать слово которое есть в categoryNames;
+        - expenseCategoryName — РОВНО строка из плоского catalog.categoryNames которая лучше всего описывает чек (одежда → "Одежда"; продукты → "Еда"; аптека → "Здоровье"). Если ни одна не подходит — null.
 
-   matches.expenseCategoryName — РОВНО строка из catalog.categoryNames которая лучше всего описывает чек по типу товаров (одежда → "Одежда"; продукты → "Еда"; аптека → "Здоровье"). Если ни одна не подходит — null.
+   matches.storeName. Алгоритм:
+     - Если в catalog.storeNames есть имя обозначающее тот же магазин что receipt.store.name (учти орфографию, перестановки, "Евроопт" ≈ "Евроопт гипер", "Лодэ" ≈ "ЛОДЭ", торговую марку без юр-формы) — берём его буква-в-букву.
+     - Если ни одного похожего — null (клиент создаст новый магазин из receipt.store.name).
 
-ВАЖНО: productName и expenseCategoryName — ТОЛЬКО точная подстановка из caталога, либо null. expenseLabel и cleanedName можно генерировать если в catalog нет подходящего.`
+ВАЖНО: productName, expenseCategoryName, storeName — ТОЛЬКО точная подстановка из соответствующего источника (products[].name / categoryNames / storeNames), либо null. expenseLabel и cleanedName можно генерировать если в catalog нет подходящего.`
 
 const SAMPLE_RECEIPT = {
   store: { name: 'befree', address: 'ТРЦ Палаццо, г. Минск, ул. Тимирязева, 74, корпус А' },
@@ -115,43 +131,117 @@ async function fetchAlive(table, room, select) {
   return data ?? []
 }
 
-function dedupe(arr, cap) {
-  const seen = new Set()
-  const out = []
-  for (const v of arr) {
-    if (!v) continue
-    const trimmed = String(v).trim()
-    if (!trimmed || seen.has(trimmed)) continue
-    seen.add(trimmed)
-    out.push(trimmed)
-    if (out.length >= cap) break
-  }
-  return out
+function dedupeStrings(arr) {
+  return [...new Set(arr.map((v) => (v ?? '').toString().trim()).filter(Boolean))]
 }
 
 async function buildCatalog(roomId) {
-  const [products, categories, stores, expenses] = await Promise.all([
-    fetchAlive('products_sync', roomId, 'id, name, created_at'),
+  const [products, categories, stores, expenses, receipts, receiptItems, purchases] = await Promise.all([
+    fetchAlive('products_sync', roomId, 'id, name'),
     fetchAlive('expense_categories_sync', roomId, 'id, name'),
     fetchAlive('stores_sync', roomId, 'id, name'),
-    fetchAlive('expenses_sync', roomId, 'id, name, date'),
+    fetchAlive('expenses_sync', roomId, 'id, name, store_id, category_id'),
+    fetchAlive('receipts_sync', roomId, 'id, expense_id'),
+    fetchAlive('receipt_items_sync', roomId, 'id, receipt_id, converted_to_purchase_id'),
+    fetchAlive('purchases_sync', roomId, 'id, product_id, store_id'),
   ])
-  const sortedExpenses = [...expenses].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+
+  const productById = new Map(products.map((p) => [p.id, p]))
+  const storeNameById = new Map(stores.map((s) => [s.id, s.name]))
+  const categoryNameById = new Map(categories.map((c) => [c.id, c.name]))
+
+  const receiptToExpense = new Map(receipts.map((r) => [r.id, r.expense_id]))
+  const expenseToReceipts = new Map()
+  for (const r of receipts) {
+    const arr = expenseToReceipts.get(r.expense_id) ?? []
+    arr.push(r.id)
+    expenseToReceipts.set(r.expense_id, arr)
+  }
+  const receiptToItems = new Map()
+  for (const ri of receiptItems) {
+    const arr = receiptToItems.get(ri.receipt_id) ?? []
+    arr.push(ri)
+    receiptToItems.set(ri.receipt_id, arr)
+  }
+  const purchaseById = new Map(purchases.map((p) => [p.id, p]))
+  const expenseById = new Map(expenses.map((e) => [e.id, e]))
+
+  // expenseLabels[]
+  const labelMap = new Map()
+  for (const exp of expenses) {
+    const name = exp.name?.trim()
+    if (!name) continue
+    let entry = labelMap.get(name)
+    if (!entry) {
+      entry = { name, categories: new Set(), stores: new Set(), items: new Set() }
+      labelMap.set(name, entry)
+    }
+    const catName = exp.category_id ? categoryNameById.get(exp.category_id) : null
+    if (catName) entry.categories.add(catName)
+    const stName = exp.store_id ? storeNameById.get(exp.store_id) : null
+    if (stName) entry.stores.add(stName)
+    const rids = expenseToReceipts.get(exp.id) ?? []
+    for (const rid of rids) {
+      const items = receiptToItems.get(rid) ?? []
+      for (const ri of items) {
+        if (!ri.converted_to_purchase_id) continue
+        const purchase = purchaseById.get(ri.converted_to_purchase_id)
+        if (!purchase) continue
+        const product = productById.get(purchase.product_id)
+        if (product?.name) entry.items.add(product.name.trim())
+      }
+    }
+  }
+
+  // products[]
+  const purchaseToExpense = new Map()
+  for (const ri of receiptItems) {
+    if (!ri.converted_to_purchase_id) continue
+    const expId = receiptToExpense.get(ri.receipt_id)
+    if (expId) purchaseToExpense.set(ri.converted_to_purchase_id, expId)
+  }
+  const productMap = new Map()
+  for (const purchase of purchases) {
+    const product = productById.get(purchase.product_id)
+    if (!product?.name) continue
+    let entry = productMap.get(product.id)
+    if (!entry) {
+      entry = { name: product.name.trim(), categories: new Set(), stores: new Set() }
+      productMap.set(product.id, entry)
+    }
+    const stName = purchase.store_id ? storeNameById.get(purchase.store_id) : null
+    if (stName) entry.stores.add(stName)
+    const expId = purchaseToExpense.get(purchase.id)
+    if (expId) {
+      const exp = expenseById.get(expId)
+      const catName = exp?.category_id ? categoryNameById.get(exp.category_id) : null
+      if (catName) entry.categories.add(catName)
+    }
+  }
 
   return {
-    productNames: dedupe(products.map((p) => p.name), 300),
-    categoryNames: dedupe(categories.map((c) => c.name), 100),
-    storeNames: dedupe(stores.map((s) => s.name), 80),
-    expenseLabels: dedupe(sortedExpenses.map((e) => e.name), 100),
+    categoryNames: dedupeStrings(categories.map((c) => c.name)),
+    storeNames:    dedupeStrings(stores.map((s) => s.name)),
+    expenseLabels: [...labelMap.values()].map((e) => ({
+      name: e.name,
+      categories: [...e.categories],
+      stores:     [...e.stores],
+      items:      [...e.items],
+    })),
+    products: [...productMap.values()].map((p) => ({
+      name: p.name,
+      categories: [...p.categories],
+      stores:     [...p.stores],
+    })),
   }
 }
 
 function summary(catalog) {
   return {
-    productNames: catalog.productNames.length,
     categoryNames: catalog.categoryNames.length,
     storeNames: catalog.storeNames.length,
     expenseLabels: catalog.expenseLabels.length,
+    products: catalog.products.length,
   }
 }
 

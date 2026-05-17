@@ -68,29 +68,117 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
       return
     }
 
-    // Build a names-only catalog. The model returns names; the client
-    // resolves them back to ids below. Keeps the validate prompt small.
-    const dedupe = (arr: Array<string | undefined | null>, cap: number): string[] => {
-      const seen = new Set<string>()
-      const out: string[] = []
-      for (const v of arr) {
-        if (!v) continue
-        const trimmed = v.trim()
-        if (!trimmed || seen.has(trimmed)) continue
-        seen.add(trimmed)
-        out.push(trimmed)
-        if (out.length >= cap) break
+    // Build a grouped catalog. The flat name lists are kept only for fields
+    // the model must return verbatim (storeName, expenseCategoryName).
+    // expenseLabels[] and products[] are the indexes the model walks for
+    // matching — see VALIDATE_PROMPT in supabase/functions/ocr-receipt for
+    // the exact algorithm.
+    const productById = new Map<string, ProductDocument>()
+    for (const p of products) productById.set(p.id, p)
+    const storeNameById = new Map<string, string>()
+    for (const s of stores) storeNameById.set(s.id, s.name)
+    const categoryNameById = new Map<string, string>()
+    for (const c of expenseCategories) categoryNameById.set(c.id, c.name)
+
+    // receipt.id → expense.id
+    const receiptToExpense = new Map<string, string>()
+    for (const r of receipts) receiptToExpense.set(r.id, r.expenseId)
+    // expense.id → receipt.id[] (one expense may have multiple receipts)
+    const expenseToReceipts = new Map<string, string[]>()
+    for (const r of receipts) {
+      const arr = expenseToReceipts.get(r.expenseId) ?? []
+      arr.push(r.id)
+      expenseToReceipts.set(r.expenseId, arr)
+    }
+    // receipt.id → receiptItem[]
+    const receiptToItems = new Map<string, typeof receiptItems>()
+    for (const ri of receiptItems) {
+      const arr = receiptToItems.get(ri.receiptId) ?? []
+      arr.push(ri)
+      receiptToItems.set(ri.receiptId, arr)
+    }
+    // purchase.id → purchase (for convertedToPurchaseId lookups)
+    const purchaseById = new Map<string, PurchaseDocument>()
+    for (const p of purchases) purchaseById.set(p.id, p)
+
+    // Index 1: expenseLabels[]. Group expenses by their .name. For each
+    // group collect the unique categories, stores, and product-names
+    // (resolved through receipts → converted purchases → product).
+    type LabelEntry = { name: string; categories: Set<string>; stores: Set<string>; items: Set<string> }
+    const labelMap = new Map<string, LabelEntry>()
+    for (const exp of expenses) {
+      const name = exp.name?.trim()
+      if (!name) continue
+      let entry = labelMap.get(name)
+      if (!entry) {
+        entry = { name, categories: new Set(), stores: new Set(), items: new Set() }
+        labelMap.set(name, entry)
       }
-      return out
+      const catName = exp.categoryId ? categoryNameById.get(exp.categoryId) : undefined
+      if (catName) entry.categories.add(catName)
+      const stName = exp.storeId ? storeNameById.get(exp.storeId) : undefined
+      if (stName) entry.stores.add(stName)
+      // Walk receipts → items → converted purchase → product.name
+      const rids = expenseToReceipts.get(exp.id) ?? []
+      for (const rid of rids) {
+        const items = receiptToItems.get(rid) ?? []
+        for (const ri of items) {
+          if (!ri.convertedToPurchaseId) continue
+          const purchase = purchaseById.get(ri.convertedToPurchaseId)
+          if (!purchase) continue
+          const product = productById.get(purchase.productId)
+          if (product?.name) entry.items.add(product.name.trim())
+        }
+      }
     }
 
-    const sortedExpenses = [...expenses].sort((a, b) => b.date.localeCompare(a.date))
+    // Index 2: products[]. Group purchases by productId; cross-reference
+    // each purchase back to its expense (via receiptItem.convertedToPurchaseId
+    // → receipt.expenseId) to collect the expense categories where this
+    // product showed up. Stores come directly from purchase.storeId.
+    type ProductEntry = { name: string; categories: Set<string>; stores: Set<string> }
+    const productMap = new Map<string, ProductEntry>()
+    // Reverse index: purchase.id → expense.id (via receiptItem chain).
+    const purchaseToExpense = new Map<string, string>()
+    for (const ri of receiptItems) {
+      if (!ri.convertedToPurchaseId) continue
+      const expId = receiptToExpense.get(ri.receiptId)
+      if (expId) purchaseToExpense.set(ri.convertedToPurchaseId, expId)
+    }
+    const expenseById = new Map<string, ExpenseDocument>()
+    for (const e of expenses) expenseById.set(e.id, e)
+    for (const purchase of purchases) {
+      const product = productById.get(purchase.productId)
+      if (!product?.name) continue
+      let entry = productMap.get(product.id)
+      if (!entry) {
+        entry = { name: product.name.trim(), categories: new Set(), stores: new Set() }
+        productMap.set(product.id, entry)
+      }
+      const stName = purchase.storeId ? storeNameById.get(purchase.storeId) : undefined
+      if (stName) entry.stores.add(stName)
+      const expId = purchaseToExpense.get(purchase.id)
+      if (expId) {
+        const exp = expenseById.get(expId)
+        const catName = exp?.categoryId ? categoryNameById.get(exp.categoryId) : undefined
+        if (catName) entry.categories.add(catName)
+      }
+    }
 
     const catalog: OcrCatalog = {
-      productNames: dedupe(products.map((p) => p.name), 300),
-      categoryNames: dedupe(expenseCategories.map((c) => c.name), 100),
-      storeNames: dedupe(stores.map((s) => s.name), 80),
-      expenseLabels: dedupe(sortedExpenses.map((e) => e.name), 100),
+      categoryNames: [...new Set(expenseCategories.map((c) => c.name.trim()).filter(Boolean))],
+      storeNames:    [...new Set(stores.map((s) => s.name.trim()).filter(Boolean))],
+      expenseLabels: [...labelMap.values()].map((e) => ({
+        name: e.name,
+        categories: [...e.categories],
+        stores:     [...e.stores],
+        items:      [...e.items],
+      })),
+      products: [...productMap.values()].map((p) => ({
+        name: p.name,
+        categories: [...p.categories],
+        stores:     [...p.stores],
+      })),
     }
 
     setPass('extract')

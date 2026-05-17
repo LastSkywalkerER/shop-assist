@@ -19,9 +19,24 @@ touching any of: `supabase/functions/ocr-receipt`, `room_ai_settings`,
   `ai_usage_log`.
 - Parsed receipt is consumed in-flight; raw OCR JSON is NOT persisted (no
   schema bump).
-- Matching is driven by the validate-pass model with a **names-only**
-  catalog — nothing else, no records, no IDs:
-  - `productNames[]`, `categoryNames[]`, `storeNames[]`, `expenseLabels[]`
+- Matching is driven by the validate-pass model with a **grouped**
+  catalog. Two flat lists for fields the model must return verbatim,
+  two grouped indexes that give the model context to actually match
+  against the user's history:
+  - `categoryNames[]` — flat (for `expenseCategoryName` field)
+  - `storeNames[]` — flat (for `storeName` field)
+  - `expenseLabels[]` — each entry `{ name, categories[], stores[],
+    items[] }`. The model walks this index to find the historical
+    label that fits the receipt, using the nested lists as
+    confirmation signals (categories > items > stores).
+  - `products[]` — each entry `{ name, categories[], stores[] }`. Same
+    pattern for per-item matching: scan product names, confirm via
+    nested categories/stores. `items` inside `expenseLabels[]` are
+    populated through `receipt → receiptItem.convertedToPurchaseId →
+    purchase.productId → product.name` so they're clean canonical
+    names, not raw OCR strings. `categories` inside `products[]` are
+    expense categories of expenses whose receipts contained that
+    product (same chain in reverse).
 - For each receipt item the model returns:
   - `cleanedName` — short readable name, ALWAYS provided. Either a
     verbatim entry from `productNames` or a generalized fallback like
