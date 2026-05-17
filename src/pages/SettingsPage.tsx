@@ -6,6 +6,7 @@ import { LinkedProvidersSection } from '../components/settings/LinkedProvidersSe
 import { NotificationChannelsSection } from '../components/settings/NotificationChannelsSection'
 import { RoomsSection } from '../components/settings/RoomsSection'
 import { BackupSection } from '../components/settings/BackupSection'
+import { AiSection } from '../components/settings/AiSection'
 import { showBackButton } from '../telegram/backButton'
 
 export function SettingsPage() {
@@ -21,6 +22,7 @@ export function SettingsPage() {
       <LinkedProvidersSection />
       <NotificationChannelsSection />
       <RoomsSection />
+      <AiSection />
       <BackupSection />
       <AppInfoSection />
     </div>

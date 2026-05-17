@@ -29,7 +29,22 @@ export function AddExpense() {
   const location = useLocation()
   const { user, roomId } = useAuth()
 
-  const prefilledItems = (location.state as { prefilledItems?: ShoppingListItemDocument[] } | null)?.prefilledItems
+  const locState = location.state as {
+    prefilledItems?: ShoppingListItemDocument[]
+    ocrPrefill?: {
+      storeId?: string
+      storeName?: string
+      storeAddress?: string
+      date?: string
+      currency?: string
+      total?: number
+      items?: ReceiptItem[]
+      attachments?: AttachmentFile[]
+      confidence?: number
+    }
+  } | null
+  const prefilledItems = locState?.prefilledItems
+  const ocrPrefill = locState?.ocrPrefill
 
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const storesCol = useRxCollection<StoreDocument>('stores')
@@ -57,17 +72,19 @@ export function AddExpense() {
 
   const [name, setName] = useState('')
   const [selectedStore, setSelectedStore] = useState<StoreDocument | null>(null)
-  const [amount, setAmount] = useState('')
-  const [currency, setCurrency] = useState(DEFAULT_CURRENCY)
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [amount, setAmount] = useState(() => (ocrPrefill?.total ? ocrPrefill.total.toFixed(2) : ''))
+  const [currency, setCurrency] = useState(ocrPrefill?.currency ?? DEFAULT_CURRENCY)
+  const [date, setDate] = useState(() => ocrPrefill?.date || new Date().toISOString().split('T')[0])
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryDocument | null>(null)
   const [notes, setNotes] = useState('')
-  const [attachments, setAttachments] = useState<AttachmentFile[]>([])
-  const [receiptItems, setReceiptItems] = useState<ReceiptItem[]>(() =>
-    prefilledItems?.length
-      ? prefilledItems.map((item) => ({ id: crypto.randomUUID(), name: item.name, amount: 0, currency: DEFAULT_CURRENCY }))
-      : []
-  )
+  const [attachments, setAttachments] = useState<AttachmentFile[]>(() => ocrPrefill?.attachments ?? [])
+  const [receiptItems, setReceiptItems] = useState<ReceiptItem[]>(() => {
+    if (ocrPrefill?.items?.length) return ocrPrefill.items
+    if (prefilledItems?.length) {
+      return prefilledItems.map((item) => ({ id: crypto.randomUUID(), name: item.name, amount: 0, currency: DEFAULT_CURRENCY }))
+    }
+    return []
+  })
   const [creatorName, setCreatorName] = useState(user?.first_name ?? '')
   const [saving, setSaving] = useState(false)
 
@@ -105,6 +122,21 @@ export function AddExpense() {
     setSelectedStore(store)
     return store
   }
+
+  // Resolve OCR-prefilled store: auto-select if we matched an existing one,
+  // otherwise create a new store from the parsed name once stores load.
+  useEffect(() => {
+    if (!ocrPrefill || selectedStore) return
+    if (ocrPrefill.storeId) {
+      const existing = stores.find((s) => s.id === ocrPrefill.storeId)
+      if (existing) setSelectedStore(existing)
+      return
+    }
+    if (ocrPrefill.storeName && storesCol) {
+      void handleCreateStore({ name: ocrPrefill.storeName, address: ocrPrefill.storeAddress })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stores, ocrPrefill?.storeId, ocrPrefill?.storeName])
 
   const handleCreateCategory = async (categoryName: string) => {
     if (!categoriesCol) return
@@ -285,6 +317,21 @@ export function AddExpense() {
           Отмена
         </button>
       </div>
+
+      {ocrPrefill && (
+        <div className="bg-primary/10 border border-primary/20 rounded-2xl px-3 py-2.5 flex items-center gap-2.5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary-text shrink-0">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+            <circle cx="12" cy="13" r="4" />
+          </svg>
+          <div className="text-[12px] text-text-hint flex-1 min-w-0">
+            Распознано с фото · проверьте поля перед сохранением
+            {typeof ocrPrefill.confidence === 'number' && (
+              <span className="ml-1.5 text-text/60">({Math.round(ocrPrefill.confidence * 100)}%)</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Expense name */}
       <ExpenseNameAutocomplete

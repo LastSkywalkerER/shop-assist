@@ -16,6 +16,8 @@ import { ExpenseQuickAddBar } from './ExpenseQuickAddBar'
 import { ConfirmModal } from '../shared/ConfirmModal'
 import type { ExpenseRowData } from './ExpenseRow'
 import { blobStoreRemove } from '../../db/blobStore'
+import { useAiSettings } from '../../contexts/AiSettingsContext'
+import { ScanReceiptFlow } from './ScanReceiptFlow'
 
 export function ExpensesDashboard() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
@@ -23,6 +25,9 @@ export function ExpensesDashboard() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [scanning, setScanning] = useState(false)
+
+  const { aiEnabled } = useAiSettings()
 
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const storesCol = useRxCollection<StoreDocument>('stores')
@@ -230,8 +235,26 @@ export function ExpensesDashboard() {
           </button>
         </>
       ) : (
-        <ExpenseQuickAddBar expenses={expensesForQuickAdd} />
+        <>
+          {aiEnabled && (
+            <button
+              type="button"
+              onClick={() => setScanning(true)}
+              aria-label="Сканировать чек"
+              title="Сканировать чек"
+              className="fixed bottom-[88px] right-5 w-[52px] h-[52px] bg-surface border border-separator/40 text-primary-text rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+            </button>
+          )}
+          <ExpenseQuickAddBar expenses={expensesForQuickAdd} />
+        </>
       )}
+
+      {scanning && <ScanReceiptFlow onClose={() => setScanning(false)} />}
 
       {/* Confirm delete modal */}
       {confirmDelete && (
