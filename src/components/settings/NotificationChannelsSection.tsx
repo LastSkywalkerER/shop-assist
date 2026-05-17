@@ -48,31 +48,45 @@ export function NotificationChannelsSection() {
 
   if (!isAuthenticated || !user) return null
 
-  const handleSubscribe = async () => {
+  /** Single PWA toggle handler — triggers permission prompt + subscribe on first ON. */
+  const handleTogglePwa = async (value: boolean) => {
     if (busy) return
     setBusy(true)
+    const prev = pwaEnabled
+    setPwaEnabled(value)
     try {
-      await subscribeToPush(user.id)
-      if (!pwaEnabled) {
+      if (value) {
+        // Turning ON: ensure subscription exists (asks browser permission if needed).
+        const status = pushStatus ?? (await getPushStatus())
+        if (!status.supported) throw new Error('Браузер не поддерживает уведомления')
+        if (!status.vapidConfigured) throw new Error('VAPID-ключ не настроен')
+        if (status.permission === 'denied') {
+          throw new Error('Разрешите уведомления в настройках браузера')
+        }
+        if (!status.hasSubscription) {
+          await subscribeToPush(user.id) // requests permission, then subscribes
+        }
         await setNotificationPreference(user.id, 'notify_via_pwa', true)
-        setPwaEnabled(true)
+        await refreshPushStatus()
+        showToast('PWA-уведомления включены', 'success')
+      } else {
+        await setNotificationPreference(user.id, 'notify_via_pwa', false)
       }
-      await refreshPushStatus()
-      showToast('PWA-уведомления включены', 'success')
     } catch (err) {
+      setPwaEnabled(prev)
       const msg = err instanceof Error ? err.message : String(err)
-      showToast(`Не удалось включить уведомления: ${msg}`, 'error')
+      showToast(`Не удалось: ${msg}`, 'error')
     } finally {
       setBusy(false)
     }
   }
 
-  const handleUnsubscribe = async () => {
+  const handleUnsubscribeDevice = async () => {
     if (busy) return
     const ok = await confirm({
-      title: 'Отключить PWA-пуши?',
-      message: 'Подписка этого устройства будет удалена. Уведомления перестанут приходить здесь.',
-      confirmLabel: 'Отключить',
+      title: 'Отписать это устройство?',
+      message: 'Подписка этого устройства будет удалена. Можно будет подключить заново.',
+      confirmLabel: 'Отписать',
       destructive: true,
     })
     if (!ok) return
@@ -80,25 +94,10 @@ export function NotificationChannelsSection() {
     try {
       await unsubscribeFromPush()
       await refreshPushStatus()
-      showToast('Подписка отключена', 'success')
+      showToast('Устройство отписано', 'success')
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       showToast(`Не удалось отписаться: ${msg}`, 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const handleTogglePwa = async (value: boolean) => {
-    if (busy) return
-    setBusy(true)
-    setPwaEnabled(value)
-    try {
-      await setNotificationPreference(user.id, 'notify_via_pwa', value)
-    } catch (err) {
-      setPwaEnabled(!value)
-      const msg = err instanceof Error ? err.message : String(err)
-      showToast(`Не удалось сохранить: ${msg}`, 'error')
     } finally {
       setBusy(false)
     }
@@ -136,9 +135,8 @@ export function NotificationChannelsSection() {
               status={pushStatus}
               enabled={pwaEnabled}
               busy={busy}
-              onSubscribe={handleSubscribe}
-              onUnsubscribe={handleUnsubscribe}
               onToggle={handleTogglePwa}
+              onUnsubscribeDevice={handleUnsubscribeDevice}
             />
             <div className="h-px bg-separator/20" />
           </>
@@ -165,57 +163,49 @@ function PwaRow({
   status,
   enabled,
   busy,
-  onSubscribe,
-  onUnsubscribe,
   onToggle,
+  onUnsubscribeDevice,
 }: {
   status: PushSubscriptionStatus | null
   enabled: boolean
   busy: boolean
-  onSubscribe: () => void
-  onUnsubscribe: () => void
   onToggle: (v: boolean) => void
+  onUnsubscribeDevice: () => void
 }) {
+  const denied = status?.permission === 'denied'
+  const vapidMissing = status ? !status.vapidConfigured : false
+
   const subtitle = (() => {
     if (!status) return 'Проверка…'
-    if (!status.vapidConfigured) return 'VAPID-ключ не настроен'
-    if (status.permission === 'denied') return 'Разрешите уведомления в настройках браузера'
-    if (!status.hasSubscription) return 'Подписка не активна'
-    return enabled ? 'Подписка активна' : 'Подписка активна, доставка выключена'
+    if (vapidMissing) return 'VAPID-ключ не настроен'
+    if (denied) return 'Уведомления запрещены в браузере. Разрешите вручную в настройках сайта.'
+    if (!status.hasSubscription) return enabled ? 'Нажмите тогл, чтобы подписаться' : 'Выключено'
+    return enabled ? 'Подписка активна' : 'Подписка сохранена, доставка выключена'
   })()
 
-  const action = (() => {
-    if (!status || !status.vapidConfigured) return null
-    if (status.permission === 'denied') return null
-    if (!status.hasSubscription) {
-      return (
-        <button
-          type="button"
-          onClick={onSubscribe}
-          disabled={busy}
-          className="text-[13px] text-primary font-medium disabled:opacity-50"
-        >
-          Включить
-        </button>
-      )
-    }
-    return (
-      <div className="flex items-center gap-3">
-        <Toggle enabled={enabled} disabled={busy} onChange={onToggle} />
-        <button
-          type="button"
-          onClick={onUnsubscribe}
-          disabled={busy}
-          className="text-[13px] text-danger font-medium disabled:opacity-50"
-        >
-          Отписаться
-        </button>
-      </div>
-    )
-  })()
+  const toggleDisabled = busy || vapidMissing || denied
 
   return (
-    <Row icon="🔔" title="Push в PWA" subtitle={subtitle} action={action} />
+    <Row
+      icon="🔔"
+      title="Push в PWA"
+      subtitle={subtitle}
+      action={
+        <div className="flex items-center gap-3">
+          <Toggle enabled={enabled} disabled={toggleDisabled} onChange={onToggle} />
+          {status?.hasSubscription && (
+            <button
+              type="button"
+              onClick={onUnsubscribeDevice}
+              disabled={busy}
+              className="text-[13px] text-danger font-medium disabled:opacity-50"
+            >
+              Отписать
+            </button>
+          )}
+        </div>
+      }
+    />
   )
 }
 
