@@ -13,19 +13,20 @@ CREATE TABLE IF NOT EXISTS room_ai_settings (
 
 ALTER TABLE room_ai_settings ENABLE ROW LEVEL SECURITY;
 
--- Any member of the current room (room_id in JWT) can read and upsert.
+-- Any member of the current room (user_metadata.room_id in JWT) can read and
+-- upsert. Matches the pattern used by *_sync tables and push_subscriptions.
 CREATE POLICY "room_ai_settings_select"
   ON room_ai_settings FOR SELECT TO authenticated
-  USING (room_id = (auth.jwt() ->> 'room_id')::uuid);
+  USING ((room_id)::text = ((auth.jwt() -> 'user_metadata') ->> 'room_id'));
 
 CREATE POLICY "room_ai_settings_insert"
   ON room_ai_settings FOR INSERT TO authenticated
-  WITH CHECK (room_id = (auth.jwt() ->> 'room_id')::uuid);
+  WITH CHECK ((room_id)::text = ((auth.jwt() -> 'user_metadata') ->> 'room_id'));
 
 CREATE POLICY "room_ai_settings_update"
   ON room_ai_settings FOR UPDATE TO authenticated
-  USING (room_id = (auth.jwt() ->> 'room_id')::uuid)
-  WITH CHECK (room_id = (auth.jwt() ->> 'room_id')::uuid);
+  USING ((room_id)::text = ((auth.jwt() -> 'user_metadata') ->> 'room_id'))
+  WITH CHECK ((room_id)::text = ((auth.jwt() -> 'user_metadata') ->> 'room_id'));
 
 -- Per-call usage log used for rate-limiting and future cost stats.
 -- Writes are performed only by the Edge Function via service role; clients
