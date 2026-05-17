@@ -20,21 +20,30 @@ touching any of: `supabase/functions/ocr-receipt`, `room_ai_settings`,
 - Parsed receipt is consumed in-flight; raw OCR JSON is NOT persisted (no
   schema bump).
 - Matching is driven by the validate-pass model with a **names-only**
-  catalog (no UUIDs in the prompt, deduplicated lists):
-  - `productNames[]`, `categoryNames[]`, `storeNames[]`,
-    `expenseLabels[]` — unique strings the user has
-  - `recentExpenses[]` — last 50 expenses with `{label, category,
-    store, date, total, items}` so the model can read the user's
-    pattern (which items used to live under which label).
-- The model returns names too — `productName`, `expenseLabel`,
-  `expenseCategoryName`, and a `duplicateDate/duplicateTotal/
-  duplicateStoreName` triple to describe a possible dupe.
-- `ScanReceiptFlow` resolves names back to ids by exact (lowercased)
-  lookup against the same lists it just sent. For anything below
-  confidence 0.8 or that doesn't match a known name, it falls back to
-  local heuristics:
+  catalog — nothing else, no records, no IDs:
+  - `productNames[]`, `categoryNames[]`, `storeNames[]`, `expenseLabels[]`
+- For each receipt item the model returns:
+  - `cleanedName` — short readable name, ALWAYS provided. Either a
+    verbatim entry from `productNames` or a generalized fallback like
+    "Футболка женская" (with codes/sizes stripped).
+  - `productName` — only when `cleanedName` is verbatim from the
+    catalog and the model is sure it's the same product.
+  - `variety` — codes / sizes / article numbers stripped from the raw
+    name, parked into the item's variety field on save.
+  - `confidence` — for the productName binding only.
+- For the expense as a whole the model returns:
+  - `expenseLabel` — picked from `expenseLabels` if a clear fit
+    exists, otherwise a short generated label.
+  - `expenseCategoryName` — verbatim entry from `categoryNames` or
+    null.
+- `ScanReceiptFlow` resolves names to ids by exact (lowercased)
+  lookup against the same lists it sent. Label/category are trusted
+  unconditionally (they're just pre-fills the user can edit), product
+  binding to an existing purchase still requires `confidence ≥ 0.8`.
+- Duplicate detection is fully local: `matchExpenseForReceipt`
+  compares store + date (±1 day) + total (±1%).
+- Local fallbacks when the model returns nothing:
   - `matchPurchaseForItem` (token-Jaccard + same-store bonus)
-  - `matchExpenseForReceipt` (same store + ±1 day + total within 1%)
   - `suggestExpenseLabel` (product→category + historical receipt-item
     →expense voting, history weighted ×1.5)
 

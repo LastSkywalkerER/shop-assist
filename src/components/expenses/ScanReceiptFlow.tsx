@@ -70,25 +70,6 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
 
     // Build a names-only catalog. The model returns names; the client
     // resolves them back to ids below. Keeps the validate prompt small.
-    const storeNameById = new Map(stores.map((s) => [s.id, s.name]))
-    const categoryNameById = new Map(expenseCategories.map((c) => [c.id, c.name]))
-
-    // expense.id → up to 5 receipt-item names (for the label inference
-    // signal — "past Одежда expense had a футболка in it").
-    const expenseIdToItems = new Map<string, string[]>()
-    {
-      const receiptIdToItems = new Map<string, string[]>()
-      for (const ri of receiptItems) {
-        const arr = receiptIdToItems.get(ri.receiptId) ?? []
-        if (arr.length < 5) arr.push(ri.name)
-        receiptIdToItems.set(ri.receiptId, arr)
-      }
-      for (const r of receipts) {
-        const items = receiptIdToItems.get(r.id)
-        if (items && items.length) expenseIdToItems.set(r.expenseId, items)
-      }
-    }
-
     const dedupe = (arr: Array<string | undefined | null>, cap: number): string[] => {
       const seen = new Set<string>()
       const out: string[] = []
@@ -107,17 +88,9 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
 
     const catalog: OcrCatalog = {
       productNames: dedupe(products.map((p) => p.name), 300),
-      categoryNames: expenseCategories.map((c) => c.name),
+      categoryNames: dedupe(expenseCategories.map((c) => c.name), 100),
       storeNames: dedupe(stores.map((s) => s.name), 80),
-      expenseLabels: dedupe(sortedExpenses.map((e) => e.name), 50),
-      recentExpenses: sortedExpenses.slice(0, 50).map((e) => ({
-        label: e.name ?? null,
-        category: e.categoryId ? (categoryNameById.get(e.categoryId) ?? null) : null,
-        store: e.storeId ? (storeNameById.get(e.storeId) ?? null) : null,
-        date: e.date.slice(0, 10),
-        total: e.amount,
-        items: expenseIdToItems.get(e.id) ?? [],
-      })),
+      expenseLabels: dedupe(sortedExpenses.map((e) => e.name), 100),
     }
 
     setPass('extract')
@@ -166,38 +139,11 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
     for (const p of products) productByName.set(p.name.trim().toLowerCase(), p)
     const categoryByName = new Map<string, ExpenseCategoryDocument>()
     for (const c of expenseCategories) categoryByName.set(c.name.trim().toLowerCase(), c)
-    const storeByName = new Map<string, StoreDocument>()
-    for (const s of stores) storeByName.set(s.name.trim().toLowerCase(), s)
 
-    // Duplicate detection: model describes the dupe by date/total/store,
-    // we resolve it to a concrete expense locally.
-    let duplicateExpenseId: string | null = null
-    if (modelMatches?.duplicateConfidence
-      && modelMatches.duplicateConfidence >= AUTO_BIND_THRESHOLD
-      && modelMatches.duplicateDate && modelMatches.duplicateTotal != null) {
-      const dupStoreId = modelMatches.duplicateStoreName
-        ? storeByName.get(modelMatches.duplicateStoreName.trim().toLowerCase())?.id
-        : undefined
-      const targetTime = Date.parse(modelMatches.duplicateDate)
-      if (!Number.isNaN(targetTime)) {
-        const tolerance = Math.max(0.5, modelMatches.duplicateTotal * 0.01)
-        const hit = expenses.find((e) => {
-          if (dupStoreId && e.storeId !== dupStoreId) return false
-          const t = Date.parse(e.date)
-          if (Number.isNaN(t)) return false
-          if (Math.abs(t - targetTime) > 24 * 60 * 60_000) return false
-          return Math.abs(e.amount - modelMatches.duplicateTotal!) <= tolerance
-        })
-        if (hit) duplicateExpenseId = hit.id
-      }
-    }
-    if (!duplicateExpenseId) {
-      const fallback = matchExpenseForReceipt(parsed, matchedStore?.storeId ?? null, expenses)
-      if (fallback && fallback.confidence >= AUTO_BIND_THRESHOLD) duplicateExpenseId = fallback.expenseId
-    }
-
-    if (duplicateExpenseId) {
-      const exp = expenses.find((e) => e.id === duplicateExpenseId)
+    // Duplicate detection runs entirely locally — store+date+total triple.
+    const dupMatch = matchExpenseForReceipt(parsed, matchedStore?.storeId ?? null, expenses)
+    if (dupMatch && dupMatch.confidence >= AUTO_BIND_THRESHOLD) {
+      const exp = expenses.find((e) => e.id === dupMatch.expenseId)
       const storeName = exp?.storeId ? stores.find((s) => s.id === exp.storeId)?.name : undefined
       const openExisting = await confirm({
         title: 'Похоже, такой расход уже есть',
@@ -212,16 +158,35 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
       }
     }
 
-    // Per-item match: model returns productName; resolve to id locally.
-    const modelItemByIndex = new Map<number, { productName: string | null; confidence: number }>()
+    // Per-item: model gives us cleanedName + optional productName + variety.
+    // Use those verbatim; if productName matches a real product above the
+    // bind threshold, link this item to the latest purchase of that product.
+    const modelItemByIndex = new Map<number, {
+      cleanedName: string
+      productName: string | null
+      variety: string | null
+      confidence: number
+    }>()
     for (const m of modelMatches?.items ?? []) {
-      modelItemByIndex.set(m.itemIndex, { productName: m.productName, confidence: m.confidence })
+      modelItemByIndex.set(m.itemIndex, {
+        cleanedName: m.cleanedName,
+        productName: m.productName,
+        variety: m.variety,
+        confidence: m.confidence,
+      })
     }
 
-    // Build prefill payload for AddExpense.
     const items: ReceiptItem[] = parsed.items.map((it, idx) => {
-      let bindPurchaseId: string | undefined
       const modelMatch = modelItemByIndex.get(idx)
+
+      // Display name: prefer model's cleanedName, fall back to raw OCR name.
+      const displayName = (modelMatch?.cleanedName?.trim()) || it.name
+
+      // Variety: prefer model's extracted codes, fall back to nothing.
+      const variety = modelMatch?.variety?.trim() || undefined
+
+      // Bind to existing purchase only when the model is confident.
+      let bindPurchaseId: string | undefined
       if (modelMatch?.productName && modelMatch.confidence >= AUTO_BIND_THRESHOLD) {
         const product = productByName.get(modelMatch.productName.trim().toLowerCase())
         if (product) {
@@ -236,16 +201,17 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
         }
       }
       if (!bindPurchaseId) {
-        const localMatch = matchPurchaseForItem(it, products, purchases, matchedStore?.storeId)
+        const localMatch = matchPurchaseForItem({ ...it, name: displayName }, products, purchases, matchedStore?.storeId)
         if (localMatch && localMatch.confidence >= AUTO_BIND_THRESHOLD) bindPurchaseId = localMatch.purchaseId
       }
       return {
         id: crypto.randomUUID(),
-        name: it.name,
+        name: displayName,
         amount: it.amount,
         currency: parsed.currency,
         manufacturer: it.manufacturer,
         packageVolume: it.packageVolume,
+        variety,
         addToProducts: !!bindPurchaseId,
         existingPurchaseId: bindPurchaseId,
       }
@@ -258,17 +224,16 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
       size: fileBlob.size,
     }]
 
-    // Expense label/category: model returns names; resolve category name
-    // to id; fall back to local Jaccard for either field when missing.
-    let suggestedName: string | undefined
+    // Expense label / category: trust the model's pick directly (no threshold —
+    // it's a pre-fill that the user can edit). Category goes through an exact
+    // name → id lookup, label is free-form text.
+    let suggestedName: string | undefined = modelMatches?.expenseLabel?.trim() || undefined
     let suggestedCategoryId: string | undefined
-    if (modelMatches && modelMatches.expenseLabelConfidence >= AUTO_BIND_THRESHOLD) {
-      if (modelMatches.expenseLabel) suggestedName = modelMatches.expenseLabel
-      if (modelMatches.expenseCategoryName) {
-        const cat = categoryByName.get(modelMatches.expenseCategoryName.trim().toLowerCase())
-        if (cat) suggestedCategoryId = cat.id
-      }
+    if (modelMatches?.expenseCategoryName) {
+      const cat = categoryByName.get(modelMatches.expenseCategoryName.trim().toLowerCase())
+      if (cat) suggestedCategoryId = cat.id
     }
+    // Local heuristic as a last-resort fallback if the model returned nothing.
     if (!suggestedName || !suggestedCategoryId) {
       const localSuggestion = suggestExpenseLabel(parsed.items, {
         products,

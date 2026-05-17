@@ -24,21 +24,11 @@ const MODEL_PRICES: Record<string, { in: number; out: number }> = {
 
 type Pass = 'extract' | 'validate' | 'escalate'
 
-interface CatalogExpense {
-  label: string | null
-  category: string | null
-  store: string | null
-  date: string | null
-  total: number | null
-  items: string[]
-}
-
 interface Catalog {
   productNames?: string[]
   categoryNames?: string[]
   storeNames?: string[]
   expenseLabels?: string[]
-  recentExpenses?: CatalogExpense[]
 }
 
 interface RequestBody {
@@ -60,19 +50,25 @@ interface ReceiptItemPayload {
 
 interface ItemMatch {
   itemIndex: number
+  /** Always provided: a clean, generalized short name (no codes/sizes/articles). */
+  cleanedName: string
+  /** Set only if cleanedName is a verbatim entry of catalog.productNames AND it is
+   * the same product. Otherwise null. */
   productName: string | null
+  /** Codes / sizes / article numbers stripped from the raw item name (or null). */
+  variety: string | null
+  /** Confidence that productName (when non-null) is actually the same item. */
   confidence: number
 }
 
 interface ReceiptMatches {
   items: ItemMatch[]
+  /** Best label for this expense. Picked from expenseLabels if a clear match exists,
+   * otherwise a short (1-3 words) generated label in the user's style. Always set
+   * unless the model truly has nothing to suggest. */
   expenseLabel: string | null
+  /** Picked from categoryNames if there's a fit, otherwise null. */
   expenseCategoryName: string | null
-  expenseLabelConfidence: number
-  duplicateDate: string | null
-  duplicateTotal: number | null
-  duplicateStoreName: string | null
-  duplicateConfidence: number
 }
 
 interface ReceiptPayload {
@@ -132,21 +128,18 @@ const RECEIPT_JSON_SCHEMA = {
               additionalProperties: false,
               properties: {
                 itemIndex: { type: 'integer', minimum: 0 },
+                cleanedName: { type: 'string' },
                 productName: { type: ['string', 'null'] },
+                variety: { type: ['string', 'null'] },
                 confidence: { type: 'number', minimum: 0, maximum: 1 },
               },
-              required: ['itemIndex', 'productName', 'confidence'],
+              required: ['itemIndex', 'cleanedName', 'productName', 'variety', 'confidence'],
             },
           },
           expenseLabel: { type: ['string', 'null'] },
           expenseCategoryName: { type: ['string', 'null'] },
-          expenseLabelConfidence: { type: 'number', minimum: 0, maximum: 1 },
-          duplicateDate: { type: ['string', 'null'] },
-          duplicateTotal: { type: ['number', 'null'] },
-          duplicateStoreName: { type: ['string', 'null'] },
-          duplicateConfidence: { type: 'number', minimum: 0, maximum: 1 },
         },
-        required: ['items', 'expenseLabel', 'expenseCategoryName', 'expenseLabelConfidence', 'duplicateDate', 'duplicateTotal', 'duplicateStoreName', 'duplicateConfidence'],
+        required: ['items', 'expenseLabel', 'expenseCategoryName'],
       },
     },
     required: ['store', 'date', 'currency', 'total', 'items', 'confidence', 'needsEscalation', 'matches'],
@@ -169,12 +162,11 @@ const EXTRACT_PROMPT = `Ты — парсер кассовых чеков. На 
 
 const VALIDATE_PROMPT = `Ты валидатор и подбиратор связей для JSON-чека. Тебе дают:
 1) JSON-чек после OCR (поле receipt);
-2) catalog с НАЗВАНИЯМИ из пользовательской базы:
-   - productNames: уникальные имена существующих товаров
-   - categoryNames: уникальные имена категорий расходов
-   - storeNames: уникальные имена магазинов
-   - expenseLabels: уникальные имена которыми пользователь раньше называл расходы
-   - recentExpenses[]: последние расходы со связкой label↔items↔category — здесь видна привычка.
+2) catalog — ТОЛЬКО списки уникальных имён из пользовательской базы:
+   - productNames: имена существующих товаров (то как пользователь их пишет)
+   - categoryNames: имена категорий расходов
+   - storeNames: имена магазинов
+   - expenseLabels: имена которыми пользователь обычно называл расходы
 
 A) Очисти receipt — НЕ добавляй и НЕ удаляй позиции:
    - сумма items[].amount ≈ total (допуск 1%); если total нет — посчитай.
@@ -182,19 +174,24 @@ A) Очисти receipt — НЕ добавляй и НЕ удаляй пози�
    - Название магазина — торговое имя без юр-формы.
    - confidence пересчитай; плохой чек — needsEscalation=true.
 
-B) Заполни matches возвращая ИМЕНА (строки) из каталога, не выдумывая:
-   matches.items: ДЛЯ КАЖДОЙ позиции по itemIndex (0-based) выбери productName РОВНО из catalog.productNames — тот же товар. Сравнивай название + категорию + производителя + объём. confidence ≥ 0.85 только при явном совпадении. Иначе productName=null, confidence=0.
+B) Заполни matches. ВСЕГДА давай лучший доступный вариант — не оставляй null если есть хоть какой-то разумный кандидат.
 
-   matches.expenseLabel, expenseCategoryName, expenseLabelConfidence:
-     - В recentExpenses смотри ОБЯЗАТЕЛЬНО на items[] каждого расхода. Если в чеке есть похожие позиции (футболка ≈ футболка/майка/одежда; колбаса ≈ мясо и т.д.) — бери label И category из такого расхода. Это привычка пользователя.
-     - Иначе — categoryName из catalog.categoryNames по типу товаров + expenseLabel из catalog.expenseLabels или сгенерируй короткое (1-3 слова).
-     - expenseCategoryName ДОЛЖЕН быть РОВНО из catalog.categoryNames (или null).
+   matches.items: для КАЖДОЙ позиции по itemIndex (0-based):
+     1. cleanedName — ОБЯЗАТЕЛЬНО, короткое читаемое имя позиции (2-4 слова), очищенное от артикулов/штрих-кодов/размеров/серийников. Алгоритм выбора:
+        - Если в catalog.productNames есть имя которое описывает тот же товар (по смыслу) — берём его буква в букву.
+        - Иначе — формируем обобщённое название из читаемой части (например "футболка женская BF2621120062 (40/100/96, L, 9, 170)" → "Футболка женская"; "молоко Савушкин 1л 3.6%" → "Молоко").
+     2. productName — РОВНО строка из catalog.productNames если cleanedName взято оттуда. Иначе null.
+     3. variety — всё что вырезали в шаг 1 (артикул, размер, цвет, кодировка); null если вырезать нечего.
+     4. confidence — насколько уверены что productName указывает на тот же товар. ≥ 0.85 только при явном совпадении (название + бренд/объём/категория сходятся). Если productName=null — 0.
 
-   matches.duplicateDate/duplicateTotal/duplicateStoreName/duplicateConfidence:
-     - Дубликат: тот же магазин + дата ±1 день + |total - expense.total| ≤ 1%. Сравнивай с recentExpenses.
-     - Нашёл — заполни date/total/storeName РОВНО из найденного, confidence > 0.8. Иначе null и 0.
+   matches.expenseLabel — лучший label для этого расхода:
+     - Если в catalog.expenseLabels есть подходящий (по смыслу содержимого чека) — берём ровно его.
+     - Иначе — генерируем короткое (1-3 слова) обобщённое имя в стиле каталога (например "Одежда", "Аптека", "Заправка"). Лучше использовать слово которое есть в categoryNames.
+     - null только если совсем нечего предложить.
 
-ВАЖНО: productName / expenseCategoryName / duplicateStoreName брать ИЗ КАТАЛОГА буква в букву, либо null. Не придумывай новых (кроме expenseLabel если ничего не подошло).`
+   matches.expenseCategoryName — РОВНО строка из catalog.categoryNames которая лучше всего описывает чек по типу товаров (одежда → "Одежда"; продукты → "Еда"; аптека → "Здоровье"). Если ни одна не подходит — null.
+
+ВАЖНО: productName и expenseCategoryName — ТОЛЬКО точная подстановка из caталога, либо null. expenseLabel и cleanedName можно генерировать если в catalog нет подходящего.`
 
 function base64Bytes(b64: string): number {
   const padding = (b64.match(/=+$/)?.[0]?.length ?? 0)
@@ -263,8 +260,6 @@ function catalogStats(catalog: Catalog): Record<string, number> {
     categoryNames: catalog.categoryNames?.length ?? 0,
     storeNames: catalog.storeNames?.length ?? 0,
     expenseLabels: catalog.expenseLabels?.length ?? 0,
-    recentExpenses: catalog.recentExpenses?.length ?? 0,
-    recentExpenses_with_items: (catalog.recentExpenses ?? []).filter((e) => e.items && e.items.length).length,
   }
 }
 
@@ -354,13 +349,14 @@ async function callOpenRouter(
   if (parsed.matches && typeof parsed.matches === 'object') {
     const m = parsed.matches
     if (!Array.isArray(m.items)) m.items = []
-    if (typeof m.expenseLabelConfidence !== 'number') m.expenseLabelConfidence = 0
-    if (typeof m.duplicateConfidence !== 'number') m.duplicateConfidence = 0
     if (m.expenseLabel === undefined) m.expenseLabel = null
     if (m.expenseCategoryName === undefined) m.expenseCategoryName = null
-    if (m.duplicateDate === undefined) m.duplicateDate = null
-    if (m.duplicateTotal === undefined) m.duplicateTotal = null
-    if (m.duplicateStoreName === undefined) m.duplicateStoreName = null
+    for (const it of m.items) {
+      if (typeof it.cleanedName !== 'string') it.cleanedName = ''
+      if (it.productName === undefined) it.productName = null
+      if (it.variety === undefined) it.variety = null
+      if (typeof it.confidence !== 'number') it.confidence = 0
+    }
   }
 
   log.step('openrouter:parsed_summary', {
@@ -371,8 +367,7 @@ async function callOpenRouter(
     match_items: parsed.matches?.items?.length ?? 0,
     expenseLabel: parsed.matches?.expenseLabel ?? null,
     expenseCategoryName: parsed.matches?.expenseCategoryName ?? null,
-    expenseLabelConfidence: parsed.matches?.expenseLabelConfidence ?? 0,
-    duplicateConfidence: parsed.matches?.duplicateConfidence ?? 0,
+    item_cleaned_names: parsed.matches?.items?.map((i) => i.cleanedName) ?? [],
   })
   log.block('openrouter:parsed_full', 'normalized payload', JSON.stringify(parsed, null, 2))
 
@@ -560,7 +555,6 @@ serve(async (req) => {
     if (catalog.categoryNames) log.step('prep:catalog_categoryNames', catalog.categoryNames)
     if (catalog.storeNames) log.step('prep:catalog_storeNames', catalog.storeNames)
     if (catalog.expenseLabels) log.step('prep:catalog_expenseLabels', catalog.expenseLabels)
-    if (catalog.recentExpenses) log.block('prep:catalog_recentExpenses', 'recentExpenses', JSON.stringify(catalog.recentExpenses, null, 2))
 
     const receiptStr = JSON.stringify(body.previousJson, null, 2)
     const catalogStr = JSON.stringify(catalog, null, 2)

@@ -60,34 +60,36 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 // the deployed function actually sends.
 const VALIDATE_PROMPT = `Ты валидатор и подбиратор связей для JSON-чека. Тебе дают:
 1) JSON-чек после OCR (поле receipt);
-2) catalog с НАЗВАНИЯМИ из пользовательской базы:
-   - productNames: уникальные имена существующих товаров
-   - categoryNames: уникальные имена категорий расходов
-   - storeNames: уникальные имена магазинов
-   - expenseLabels: уникальные имена которыми пользователь раньше называл расходы
-   - recentExpenses[]: последние расходы со связкой label↔items↔category — здесь видна привычка как пользователь называет расход и какую категорию выбирает.
+2) catalog — ТОЛЬКО списки уникальных имён из пользовательской базы:
+   - productNames: имена существующих товаров (то как пользователь их пишет)
+   - categoryNames: имена категорий расходов
+   - storeNames: имена магазинов
+   - expenseLabels: имена которыми пользователь обычно называл расходы
 
 A) Очисти receipt — НЕ добавляй и НЕ удаляй позиции:
-   - сумма items[].amount ≈ total (допуск 1%). Если total отсутствует — посчитай и проставь.
-   - Кириллица: исправь смешанные латинские o/a/c/p/x/e/H/B на русские эквиваленты внутри слов где это очевидно (например "Moлоko" → "Молоко").
-   - Названия магазинов: нормализуй к торговому имени без юр-формы ("ООО ", "ИП ", "ЗАО ").
-   - confidence пересчитай учитывая ошибки; если совсем плохо — needsEscalation=true.
+   - сумма items[].amount ≈ total (допуск 1%); если total нет — посчитай.
+   - Кириллица: латинские o/a/c/p/x/e/H/B → русские внутри слов ("Moлоko" → "Молоко").
+   - Название магазина — торговое имя без юр-формы.
+   - confidence пересчитай; плохой чек — needsEscalation=true.
 
-B) Заполни matches возвращая ИМЕНА (строки) из caталога, не выдумывая:
-   matches.items: ДЛЯ КАЖДОЙ позиции по itemIndex (0-based, в порядке receipt.items) выбери productName РОВНО из catalog.productNames — то которое описывает этот же товар. Учитывай категорию/производителя/объём. confidence ≥ 0.85 только если это явно тот же товар. Если в каталоге ничего подходящего — productName=null, confidence=0.
+B) Заполни matches. ВСЕГДА давай лучший доступный вариант — не оставляй null если есть хоть какой-то разумный кандидат.
 
-   matches.expenseLabel, matches.expenseCategoryName, matches.expenseLabelConfidence: предложи имя нового расхода и категорию.
-     - В catalog.recentExpenses посмотри ОБЯЗАТЕЛЬНО на поле items[] каждого исторического расхода — там названия позиций которые тогда покупали. Если в текущем чеке есть похожие позиции (футболка ≈ футболка/майка/одежда; колбаса ≈ колбаса/ветчина/мясо; и т.д.), бери label И category из такого исторического расхода — это и есть привычка пользователя.
-     - Если прямой связки нет — выбери categoryName из catalog.categoryNames по типу товаров (одежда → "Одежда"; продукты → "Еда"; аптека → "Здоровье" и т.п.), и предложи expenseLabel из catalog.expenseLabels если подходит, иначе сгенерируй короткое (1-3 слова) в том же стиле.
-     - expenseCategoryName ДОЛЖЕН быть РОВНО одной из catalog.categoryNames (или null).
-     - confidence пониже если данных мало, повыше при явной связке через items.
+   matches.items: для КАЖДОЙ позиции по itemIndex (0-based):
+     1. cleanedName — ОБЯЗАТЕЛЬНО, короткое читаемое имя позиции (2-4 слова), очищенное от артикулов/штрих-кодов/размеров/серийников. Алгоритм выбора:
+        - Если в catalog.productNames есть имя которое описывает тот же товар (по смыслу) — берём его буква в букву.
+        - Иначе — формируем обобщённое название из читаемой части (например "футболка женская BF2621120062 (40/100/96, L, 9, 170)" → "Футболка женская"; "молоко Савушкин 1л 3.6%" → "Молоко").
+     2. productName — РОВНО строка из catalog.productNames если cleanedName взято оттуда. Иначе null.
+     3. variety — всё что вырезали в шаг 1 (артикул, размер, цвет, кодировка); null если вырезать нечего.
+     4. confidence — насколько уверены что productName указывает на тот же товар. ≥ 0.85 только при явном совпадении (название + бренд/объём/категория сходятся). Если productName=null — 0.
 
-   matches.duplicateDate/duplicateTotal/duplicateStoreName/duplicateConfidence: дубликат ли это уже существующего расхода?
-     - Дубликат: тот же магазин + дата ±1 день + |total - expense.total| ≤ 1% от total. Сравнивай с recentExpenses.
-     - Если нашёл — заполни date/total/storeName РОВНО из найденного recentExpense, confidence > 0.8.
-     - Иначе все три null и confidence=0.
+   matches.expenseLabel — лучший label для этого расхода:
+     - Если в catalog.expenseLabels есть подходящий (по смыслу содержимого чека) — берём ровно его.
+     - Иначе — генерируем короткое (1-3 слова) обобщённое имя в стиле каталога (например "Одежда", "Аптека", "Заправка"). Лучше использовать слово которое есть в categoryNames.
+     - null только если совсем нечего предложить.
 
-ВАЖНО: productName / expenseCategoryName / expenseLabel / duplicateStoreName должны браться ИЗ КАТАЛОГА буква в букву, либо null. Не придумывай новые названия которых нет в catalog (кроме expenseLabel если ничего вообще не подошло).`
+   matches.expenseCategoryName — РОВНО строка из catalog.categoryNames которая лучше всего описывает чек по типу товаров (одежда → "Одежда"; продукты → "Еда"; аптека → "Здоровье"). Если ни одна не подходит — null.
+
+ВАЖНО: productName и expenseCategoryName — ТОЛЬКО точная подстановка из caталога, либо null. expenseLabel и cleanedName можно генерировать если в catalog нет подходящего.`
 
 const SAMPLE_RECEIPT = {
   store: { name: 'befree', address: 'ТРЦ Палаццо, г. Минск, ул. Тимирязева, 74, корпус А' },
@@ -128,45 +130,19 @@ function dedupe(arr, cap) {
 }
 
 async function buildCatalog(roomId) {
-  const [products, categories, stores, expenses, receipts, receiptItems] = await Promise.all([
-    fetchAlive('products_sync', roomId, 'id, name, category, created_at'),
+  const [products, categories, stores, expenses] = await Promise.all([
+    fetchAlive('products_sync', roomId, 'id, name, created_at'),
     fetchAlive('expense_categories_sync', roomId, 'id, name'),
     fetchAlive('stores_sync', roomId, 'id, name'),
-    fetchAlive('expenses_sync', roomId, 'id, name, store_id, amount, date, category_id'),
-    fetchAlive('receipts_sync', roomId, 'id, expense_id'),
-    fetchAlive('receipt_items_sync', roomId, 'id, receipt_id, name'),
+    fetchAlive('expenses_sync', roomId, 'id, name, date'),
   ])
-
-  const storeNameById = new Map(stores.map((s) => [s.id, s.name]))
-  const categoryNameById = new Map(categories.map((c) => [c.id, c.name]))
-
-  const receiptIdToItems = new Map()
-  for (const ri of receiptItems) {
-    const arr = receiptIdToItems.get(ri.receipt_id) ?? []
-    if (arr.length < 5) arr.push(ri.name)
-    receiptIdToItems.set(ri.receipt_id, arr)
-  }
-  const expenseIdToItems = new Map()
-  for (const r of receipts) {
-    const items = receiptIdToItems.get(r.id)
-    if (items && items.length) expenseIdToItems.set(r.expense_id, items)
-  }
-
   const sortedExpenses = [...expenses].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
 
   return {
     productNames: dedupe(products.map((p) => p.name), 300),
-    categoryNames: categories.map((c) => c.name),
+    categoryNames: dedupe(categories.map((c) => c.name), 100),
     storeNames: dedupe(stores.map((s) => s.name), 80),
-    expenseLabels: dedupe(sortedExpenses.map((e) => e.name), 50),
-    recentExpenses: sortedExpenses.slice(0, 50).map((e) => ({
-      label: e.name ?? null,
-      category: e.category_id ? (categoryNameById.get(e.category_id) ?? null) : null,
-      store: e.store_id ? (storeNameById.get(e.store_id) ?? null) : null,
-      date: (e.date ?? '').slice(0, 10),
-      total: e.amount,
-      items: expenseIdToItems.get(e.id) ?? [],
-    })),
+    expenseLabels: dedupe(sortedExpenses.map((e) => e.name), 100),
   }
 }
 
@@ -176,8 +152,6 @@ function summary(catalog) {
     categoryNames: catalog.categoryNames.length,
     storeNames: catalog.storeNames.length,
     expenseLabels: catalog.expenseLabels.length,
-    recentExpenses: catalog.recentExpenses.length,
-    recentExpenses_with_items: catalog.recentExpenses.filter((e) => e.items?.length).length,
   }
 }
 

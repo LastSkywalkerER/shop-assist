@@ -9,24 +9,26 @@ export interface ParsedReceiptItem {
 
 export interface ItemMatch {
   itemIndex: number
-  /** Product name picked from catalog.productNames, or null. The client
-   * resolves this to the actual product/purchase id. */
+  /** Short readable name (no codes/sizes). Always provided by the model:
+   * either a verbatim entry from catalog.productNames or a generalized
+   * label like "Футболка женская". Use this as the item's display name. */
+  cleanedName: string
+  /** Set only if cleanedName comes verbatim from catalog.productNames AND
+   * it is the same product. Client resolves to a real product/purchase id. */
   productName: string | null
+  /** Codes / sizes / article numbers stripped from the raw item name. */
+  variety: string | null
+  /** Confidence that productName (when non-null) is the same item. */
   confidence: number
 }
 
 export interface ReceiptMatches {
   items: ItemMatch[]
+  /** Best label for this expense — either picked from catalog.expenseLabels
+   * or generated (1-3 words in the user's style). Used as a pre-fill. */
   expenseLabel: string | null
+  /** Picked verbatim from catalog.categoryNames, or null. */
   expenseCategoryName: string | null
-  expenseLabelConfidence: number
-  /** When the receipt is a duplicate of an existing expense, the model
-   * describes the dupe by date/total/store rather than echoing an id.
-   * Client searches by these fields. */
-  duplicateDate: string | null
-  duplicateTotal: number | null
-  duplicateStoreName: string | null
-  duplicateConfidence: number
 }
 
 export interface ParsedReceipt {
@@ -41,29 +43,16 @@ export interface ParsedReceipt {
   matches?: ReceiptMatches | null
 }
 
-export interface OcrCatalogExpense {
-  /** Free-text label, e.g. "Одежда". */
-  label: string | null
-  category: string | null
-  store: string | null
-  date: string | null
-  total: number | null
-  /** Up to ~5 receipt item names from this expense — gives the model
-   * enough signal to match "футболка" → past "Одежда" label. */
-  items: string[]
-}
-
 /**
- * Names-only catalog. We keep this small and de-duplicated so the
- * validate prompt stays compact. The client maps the names the model
- * returns back to RxDB ids locally.
+ * Names-only catalog. Just the user's unique strings — no IDs, no raw
+ * rows. The client resolves the names the model returns back to RxDB
+ * ids and runs duplicate-detection locally.
  */
 export interface OcrCatalog {
   productNames: string[]
   categoryNames: string[]
   storeNames: string[]
   expenseLabels: string[]
-  recentExpenses: OcrCatalogExpense[]
 }
 
 export type Pass = 'extract' | 'validate' | 'escalate'
