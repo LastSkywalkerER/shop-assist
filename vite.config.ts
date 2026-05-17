@@ -20,10 +20,18 @@ export default defineConfig({
     basicSsl(),
     VitePWA({
       registerType: 'prompt',
+      strategies: 'injectManifest',
+      srcDir: 'src/pwa',
+      filename: 'sw.ts',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       devOptions: {
         enabled: true,
         type: 'module',
+        navigateFallback: 'index.html',
+      },
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,svg,png,webp,ico,woff2}'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
       },
       manifest: {
         name: 'Shop Assist',
@@ -37,27 +45,6 @@ export default defineConfig({
           { src: 'icon-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           { src: 'icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-        ],
-      },
-      workbox: {
-        cleanupOutdatedCaches: true,
-        globPatterns: ['**/*.{js,css,html,svg,png,webp,ico,woff2}'],
-        navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api/],
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }) => url.origin === 'https://telegram.org',
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'telegram-cdn',
-              expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 * 30 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: ({ url }) => url.hostname.endsWith('.supabase.co') && /\/functions\/v1\//.test(url.pathname),
-            handler: 'NetworkOnly',
-          },
         ],
       },
     }),
