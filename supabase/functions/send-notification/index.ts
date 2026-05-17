@@ -57,6 +57,7 @@ async function sendWebPush(
   supabase: SupabaseLike,
   sub: PushSubRow,
   payload: PushPayload,
+  stats: { ok: number; gone: number; failed: number; lastError?: string },
 ): Promise<void> {
   try {
     await webpush.sendNotification(
@@ -65,15 +66,28 @@ async function sendWebPush(
         keys: { p256dh: sub.p256dh, auth: sub.auth },
       },
       JSON.stringify(payload),
+      {
+        // Tell the push service to deliver right away even if the device is in
+        // Doze / power-saving. Without this, Android FCM may hold the push until
+        // the user wakes the device or opens Chrome — which is exactly the
+        // "push arrives only when I open the app" symptom.
+        urgency: 'high',
+        TTL: 60 * 60 * 24, // 24h — if device is offline longer, drop it.
+      },
     )
+    stats.ok++
   } catch (err: unknown) {
     const statusCode = (err as { statusCode?: number }).statusCode
+    const message = err instanceof Error ? err.message : String(err)
     if (statusCode === 404 || statusCode === 410) {
+      stats.gone++
       // Subscription is gone — clean up.
       await supabase.from('push_subscriptions').delete().eq('id', sub.id)
       return
     }
-    console.error('Web Push send failed:', err)
+    stats.failed++
+    stats.lastError = `status=${statusCode ?? 'n/a'} ${message}`
+    console.error('Web Push send failed:', statusCode, message)
   }
 }
 
@@ -83,6 +97,7 @@ async function sendToRoomMembers(
   roomId: string,
   telegramText: string,
   pushPayload: PushPayload,
+  stats: { ok: number; gone: number; failed: number; lastError?: string },
 ): Promise<void> {
   const { data: memberships, error: mErr } = await supabase
     .from('room_memberships')
@@ -127,7 +142,7 @@ async function sendToRoomMembers(
 
     // PWA priority: deliver via push if user has it enabled AND at least one subscription.
     if (pwaEnabled && userSubs.length > 0) {
-      for (const s of userSubs) sends.push(sendWebPush(supabase, s, pushPayload))
+      for (const s of userSubs) sends.push(sendWebPush(supabase, s, pushPayload, stats))
       continue
     }
     // Fallback: Telegram.
@@ -168,6 +183,60 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}))
     const action: string = body.action ?? 'process_queue'
 
+    if (action === 'diag') {
+      const { count: subCount } = await supabase
+        .from('push_subscriptions')
+        .select('*', { count: 'exact', head: true })
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          vapid: {
+            publicSet: !!vapidPublic,
+            privateSet: !!vapidPrivate,
+            subjectSet: !!vapidSubject,
+          },
+          push_subscriptions_count: subCount ?? 0,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
+    if (action === 'test_push') {
+      // Fan out a test push to all of caller's subscriptions (or by user_id in body).
+      const userId: string | undefined = body.user_id
+      let query = supabase.from('push_subscriptions').select('id, endpoint, p256dh, auth, user_id')
+      if (userId) query = query.eq('user_id', userId)
+      const { data: subs, error } = await query
+      if (error) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      const stats = { ok: 0, gone: 0, failed: 0, lastError: undefined as string | undefined }
+      const sends: Promise<void>[] = []
+      for (const s of subs ?? []) {
+        sends.push(
+          sendWebPush(
+            supabase,
+            { id: s.id, endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth },
+            {
+              title: 'Тестовое уведомление',
+              body: 'Если ты это видишь — Web Push работает.',
+              url: '/',
+              tag: 'test',
+            },
+            stats,
+          ),
+        )
+      }
+      await Promise.allSettled(sends)
+      return new Response(
+        JSON.stringify({ ok: true, total: subs?.length ?? 0, ...stats }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
     if (action === 'process_queue') {
       const { data: tasks, error } = await supabase.from('notification_queue').select('*')
 
@@ -182,6 +251,7 @@ serve(async (req) => {
       const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000)
       const processed: string[] = []
       const immediated: string[] = []
+      const stats = { ok: 0, gone: 0, failed: 0, lastError: undefined as string | undefined }
 
       for (const task of (tasks as QueueTask[]) ?? []) {
         if (!task.immediate_sent) {
@@ -195,6 +265,7 @@ serve(async (req) => {
               url: '/shopping-list',
               tag: `shopping_list_update_${task.room_id}`,
             },
+            stats,
           )
           await supabase
             .from('notification_queue')
@@ -216,6 +287,7 @@ serve(async (req) => {
                 url: '/shopping-list',
                 tag: `shopping_list_update_${task.room_id}`,
               },
+              stats,
             )
           }
           await supabase.from('notification_queue').delete().eq('id', task.id)
@@ -224,7 +296,12 @@ serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify({ ok: true, immediated: immediated.length, processed: processed.length }),
+        JSON.stringify({
+          ok: true,
+          immediated: immediated.length,
+          processed: processed.length,
+          push: stats,
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
