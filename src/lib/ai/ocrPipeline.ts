@@ -44,6 +44,9 @@ export interface OcrCatalogExpense {
   store?: string | null
   date?: string | null
   total?: number | null
+  /** Up to ~5 item names from this expense's receipt, so the validate
+   * model can match "футболка" → past expense titled "Одежда". */
+  items?: string[]
 }
 export interface OcrCatalog {
   products?: OcrCatalogProduct[]

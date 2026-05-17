@@ -40,6 +40,10 @@ interface CatalogExpense {
   store?: string | null
   date?: string | null
   total?: number | null
+  /** Up to ~5 receipt item names from this expense, so the model can
+   * recognize that a past expense titled "Одежда" actually contained a
+   * t-shirt etc. */
+  items?: string[]
 }
 interface Catalog {
   products?: CatalogProduct[]
@@ -183,7 +187,8 @@ B) Заполни matches на основании catalog:
    matches.items: ДЛЯ КАЖДОЙ позиции по itemIndex (0-based, в порядке как в receipt.items) определи лучший продукт из catalog.products. Сравнивай не только название, но и категорию/производителя/объём из позиции. Высокая уверенность (confidence ≥ 0.85) только если это явно тот же товар. Если ничего близкого — productId=null, confidence=0.
 
    matches.expenseName, matches.expenseCategoryId, matches.expenseLabelConfidence: предложи имя нового расхода и categoryId.
-     - В catalog.expenses посмотри, как пользователь обычно называл похожие покупки (например, если в чеке одежда и раньше был расход name="Одежда" — используй то же имя).
+     - В catalog.expenses посмотри ОБЯЗАТЕЛЬНО на поле items[] каждого исторического расхода — там названия позиций которые тогда покупали. Если в текущем чеке есть похожие позиции (по типу товара: футболка ≈ футболка/майка/одежда; колбаса ≈ колбаса/ветчина/мясо; и т.д.), используй name и category из такого исторического расхода.
+     - Если прямой связки по позициям нет — определи категорию по типу товаров в чеке (одежда, продукты, аптека и т.п.) и сматчи к catalog.categories[].name.
      - matches.expenseCategoryId должен быть РОВНО одним из catalog.categories[].id (или null если ничего подходящего).
      - matches.expenseName — короткое имя (1-3 слова, как пользователь обычно пишет) или null.
      - Confidence отражает уверенность; не выдумывай высокую уверенность если данных мало.

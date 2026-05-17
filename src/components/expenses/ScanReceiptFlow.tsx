@@ -74,6 +74,21 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
     // budget even for heavy users.
     const storeNameById = new Map(stores.map((s) => [s.id, s.name]))
     const categoryNameById = new Map(expenseCategories.map((c) => [c.id, c.name]))
+    // Build expense → receipt-item-names lookup so we can show the model
+    // what was actually purchased under each historical expense label.
+    const expenseIdToItems = new Map<string, string[]>()
+    {
+      const receiptIdToItems = new Map<string, string[]>()
+      for (const ri of receiptItems) {
+        const arr = receiptIdToItems.get(ri.receiptId) ?? []
+        if (arr.length < 5) arr.push(ri.name)
+        receiptIdToItems.set(ri.receiptId, arr)
+      }
+      for (const r of receipts) {
+        const items = receiptIdToItems.get(r.id)
+        if (items && items.length) expenseIdToItems.set(r.expenseId, items)
+      }
+    }
     const catalog: OcrCatalog = {
       products: products.slice(0, 400).map((p) => ({
         id: p.id,
@@ -92,6 +107,7 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
           store: e.storeId ? (storeNameById.get(e.storeId) ?? null) : null,
           date: e.date.slice(0, 10),
           total: e.amount,
+          items: expenseIdToItems.get(e.id),
         })),
     }
 

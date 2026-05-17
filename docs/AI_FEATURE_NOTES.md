@@ -100,6 +100,29 @@ CREATE POLICY my_table_select ON my_table FOR SELECT TO authenticated
 - Deploy `ocr-receipt` (any change to the prompt = re-deploy needed).
 - Bump `package.json` version per project rule.
 
+## Debugging the validate prompt
+
+`scripts/debug-ocr-prompt.mjs` builds the exact catalog the client would
+send for a room and prints the full validate-pass user message
+(prompt + receipt JSON + catalog JSON). Useful when matching looks off
+and you need to see whether the relevant past expense is even in the
+catalog and whether its receipt items are attached.
+
+```
+SUPABASE_URL=https://<project>.supabase.co \
+SUPABASE_SECRET_KEY=<service-role-key> \
+  node scripts/debug-ocr-prompt.mjs <room_id> [receipt.json]
+```
+
+Optional flags:
+- `--send` — also call OpenRouter with the assembled message and print
+  the JSON response (needs `OPENROUTER_API_KEY`).
+- `--model=<id>` — override the validate model (default `openai/gpt-5-mini`).
+- `--no-prompt` — only run the request, skip dumping the prompt.
+
+If `receipt.json` is omitted the script uses a hardcoded "футболка 33 BYN"
+sample so you can sanity-check the одежда case quickly.
+
 ## Files of interest
 
 - `src/components/expenses/ScanReceiptFlow.tsx` — camera + pipeline orchestration.
