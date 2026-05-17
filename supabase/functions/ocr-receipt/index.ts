@@ -95,6 +95,11 @@ interface ReceiptPayload {
   matches?: ReceiptMatches | null
 }
 
+// OpenAI strict mode (json_schema) requires every key listed under `properties`
+// to also appear in `required` for ANY object subschema — including object
+// variants of a nullable union. Optional fields are expressed by widening the
+// type to include 'null'. Skipping a key in `required` triggers HTTP 400 from
+// providers that enforce strict (GPT-5/4.1, Anthropic via OpenRouter).
 const RECEIPT_JSON_SCHEMA = {
   name: 'receipt',
   strict: true,
@@ -109,7 +114,7 @@ const RECEIPT_JSON_SCHEMA = {
           name: { type: 'string' },
           address: { type: ['string', 'null'] },
         },
-        required: ['name'],
+        required: ['name', 'address'],
       },
       date: { type: ['string', 'null'], description: 'ISO date (YYYY-MM-DD), if visible on receipt' },
       currency: { type: 'string', description: 'ISO 4217 code such as BYN, RUB, USD' },
@@ -125,7 +130,7 @@ const RECEIPT_JSON_SCHEMA = {
             packageVolume: { type: ['string', 'null'] },
             manufacturer: { type: ['string', 'null'] },
           },
-          required: ['name', 'amount'],
+          required: ['name', 'amount', 'packageVolume', 'manufacturer'],
         },
       },
       confidence: { type: 'number', minimum: 0, maximum: 1 },
@@ -156,7 +161,7 @@ const RECEIPT_JSON_SCHEMA = {
         required: ['items', 'expenseName', 'expenseCategoryId', 'expenseLabelConfidence', 'existingExpenseId', 'existingExpenseConfidence'],
       },
     },
-    required: ['currency', 'items', 'confidence', 'needsEscalation'],
+    required: ['store', 'date', 'currency', 'total', 'items', 'confidence', 'needsEscalation', 'matches'],
   },
 }
 

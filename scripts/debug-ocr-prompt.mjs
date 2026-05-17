@@ -91,10 +91,11 @@ const SAMPLE_RECEIPT = {
   currency: 'BYN',
   total: 33.0,
   items: [
-    { name: 'футболка женская BF2621120062 (40/100/96)', amount: 33.0 },
+    { name: 'футболка женская BF2621120062 (40/100/96)', amount: 33.0, packageVolume: null, manufacturer: null },
   ],
   confidence: 0.9,
   needsEscalation: false,
+  matches: null,
 }
 
 async function fetchAlive(table, room, select) {
