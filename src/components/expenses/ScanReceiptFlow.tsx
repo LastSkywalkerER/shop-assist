@@ -6,14 +6,23 @@ import { useConfirm } from '../../contexts/ConfirmDialogContext'
 import { useRxQuery, useRxCollection } from '../../db/hooks'
 import { ReceiptCameraModal } from './ReceiptCameraModal'
 import { runOcrPipeline, OcrError, type Pass } from '../../lib/ai/ocrPipeline'
-import { matchPurchaseForItem, matchStore, matchExpenseForReceipt, AUTO_BIND_THRESHOLD } from '../../lib/ai/matching'
+import {
+  matchPurchaseForItem,
+  matchStore,
+  matchExpenseForReceipt,
+  suggestExpenseLabel,
+  AUTO_BIND_THRESHOLD,
+} from '../../lib/ai/matching'
 import { blobStorePut, addPendingUpload } from '../../db/blobStore'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 import type {
   ExpenseDocument,
+  ExpenseCategoryDocument,
   StoreDocument,
   ProductDocument,
   PurchaseDocument,
+  ReceiptDocument,
+  ReceiptItemDocument,
 } from '../../db/types'
 import type { AttachmentFile } from './FileUpload'
 import type { ReceiptItem } from './ReceiptItemsManager'
@@ -38,11 +47,17 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
   const storesCol = useRxCollection<StoreDocument>('stores')
   const productsCol = useRxCollection<ProductDocument>('products')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
+  const categoriesCol = useRxCollection<ExpenseCategoryDocument>('expenseCategories')
+  const receiptsCol = useRxCollection<ReceiptDocument>('receipts')
+  const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
 
   const { data: expenses } = useRxQuery(expensesCol)
   const { data: stores } = useRxQuery(storesCol)
   const { data: products } = useRxQuery(productsCol)
   const { data: purchases } = useRxQuery(purchasesCol)
+  const { data: expenseCategories } = useRxQuery(categoriesCol)
+  const { data: receipts } = useRxQuery(receiptsCol)
+  const { data: receiptItems } = useRxQuery(receiptItemsCol)
 
   const [pass, setPass] = useState<Pass | null>(null)
 
@@ -131,6 +146,17 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
       size: fileBlob.size,
     }]
 
+    // Suggest the expense label/category from receipt items by mining
+    // existing products and historical expenses. Only applied if the
+    // user hasn't already populated this scan elsewhere.
+    const labelSuggestion = suggestExpenseLabel(parsed.items, {
+      products,
+      expenses,
+      expenseCategories,
+      receipts,
+      receiptItems,
+    })
+
     // Normalize date to YYYY-MM-DD for <input type="date">.
     let prefilledDate: string | undefined
     if (parsed.date) {
@@ -150,6 +176,8 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
           items,
           attachments,
           confidence: parsed.confidence,
+          name: labelSuggestion.name,
+          categoryId: labelSuggestion.categoryId,
         },
       },
     })

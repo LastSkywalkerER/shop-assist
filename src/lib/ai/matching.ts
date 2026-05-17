@@ -1,7 +1,10 @@
 import type {
+  ExpenseCategoryDocument,
   ExpenseDocument,
   ProductDocument,
   PurchaseDocument,
+  ReceiptDocument,
+  ReceiptItemDocument,
   StoreDocument,
 } from '../../db/types'
 import type { ParsedReceipt, ParsedReceiptItem } from './ocrPipeline'
@@ -129,4 +132,109 @@ export function matchExpenseForReceipt(
     }
   }
   return best
+}
+
+export interface ExpenseLabelSuggestion {
+  name?: string
+  categoryId?: string
+  /** Aggregate confidence 0..1 across all collected votes. */
+  confidence: number
+}
+
+/** Vote helper used by suggestExpenseLabel. */
+function topVote<T extends string>(votes: Map<T, number>): { value: T; weight: number } | null {
+  let best: { value: T; weight: number } | null = null
+  for (const [value, weight] of votes) {
+    if (!best || weight > best.weight) best = { value, weight }
+  }
+  return best
+}
+
+/**
+ * Infer a likely expense name + category from the OCR items by looking at
+ * what the user normally records for similar purchases. Two signals are
+ * combined with weighted voting:
+ *
+ *   1. Direct product match: parsed item ↦ existing product ↦ product.category
+ *      ↦ same-named expense_category.
+ *   2. Historical receipt items: parsed item ↦ similar past receipt item ↦
+ *      its receipt ↦ owning expense ↦ that expense's name/categoryId.
+ *
+ * The second signal is the more reliable one (it captures the actual label
+ * the user previously chose) and is weighted higher.
+ */
+export function suggestExpenseLabel(
+  items: ParsedReceiptItem[],
+  ctx: {
+    products: ProductDocument[]
+    expenses: ExpenseDocument[]
+    expenseCategories: ExpenseCategoryDocument[]
+    receipts: ReceiptDocument[]
+    receiptItems: ReceiptItemDocument[]
+  },
+): ExpenseLabelSuggestion {
+  if (!items.length) return { confidence: 0 }
+
+  const categoryVotes = new Map<string, number>()  // expense_category.id -> weight
+  const nameVotes = new Map<string, number>()      // expense.name -> weight
+  let totalWeight = 0
+
+  // Build quick lookups.
+  const receiptById = new Map(ctx.receipts.map((r) => [r.id, r]))
+  const expenseById = new Map(ctx.expenses.map((e) => [e.id, e]))
+  const categoryByLowerName = new Map(
+    ctx.expenseCategories.map((c) => [c.name.toLowerCase(), c]),
+  )
+
+  for (const item of items) {
+    // --- Signal 1: matching product → product.category → expense_category ---
+    let bestProduct: { product: ProductDocument; sim: number } | null = null
+    for (const product of ctx.products) {
+      const sim = nameSimilarity(item.name, product.name)
+      if (sim < 0.4) continue
+      if (!bestProduct || sim > bestProduct.sim) bestProduct = { product, sim }
+    }
+    if (bestProduct && bestProduct.product.category) {
+      const cat = categoryByLowerName.get(bestProduct.product.category.toLowerCase())
+      if (cat) {
+        const w = bestProduct.sim
+        categoryVotes.set(cat.id, (categoryVotes.get(cat.id) ?? 0) + w)
+        totalWeight += w
+      }
+    }
+
+    // --- Signal 2: historical receipt items → expense ---
+    let bestHistItem: { ri: ReceiptItemDocument; sim: number } | null = null
+    for (const ri of ctx.receiptItems) {
+      const sim = nameSimilarity(item.name, ri.name)
+      if (sim < 0.55) continue
+      if (!bestHistItem || sim > bestHistItem.sim) bestHistItem = { ri, sim }
+    }
+    if (bestHistItem) {
+      const receipt = receiptById.get(bestHistItem.ri.receiptId)
+      const expense = receipt ? expenseById.get(receipt.expenseId) : undefined
+      if (expense) {
+        const w = bestHistItem.sim * 1.5  // historical labels are stronger evidence
+        if (expense.categoryId) {
+          categoryVotes.set(expense.categoryId, (categoryVotes.get(expense.categoryId) ?? 0) + w)
+        }
+        if (expense.name) {
+          nameVotes.set(expense.name, (nameVotes.get(expense.name) ?? 0) + w)
+        }
+        totalWeight += w
+      }
+    }
+  }
+
+  const topCat = topVote(categoryVotes)
+  const topName = topVote(nameVotes)
+  const confidence = totalWeight > 0
+    ? Math.min(1, (topCat?.weight ?? 0) / totalWeight)
+    : 0
+
+  return {
+    name: topName?.value,
+    categoryId: topCat?.value,
+    confidence,
+  }
 }

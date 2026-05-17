@@ -41,6 +41,8 @@ export function AddExpense() {
       items?: ReceiptItem[]
       attachments?: AttachmentFile[]
       confidence?: number
+      name?: string
+      categoryId?: string
     }
   } | null
   const prefilledItems = locState?.prefilledItems
@@ -70,7 +72,7 @@ export function AddExpense() {
     return Array.from(set).sort()
   }, [products])
 
-  const [name, setName] = useState('')
+  const [name, setName] = useState(() => ocrPrefill?.name ?? '')
   const [selectedStore, setSelectedStore] = useState<StoreDocument | null>(null)
   const [amount, setAmount] = useState(() => (ocrPrefill?.total ? ocrPrefill.total.toFixed(2) : ''))
   const [currency, setCurrency] = useState(ocrPrefill?.currency ?? DEFAULT_CURRENCY)
@@ -137,6 +139,14 @@ export function AddExpense() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stores, ocrPrefill?.storeId, ocrPrefill?.storeName])
+
+  // Resolve OCR-suggested expense category once categories load.
+  useEffect(() => {
+    if (!ocrPrefill?.categoryId || selectedCategory) return
+    const cat = categories.find((c) => c.id === ocrPrefill.categoryId)
+    if (cat) setSelectedCategory(cat)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories, ocrPrefill?.categoryId])
 
   const handleCreateCategory = async (categoryName: string) => {
     if (!categoriesCol) return
