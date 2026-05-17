@@ -11,22 +11,28 @@ touching any of: `supabase/functions/ocr-receipt`, `room_ai_settings`,
   - **Pass 1 extract** (vision): default `google/gemini-2.5-flash`.
   - **Pass 2 validate** (text-only): default `openai/gpt-5-mini`.
   - **Pass 3 escalate** (vision, only when validate flags it): default
-    `google/gemini-2.5-pro`.
+    `google/gemini-2.5-flash` (cheap, same model family as extract; can
+    be swapped for Pro in Settings if you want the heavyweight tier).
 - OpenRouter is called server-side from `supabase/functions/ocr-receipt`
   so the API key stays in `OPENROUTER_API_KEY` env var.
 - Rate limit per user: 20/min, 200/day, enforced via row count in
   `ai_usage_log`.
 - Parsed receipt is consumed in-flight; raw OCR JSON is NOT persisted (no
   schema bump).
-- Matching is driven by the validate-pass model. The client sends a
-  compact `catalog` (products, categories, stores, ~150 recent expenses)
-  with the receipt, and the model returns a `matches` block:
-  - `matches.items[]` — per-item productId + confidence
-  - `matches.expenseName / expenseCategoryId / expenseLabelConfidence`
-  - `matches.existingExpenseId / existingExpenseConfidence`
-- `ScanReceiptFlow` accepts model matches whose confidence ≥ 0.8 and
-  whose id exists in the catalog. For anything below that bar, or if
-  the model omits a field, it falls back to local heuristics:
+- Matching is driven by the validate-pass model with a **names-only**
+  catalog (no UUIDs in the prompt, deduplicated lists):
+  - `productNames[]`, `categoryNames[]`, `storeNames[]`,
+    `expenseLabels[]` — unique strings the user has
+  - `recentExpenses[]` — last 50 expenses with `{label, category,
+    store, date, total, items}` so the model can read the user's
+    pattern (which items used to live under which label).
+- The model returns names too — `productName`, `expenseLabel`,
+  `expenseCategoryName`, and a `duplicateDate/duplicateTotal/
+  duplicateStoreName` triple to describe a possible dupe.
+- `ScanReceiptFlow` resolves names back to ids by exact (lowercased)
+  lookup against the same lists it just sent. For anything below
+  confidence 0.8 or that doesn't match a known name, it falls back to
+  local heuristics:
   - `matchPurchaseForItem` (token-Jaccard + same-store bonus)
   - `matchExpenseForReceipt` (same store + ±1 day + total within 1%)
   - `suggestExpenseLabel` (product→category + historical receipt-item

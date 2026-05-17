@@ -30,26 +30,23 @@ const MODEL_PRICES: Record<string, { in: number; out: number }> = {
 
 type Pass = 'extract' | 'validate' | 'escalate'
 
-interface CatalogProduct { id: string; name: string; category?: string | null }
-interface CatalogStore { id: string; name: string }
-interface CatalogCategory { id: string; name: string }
 interface CatalogExpense {
-  id: string
-  name?: string | null
-  category?: string | null
-  store?: string | null
-  date?: string | null
-  total?: number | null
-  /** Up to ~5 receipt item names from this expense, so the model can
-   * recognize that a past expense titled "Одежда" actually contained a
-   * t-shirt etc. */
-  items?: string[]
+  label: string | null
+  category: string | null
+  store: string | null
+  date: string | null
+  total: number | null
+  items: string[]
 }
+
+// Names-only catalog: keep prompt compact, no UUIDs. Client maps names
+// back to ids after the response.
 interface Catalog {
-  products?: CatalogProduct[]
-  categories?: CatalogCategory[]
-  stores?: CatalogStore[]
-  expenses?: CatalogExpense[]
+  productNames?: string[]
+  categoryNames?: string[]
+  storeNames?: string[]
+  expenseLabels?: string[]
+  recentExpenses?: CatalogExpense[]
 }
 
 interface RequestBody {
@@ -71,17 +68,19 @@ interface ReceiptItemPayload {
 
 interface ItemMatch {
   itemIndex: number
-  productId: string | null
+  productName: string | null
   confidence: number
 }
 
 interface ReceiptMatches {
   items: ItemMatch[]
-  expenseName: string | null
-  expenseCategoryId: string | null
+  expenseLabel: string | null
+  expenseCategoryName: string | null
   expenseLabelConfidence: number
-  existingExpenseId: string | null
-  existingExpenseConfidence: number
+  duplicateDate: string | null
+  duplicateTotal: number | null
+  duplicateStoreName: string | null
+  duplicateConfidence: number
 }
 
 interface ReceiptPayload {
@@ -146,19 +145,21 @@ const RECEIPT_JSON_SCHEMA = {
               additionalProperties: false,
               properties: {
                 itemIndex: { type: 'integer', minimum: 0 },
-                productId: { type: ['string', 'null'] },
+                productName: { type: ['string', 'null'] },
                 confidence: { type: 'number', minimum: 0, maximum: 1 },
               },
-              required: ['itemIndex', 'productId', 'confidence'],
+              required: ['itemIndex', 'productName', 'confidence'],
             },
           },
-          expenseName: { type: ['string', 'null'] },
-          expenseCategoryId: { type: ['string', 'null'] },
+          expenseLabel: { type: ['string', 'null'] },
+          expenseCategoryName: { type: ['string', 'null'] },
           expenseLabelConfidence: { type: 'number', minimum: 0, maximum: 1 },
-          existingExpenseId: { type: ['string', 'null'] },
-          existingExpenseConfidence: { type: 'number', minimum: 0, maximum: 1 },
+          duplicateDate: { type: ['string', 'null'] },
+          duplicateTotal: { type: ['number', 'null'] },
+          duplicateStoreName: { type: ['string', 'null'] },
+          duplicateConfidence: { type: 'number', minimum: 0, maximum: 1 },
         },
-        required: ['items', 'expenseName', 'expenseCategoryId', 'expenseLabelConfidence', 'existingExpenseId', 'existingExpenseConfidence'],
+        required: ['items', 'expenseLabel', 'expenseCategoryName', 'expenseLabelConfidence', 'duplicateDate', 'duplicateTotal', 'duplicateStoreName', 'duplicateConfidence'],
       },
     },
     required: ['store', 'date', 'currency', 'total', 'items', 'confidence', 'needsEscalation', 'matches'],
@@ -180,7 +181,12 @@ const EXTRACT_PROMPT = `Ты — парсер кассовых чеков. На 
 
 const VALIDATE_PROMPT = `Ты валидатор и подбиратор связей для JSON-чека. Тебе дают:
 1) JSON-чек после OCR (поле receipt);
-2) выгрузку из пользовательской базы (поле catalog): products (товары), categories (категории расходов), stores (магазины), expenses (последние расходы — здесь видна привычка пользователя как они называют расход и какую категорию выбирают).
+2) catalog с НАЗВАНИЯМИ из пользовательской базы:
+   - productNames: уникальные имена существующих товаров
+   - categoryNames: уникальные имена категорий расходов
+   - storeNames: уникальные имена магазинов
+   - expenseLabels: уникальные имена которыми пользователь раньше называл расходы
+   - recentExpenses[]: последние расходы со связкой label↔items↔category — здесь видна привычка как пользователь называет расход и какую категорию выбирает.
 
 A) Очисти receipt — НЕ добавляй и НЕ удаляй позиции:
    - сумма items[].amount ≈ total (допуск 1%). Если total отсутствует — посчитай и проставь.
@@ -188,22 +194,21 @@ A) Очисти receipt — НЕ добавляй и НЕ удаляй пози�
    - Названия магазинов: нормализуй к торговому имени без юр-формы ("ООО ", "ИП ", "ЗАО ").
    - confidence пересчитай учитывая ошибки; если совсем плохо — needsEscalation=true.
 
-B) Заполни matches на основании catalog:
-   matches.items: ДЛЯ КАЖДОЙ позиции по itemIndex (0-based, в порядке как в receipt.items) определи лучший продукт из catalog.products. Сравнивай не только название, но и категорию/производителя/объём из позиции. Высокая уверенность (confidence ≥ 0.85) только если это явно тот же товар. Если ничего близкого — productId=null, confidence=0.
+B) Заполни matches возвращая ИМЕНА (строки) из caталога, не выдумывая:
+   matches.items: ДЛЯ КАЖДОЙ позиции по itemIndex (0-based, в порядке receipt.items) выбери productName РОВНО из catalog.productNames — то которое описывает этот же товар. Учитывай категорию/производителя/объём. confidence ≥ 0.85 только если это явно тот же товар. Если в каталоге ничего подходящего — productName=null, confidence=0.
 
-   matches.expenseName, matches.expenseCategoryId, matches.expenseLabelConfidence: предложи имя нового расхода и categoryId.
-     - В catalog.expenses посмотри ОБЯЗАТЕЛЬНО на поле items[] каждого исторического расхода — там названия позиций которые тогда покупали. Если в текущем чеке есть похожие позиции (по типу товара: футболка ≈ футболка/майка/одежда; колбаса ≈ колбаса/ветчина/мясо; и т.д.), используй name и category из такого исторического расхода.
-     - Если прямой связки по позициям нет — определи категорию по типу товаров в чеке (одежда, продукты, аптека и т.п.) и сматчи к catalog.categories[].name.
-     - matches.expenseCategoryId должен быть РОВНО одним из catalog.categories[].id (или null если ничего подходящего).
-     - matches.expenseName — короткое имя (1-3 слова, как пользователь обычно пишет) или null.
-     - Confidence отражает уверенность; не выдумывай высокую уверенность если данных мало.
+   matches.expenseLabel, matches.expenseCategoryName, matches.expenseLabelConfidence: предложи имя нового расхода и категорию.
+     - В catalog.recentExpenses посмотри ОБЯЗАТЕЛЬНО на поле items[] каждого исторического расхода — там названия позиций которые тогда покупали. Если в текущем чеке есть похожие позиции (футболка ≈ футболка/майка/одежда; колбаса ≈ колбаса/ветчина/мясо; и т.д.), бери label И category из такого исторического расхода — это и есть привычка пользователя.
+     - Если прямой связки нет — выбери categoryName из catalog.categoryNames по типу товаров (одежда → "Одежда"; продукты → "Еда"; аптека → "Здоровье" и т.п.), и предложи expenseLabel из catalog.expenseLabels если подходит, иначе сгенерируй короткое (1-3 слова) в том же стиле.
+     - expenseCategoryName ДОЛЖЕН быть РОВНО одной из catalog.categoryNames (или null).
+     - confidence пониже если данных мало, повыше при явной связке через items.
 
-   matches.existingExpenseId, matches.existingExpenseConfidence: проверь, не дубликат ли это уже существующего расхода.
-     - Дубликат: тот же магазин + дата ±1 день + |total - expense.total| ≤ 1% от total.
-     - Если нашёл — existingExpenseId из catalog.expenses, confidence > 0.8.
-     - Иначе null и 0.
+   matches.duplicateDate/duplicateTotal/duplicateStoreName/duplicateConfidence: дубликат ли это уже существующего расхода?
+     - Дубликат: тот же магазин + дата ±1 день + |total - expense.total| ≤ 1% от total. Сравнивай с recentExpenses.
+     - Если нашёл — заполни date/total/storeName РОВНО из найденного recentExpense, confidence > 0.8.
+     - Иначе все три null и confidence=0.
 
-ВАЖНО: productId / expenseCategoryId / existingExpenseId должны быть точными id из catalog (UUID), либо null. Не выдумывай id.`
+ВАЖНО: productName / expenseCategoryName / expenseLabel / duplicateStoreName должны браться ИЗ КАТАЛОГА буква в букву, либо null. Не придумывай новые названия которых нет в catalog (кроме expenseLabel если ничего вообще не подошло).`
 
 function base64Bytes(b64: string): number {
   // Approx — every 4 chars encode 3 bytes; padding subtracts a couple.
@@ -268,12 +273,15 @@ async function callOpenRouter(
   if (typeof parsed.confidence !== 'number') parsed.confidence = 0.5
   if (typeof parsed.needsEscalation !== 'boolean') parsed.needsEscalation = false
   if (parsed.matches && typeof parsed.matches === 'object') {
-    if (!Array.isArray(parsed.matches.items)) parsed.matches.items = []
-    if (typeof parsed.matches.expenseLabelConfidence !== 'number') parsed.matches.expenseLabelConfidence = 0
-    if (typeof parsed.matches.existingExpenseConfidence !== 'number') parsed.matches.existingExpenseConfidence = 0
-    if (parsed.matches.expenseName === undefined) parsed.matches.expenseName = null
-    if (parsed.matches.expenseCategoryId === undefined) parsed.matches.expenseCategoryId = null
-    if (parsed.matches.existingExpenseId === undefined) parsed.matches.existingExpenseId = null
+    const m = parsed.matches
+    if (!Array.isArray(m.items)) m.items = []
+    if (typeof m.expenseLabelConfidence !== 'number') m.expenseLabelConfidence = 0
+    if (typeof m.duplicateConfidence !== 'number') m.duplicateConfidence = 0
+    if (m.expenseLabel === undefined) m.expenseLabel = null
+    if (m.expenseCategoryName === undefined) m.expenseCategoryName = null
+    if (m.duplicateDate === undefined) m.duplicateDate = null
+    if (m.duplicateTotal === undefined) m.duplicateTotal = null
+    if (m.duplicateStoreName === undefined) m.duplicateStoreName = null
   }
 
   return { data: parsed, rawUsage: body?.usage }

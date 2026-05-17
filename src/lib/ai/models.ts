@@ -14,7 +14,7 @@ export const MODELS: ModelInfo[] = [
   {
     id: 'google/gemini-2.5-flash',
     label: 'Gemini 2.5 Flash',
-    roles: ['extract', 'validate'],
+    roles: ['extract', 'validate', 'escalate'],
     costPerReceipt: 0.00046,
     qualityTier: 'A+',
     notes: 'топ русский OCR · нативный JSON schema',
@@ -72,7 +72,7 @@ export const MODELS: ModelInfo[] = [
 export const DEFAULT_MODELS: Record<ModelRole, string> = {
   extract: 'google/gemini-2.5-flash',
   validate: 'openai/gpt-5-mini',
-  escalate: 'google/gemini-2.5-pro',
+  escalate: 'google/gemini-2.5-flash',
 }
 
 export function modelsForRole(role: ModelRole): ModelInfo[] {

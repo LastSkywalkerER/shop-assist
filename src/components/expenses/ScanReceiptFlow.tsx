@@ -68,14 +68,13 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
       return
     }
 
-    // Build a compact catalog so the validate-pass model can match items
-    // against the user's existing data with its own confidence. Caps are
-    // chosen so the resulting JSON stays well under the model's context
-    // budget even for heavy users.
+    // Build a names-only catalog. The model returns names; the client
+    // resolves them back to ids below. Keeps the validate prompt small.
     const storeNameById = new Map(stores.map((s) => [s.id, s.name]))
     const categoryNameById = new Map(expenseCategories.map((c) => [c.id, c.name]))
-    // Build expense → receipt-item-names lookup so we can show the model
-    // what was actually purchased under each historical expense label.
+
+    // expense.id → up to 5 receipt-item names (for the label inference
+    // signal — "past Одежда expense had a футболка in it").
     const expenseIdToItems = new Map<string, string[]>()
     {
       const receiptIdToItems = new Map<string, string[]>()
@@ -89,26 +88,36 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
         if (items && items.length) expenseIdToItems.set(r.expenseId, items)
       }
     }
+
+    const dedupe = (arr: Array<string | undefined | null>, cap: number): string[] => {
+      const seen = new Set<string>()
+      const out: string[] = []
+      for (const v of arr) {
+        if (!v) continue
+        const trimmed = v.trim()
+        if (!trimmed || seen.has(trimmed)) continue
+        seen.add(trimmed)
+        out.push(trimmed)
+        if (out.length >= cap) break
+      }
+      return out
+    }
+
+    const sortedExpenses = [...expenses].sort((a, b) => b.date.localeCompare(a.date))
+
     const catalog: OcrCatalog = {
-      products: products.slice(0, 400).map((p) => ({
-        id: p.id,
-        name: p.name,
-        category: p.category ?? null,
+      productNames: dedupe(products.map((p) => p.name), 300),
+      categoryNames: expenseCategories.map((c) => c.name),
+      storeNames: dedupe(stores.map((s) => s.name), 80),
+      expenseLabels: dedupe(sortedExpenses.map((e) => e.name), 50),
+      recentExpenses: sortedExpenses.slice(0, 50).map((e) => ({
+        label: e.name ?? null,
+        category: e.categoryId ? (categoryNameById.get(e.categoryId) ?? null) : null,
+        store: e.storeId ? (storeNameById.get(e.storeId) ?? null) : null,
+        date: e.date.slice(0, 10),
+        total: e.amount,
+        items: expenseIdToItems.get(e.id) ?? [],
       })),
-      categories: expenseCategories.map((c) => ({ id: c.id, name: c.name })),
-      stores: stores.map((s) => ({ id: s.id, name: s.name })),
-      expenses: [...expenses]
-        .sort((a, b) => b.date.localeCompare(a.date))
-        .slice(0, 150)
-        .map((e) => ({
-          id: e.id,
-          name: e.name ?? null,
-          category: e.categoryId ? (categoryNameById.get(e.categoryId) ?? null) : null,
-          store: e.storeId ? (storeNameById.get(e.storeId) ?? null) : null,
-          date: e.date.slice(0, 10),
-          total: e.amount,
-          items: expenseIdToItems.get(e.id),
-        })),
     }
 
     setPass('extract')
@@ -151,18 +160,38 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
     const matchedStore = matchStore(parsed.store?.name, stores)
     const modelMatches = parsed.matches ?? null
 
-    // Existing-expense check: prefer the model's verdict if it was
-    // confident, fall back to the local heuristic otherwise.
-    const productIds = new Set(products.map((p) => p.id))
-    const expenseIds = new Set(expenses.map((e) => e.id))
-    const categoryIds = new Set(expenseCategories.map((c) => c.id))
+    // Lookup helpers — model returns names, we resolve to ids by exact
+    // match against the catalog the client just built.
+    const productByName = new Map<string, ProductDocument>()
+    for (const p of products) productByName.set(p.name.trim().toLowerCase(), p)
+    const categoryByName = new Map<string, ExpenseCategoryDocument>()
+    for (const c of expenseCategories) categoryByName.set(c.name.trim().toLowerCase(), c)
+    const storeByName = new Map<string, StoreDocument>()
+    for (const s of stores) storeByName.set(s.name.trim().toLowerCase(), s)
 
+    // Duplicate detection: model describes the dupe by date/total/store,
+    // we resolve it to a concrete expense locally.
     let duplicateExpenseId: string | null = null
-    if (modelMatches?.existingExpenseId
-      && expenseIds.has(modelMatches.existingExpenseId)
-      && modelMatches.existingExpenseConfidence >= AUTO_BIND_THRESHOLD) {
-      duplicateExpenseId = modelMatches.existingExpenseId
-    } else {
+    if (modelMatches?.duplicateConfidence
+      && modelMatches.duplicateConfidence >= AUTO_BIND_THRESHOLD
+      && modelMatches.duplicateDate && modelMatches.duplicateTotal != null) {
+      const dupStoreId = modelMatches.duplicateStoreName
+        ? storeByName.get(modelMatches.duplicateStoreName.trim().toLowerCase())?.id
+        : undefined
+      const targetTime = Date.parse(modelMatches.duplicateDate)
+      if (!Number.isNaN(targetTime)) {
+        const tolerance = Math.max(0.5, modelMatches.duplicateTotal * 0.01)
+        const hit = expenses.find((e) => {
+          if (dupStoreId && e.storeId !== dupStoreId) return false
+          const t = Date.parse(e.date)
+          if (Number.isNaN(t)) return false
+          if (Math.abs(t - targetTime) > 24 * 60 * 60_000) return false
+          return Math.abs(e.amount - modelMatches.duplicateTotal!) <= tolerance
+        })
+        if (hit) duplicateExpenseId = hit.id
+      }
+    }
+    if (!duplicateExpenseId) {
       const fallback = matchExpenseForReceipt(parsed, matchedStore?.storeId ?? null, expenses)
       if (fallback && fallback.confidence >= AUTO_BIND_THRESHOLD) duplicateExpenseId = fallback.expenseId
     }
@@ -183,29 +212,27 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
       }
     }
 
-    // Per-item match: prefer model confidence, but fall back to local
-    // Jaccard for items the model didn't score or where it returned an
-    // id we don't actually have in the catalog (defensive).
-    const modelItemByIndex = new Map<number, { productId: string | null; confidence: number }>()
+    // Per-item match: model returns productName; resolve to id locally.
+    const modelItemByIndex = new Map<number, { productName: string | null; confidence: number }>()
     for (const m of modelMatches?.items ?? []) {
-      modelItemByIndex.set(m.itemIndex, { productId: m.productId, confidence: m.confidence })
+      modelItemByIndex.set(m.itemIndex, { productName: m.productName, confidence: m.confidence })
     }
 
     // Build prefill payload for AddExpense.
     const items: ReceiptItem[] = parsed.items.map((it, idx) => {
       let bindPurchaseId: string | undefined
       const modelMatch = modelItemByIndex.get(idx)
-      if (modelMatch && modelMatch.productId && productIds.has(modelMatch.productId)
-        && modelMatch.confidence >= AUTO_BIND_THRESHOLD) {
-        // Translate productId → most recent matching purchase (preferring
-        // the same store as this receipt).
-        const productPurchases = purchases.filter((p) => p.productId === modelMatch.productId)
-        if (productPurchases.length) {
-          const sorted = [...productPurchases].sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate))
-          const sameStore = matchedStore?.storeId
-            ? sorted.find((p) => p.storeId === matchedStore.storeId)
-            : undefined
-          bindPurchaseId = (sameStore ?? sorted[0]).id
+      if (modelMatch?.productName && modelMatch.confidence >= AUTO_BIND_THRESHOLD) {
+        const product = productByName.get(modelMatch.productName.trim().toLowerCase())
+        if (product) {
+          const productPurchases = purchases.filter((p) => p.productId === product.id)
+          if (productPurchases.length) {
+            const sorted = [...productPurchases].sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate))
+            const sameStore = matchedStore?.storeId
+              ? sorted.find((p) => p.storeId === matchedStore.storeId)
+              : undefined
+            bindPurchaseId = (sameStore ?? sorted[0]).id
+          }
         }
       }
       if (!bindPurchaseId) {
@@ -231,14 +258,15 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
       size: fileBlob.size,
     }]
 
-    // Expense label/category: model first (validated against the catalog),
-    // local heuristic only if the model didn't return anything usable.
+    // Expense label/category: model returns names; resolve category name
+    // to id; fall back to local Jaccard for either field when missing.
     let suggestedName: string | undefined
     let suggestedCategoryId: string | undefined
     if (modelMatches && modelMatches.expenseLabelConfidence >= AUTO_BIND_THRESHOLD) {
-      if (modelMatches.expenseName) suggestedName = modelMatches.expenseName
-      if (modelMatches.expenseCategoryId && categoryIds.has(modelMatches.expenseCategoryId)) {
-        suggestedCategoryId = modelMatches.expenseCategoryId
+      if (modelMatches.expenseLabel) suggestedName = modelMatches.expenseLabel
+      if (modelMatches.expenseCategoryName) {
+        const cat = categoryByName.get(modelMatches.expenseCategoryName.trim().toLowerCase())
+        if (cat) suggestedCategoryId = cat.id
       }
     }
     if (!suggestedName || !suggestedCategoryId) {

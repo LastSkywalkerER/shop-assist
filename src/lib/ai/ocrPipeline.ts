@@ -9,17 +9,24 @@ export interface ParsedReceiptItem {
 
 export interface ItemMatch {
   itemIndex: number
-  productId: string | null
+  /** Product name picked from catalog.productNames, or null. The client
+   * resolves this to the actual product/purchase id. */
+  productName: string | null
   confidence: number
 }
 
 export interface ReceiptMatches {
   items: ItemMatch[]
-  expenseName: string | null
-  expenseCategoryId: string | null
+  expenseLabel: string | null
+  expenseCategoryName: string | null
   expenseLabelConfidence: number
-  existingExpenseId: string | null
-  existingExpenseConfidence: number
+  /** When the receipt is a duplicate of an existing expense, the model
+   * describes the dupe by date/total/store rather than echoing an id.
+   * Client searches by these fields. */
+  duplicateDate: string | null
+  duplicateTotal: number | null
+  duplicateStoreName: string | null
+  duplicateConfidence: number
 }
 
 export interface ParsedReceipt {
@@ -34,25 +41,29 @@ export interface ParsedReceipt {
   matches?: ReceiptMatches | null
 }
 
-export interface OcrCatalogProduct { id: string; name: string; category?: string | null }
-export interface OcrCatalogStore { id: string; name: string }
-export interface OcrCatalogCategory { id: string; name: string }
 export interface OcrCatalogExpense {
-  id: string
-  name?: string | null
-  category?: string | null
-  store?: string | null
-  date?: string | null
-  total?: number | null
-  /** Up to ~5 item names from this expense's receipt, so the validate
-   * model can match "футболка" → past expense titled "Одежда". */
-  items?: string[]
+  /** Free-text label, e.g. "Одежда". */
+  label: string | null
+  category: string | null
+  store: string | null
+  date: string | null
+  total: number | null
+  /** Up to ~5 receipt item names from this expense — gives the model
+   * enough signal to match "футболка" → past "Одежда" label. */
+  items: string[]
 }
+
+/**
+ * Names-only catalog. We keep this small and de-duplicated so the
+ * validate prompt stays compact. The client maps the names the model
+ * returns back to RxDB ids locally.
+ */
 export interface OcrCatalog {
-  products?: OcrCatalogProduct[]
-  categories?: OcrCatalogCategory[]
-  stores?: OcrCatalogStore[]
-  expenses?: OcrCatalogExpense[]
+  productNames: string[]
+  categoryNames: string[]
+  storeNames: string[]
+  expenseLabels: string[]
+  recentExpenses: OcrCatalogExpense[]
 }
 
 export type Pass = 'extract' | 'validate' | 'escalate'
