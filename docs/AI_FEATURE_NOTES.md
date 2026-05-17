@@ -18,13 +18,19 @@ touching any of: `supabase/functions/ocr-receipt`, `room_ai_settings`,
   `ai_usage_log`.
 - Parsed receipt is consumed in-flight; raw OCR JSON is NOT persisted (no
   schema bump).
-- Match heuristics:
-  - `matchPurchaseForItem` (token-Jaccard + same-store bonus) — auto-binds
-    items to existing purchases above 0.8.
-  - `matchExpenseForReceipt` (same store + ±1 day + total within 1%) —
-    prompts user to open an existing expense instead of duplicating.
-  - `suggestExpenseLabel` — votes name/categoryId from product→category
-    and historical receipt-item→expense signals (history weighted ×1.5).
+- Matching is driven by the validate-pass model. The client sends a
+  compact `catalog` (products, categories, stores, ~150 recent expenses)
+  with the receipt, and the model returns a `matches` block:
+  - `matches.items[]` — per-item productId + confidence
+  - `matches.expenseName / expenseCategoryId / expenseLabelConfidence`
+  - `matches.existingExpenseId / existingExpenseConfidence`
+- `ScanReceiptFlow` accepts model matches whose confidence ≥ 0.8 and
+  whose id exists in the catalog. For anything below that bar, or if
+  the model omits a field, it falls back to local heuristics:
+  - `matchPurchaseForItem` (token-Jaccard + same-store bonus)
+  - `matchExpenseForReceipt` (same store + ±1 day + total within 1%)
+  - `suggestExpenseLabel` (product→category + historical receipt-item
+    →expense voting, history weighted ×1.5)
 
 ## Per-room settings storage
 
@@ -70,6 +76,8 @@ CREATE POLICY my_table_select ON my_table FOR SELECT TO authenticated
 | Mall name (ТРЦ Палаццо) missing from `store.address` | Extract prompt didn't tell the model to glue mall name in front of the street address | Updated `EXTRACT_PROMPT` in `ocr-receipt/index.ts` and re-deployed |
 | AddExpense form had empty Name / Category after a successful scan | OCR flow only filled store, date, total, items — not the expense label | Added `suggestExpenseLabel()` in `src/lib/ai/matching.ts`, threaded through `ScanReceiptFlow` and `AddExpense` |
 | TS error `erasableSyntaxOnly` rejected `constructor(... public readonly code?: string)` | Project's tsconfig uses `erasableSyntaxOnly` which forbids parameter properties | Rewrote `OcrError` with explicit field declaration |
+| Item / category / expense matching relied on local Jaccard only; weak matches and no global view | Validate pass got only the receipt; the model couldn't actually compare against the user's history | Validate now receives a compact `catalog` (products / categories / stores / recent expenses) and returns `matches` block with confidence per item, expense label, and duplicate-expense check. Client picks model verdict if confidence ≥ 0.8, falls back to local Jaccard otherwise. |
+| Camera FAB overlapped the bottom quick-add input | FAB was at `bottom-[88px]` which sits inside the quick-add bar's vertical band | Raised to `bottom-[160px]` |
 
 ## How to fix RLS 42501 on similar features in the future
 

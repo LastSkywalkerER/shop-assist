@@ -30,6 +30,24 @@ const MODEL_PRICES: Record<string, { in: number; out: number }> = {
 
 type Pass = 'extract' | 'validate' | 'escalate'
 
+interface CatalogProduct { id: string; name: string; category?: string | null }
+interface CatalogStore { id: string; name: string }
+interface CatalogCategory { id: string; name: string }
+interface CatalogExpense {
+  id: string
+  name?: string | null
+  category?: string | null
+  store?: string | null
+  date?: string | null
+  total?: number | null
+}
+interface Catalog {
+  products?: CatalogProduct[]
+  categories?: CatalogCategory[]
+  stores?: CatalogStore[]
+  expenses?: CatalogExpense[]
+}
+
 interface RequestBody {
   pass: Pass
   model: string
@@ -37,6 +55,7 @@ interface RequestBody {
   imageMimeType?: string
   previousJson?: unknown
   currency?: string
+  catalog?: Catalog
 }
 
 interface ReceiptItemPayload {
@@ -44,6 +63,21 @@ interface ReceiptItemPayload {
   amount: number
   packageVolume?: string
   manufacturer?: string
+}
+
+interface ItemMatch {
+  itemIndex: number
+  productId: string | null
+  confidence: number
+}
+
+interface ReceiptMatches {
+  items: ItemMatch[]
+  expenseName: string | null
+  expenseCategoryId: string | null
+  expenseLabelConfidence: number
+  existingExpenseId: string | null
+  existingExpenseConfidence: number
 }
 
 interface ReceiptPayload {
@@ -54,6 +88,7 @@ interface ReceiptPayload {
   items: ReceiptItemPayload[]
   confidence: number
   needsEscalation: boolean
+  matches?: ReceiptMatches | null
 }
 
 const RECEIPT_JSON_SCHEMA = {
@@ -91,6 +126,31 @@ const RECEIPT_JSON_SCHEMA = {
       },
       confidence: { type: 'number', minimum: 0, maximum: 1 },
       needsEscalation: { type: 'boolean' },
+      matches: {
+        type: ['object', 'null'],
+        additionalProperties: false,
+        properties: {
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                itemIndex: { type: 'integer', minimum: 0 },
+                productId: { type: ['string', 'null'] },
+                confidence: { type: 'number', minimum: 0, maximum: 1 },
+              },
+              required: ['itemIndex', 'productId', 'confidence'],
+            },
+          },
+          expenseName: { type: ['string', 'null'] },
+          expenseCategoryId: { type: ['string', 'null'] },
+          expenseLabelConfidence: { type: 'number', minimum: 0, maximum: 1 },
+          existingExpenseId: { type: ['string', 'null'] },
+          existingExpenseConfidence: { type: 'number', minimum: 0, maximum: 1 },
+        },
+        required: ['items', 'expenseName', 'expenseCategoryId', 'expenseLabelConfidence', 'existingExpenseId', 'existingExpenseConfidence'],
+      },
     },
     required: ['currency', 'items', 'confidence', 'needsEscalation'],
   },
@@ -109,14 +169,31 @@ const EXTRACT_PROMPT = `Ты — парсер кассовых чеков. На 
 
 Не выдумывай позиции. Если не видишь — оставляй пустой массив. Не включай в items сервисные строки (итого, скидка, нал/безнал, НДС).`
 
-const VALIDATE_PROMPT = `Ты валидатор JSON-чека. Тебе дают предыдущий результат OCR. Проверь:
-1) Сумма items[].amount ≈ total (допуск 1%). Если total отсутствует — посчитай и проставь.
-2) Кириллица: исправь смешанные латинские o/a/c/p/x/e/H/B на русские эквиваленты внутри слов где это очевидно (например "Moлоko" → "Молоко").
-3) Названия магазинов: нормализуй к торговому имени без юр-формы ("ООО ", 'ИП ", "Зао ").
-4) Уверенность: пересчитай confidence учитывая обнаруженные несостыковки.
-5) Если совсем плохо — выстави needsEscalation=true.
+const VALIDATE_PROMPT = `Ты валидатор и подбиратор связей для JSON-чека. Тебе дают:
+1) JSON-чек после OCR (поле receipt);
+2) выгрузку из пользовательской базы (поле catalog): products (товары), categories (категории расходов), stores (магазины), expenses (последние расходы — здесь видна привычка пользователя как они называют расход и какую категорию выбирают).
 
-Верни тот же JSON с исправлениями. НЕ добавляй и НЕ удаляй позиции — только чисти текст и считай суммы.`
+A) Очисти receipt — НЕ добавляй и НЕ удаляй позиции:
+   - сумма items[].amount ≈ total (допуск 1%). Если total отсутствует — посчитай и проставь.
+   - Кириллица: исправь смешанные латинские o/a/c/p/x/e/H/B на русские эквиваленты внутри слов где это очевидно (например "Moлоko" → "Молоко").
+   - Названия магазинов: нормализуй к торговому имени без юр-формы ("ООО ", "ИП ", "ЗАО ").
+   - confidence пересчитай учитывая ошибки; если совсем плохо — needsEscalation=true.
+
+B) Заполни matches на основании catalog:
+   matches.items: ДЛЯ КАЖДОЙ позиции по itemIndex (0-based, в порядке как в receipt.items) определи лучший продукт из catalog.products. Сравнивай не только название, но и категорию/производителя/объём из позиции. Высокая уверенность (confidence ≥ 0.85) только если это явно тот же товар. Если ничего близкого — productId=null, confidence=0.
+
+   matches.expenseName, matches.expenseCategoryId, matches.expenseLabelConfidence: предложи имя нового расхода и categoryId.
+     - В catalog.expenses посмотри, как пользователь обычно называл похожие покупки (например, если в чеке одежда и раньше был расход name="Одежда" — используй то же имя).
+     - matches.expenseCategoryId должен быть РОВНО одним из catalog.categories[].id (или null если ничего подходящего).
+     - matches.expenseName — короткое имя (1-3 слова, как пользователь обычно пишет) или null.
+     - Confidence отражает уверенность; не выдумывай высокую уверенность если данных мало.
+
+   matches.existingExpenseId, matches.existingExpenseConfidence: проверь, не дубликат ли это уже существующего расхода.
+     - Дубликат: тот же магазин + дата ±1 день + |total - expense.total| ≤ 1% от total.
+     - Если нашёл — existingExpenseId из catalog.expenses, confidence > 0.8.
+     - Иначе null и 0.
+
+ВАЖНО: productId / expenseCategoryId / existingExpenseId должны быть точными id из catalog (UUID), либо null. Не выдумывай id.`
 
 function base64Bytes(b64: string): number {
   // Approx — every 4 chars encode 3 bytes; padding subtracts a couple.
@@ -180,6 +257,14 @@ async function callOpenRouter(
   if (typeof parsed.currency !== 'string' || !parsed.currency) parsed.currency = 'BYN'
   if (typeof parsed.confidence !== 'number') parsed.confidence = 0.5
   if (typeof parsed.needsEscalation !== 'boolean') parsed.needsEscalation = false
+  if (parsed.matches && typeof parsed.matches === 'object') {
+    if (!Array.isArray(parsed.matches.items)) parsed.matches.items = []
+    if (typeof parsed.matches.expenseLabelConfidence !== 'number') parsed.matches.expenseLabelConfidence = 0
+    if (typeof parsed.matches.existingExpenseConfidence !== 'number') parsed.matches.existingExpenseConfidence = 0
+    if (parsed.matches.expenseName === undefined) parsed.matches.expenseName = null
+    if (parsed.matches.expenseCategoryId === undefined) parsed.matches.expenseCategoryId = null
+    if (parsed.matches.existingExpenseId === undefined) parsed.matches.existingExpenseId = null
+  }
 
   return { data: parsed, rawUsage: body?.usage }
 }
@@ -326,9 +411,12 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+    const catalog = body.catalog ?? {}
     messages = [{
       role: 'user',
-      content: VALIDATE_PROMPT + '\n\nВходной JSON:\n' + JSON.stringify(body.previousJson),
+      content: VALIDATE_PROMPT
+        + '\n\nreceipt:\n' + JSON.stringify(body.previousJson)
+        + '\n\ncatalog:\n' + JSON.stringify(catalog),
     }]
   }
 

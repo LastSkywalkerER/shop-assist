@@ -5,7 +5,7 @@ import { useToast } from '../../contexts/ToastContext'
 import { useConfirm } from '../../contexts/ConfirmDialogContext'
 import { useRxQuery, useRxCollection } from '../../db/hooks'
 import { ReceiptCameraModal } from './ReceiptCameraModal'
-import { runOcrPipeline, OcrError, type Pass } from '../../lib/ai/ocrPipeline'
+import { runOcrPipeline, OcrError, type Pass, type OcrCatalog } from '../../lib/ai/ocrPipeline'
 import {
   matchPurchaseForItem,
   matchStore,
@@ -68,6 +68,33 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
       return
     }
 
+    // Build a compact catalog so the validate-pass model can match items
+    // against the user's existing data with its own confidence. Caps are
+    // chosen so the resulting JSON stays well under the model's context
+    // budget even for heavy users.
+    const storeNameById = new Map(stores.map((s) => [s.id, s.name]))
+    const categoryNameById = new Map(expenseCategories.map((c) => [c.id, c.name]))
+    const catalog: OcrCatalog = {
+      products: products.slice(0, 400).map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category ?? null,
+      })),
+      categories: expenseCategories.map((c) => ({ id: c.id, name: c.name })),
+      stores: stores.map((s) => ({ id: s.id, name: s.name })),
+      expenses: [...expenses]
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 150)
+        .map((e) => ({
+          id: e.id,
+          name: e.name ?? null,
+          category: e.categoryId ? (categoryNameById.get(e.categoryId) ?? null) : null,
+          store: e.storeId ? (storeNameById.get(e.storeId) ?? null) : null,
+          date: e.date.slice(0, 10),
+          total: e.amount,
+        })),
+    }
+
     setPass('extract')
     let parsed
     try {
@@ -80,6 +107,7 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
           defaultCurrency: DEFAULT_CURRENCY,
         },
         { onPass: setPass },
+        { catalog },
       )
     } catch (err) {
       console.error('OCR pipeline failed:', err)
@@ -105,10 +133,26 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
     }
 
     const matchedStore = matchStore(parsed.store?.name, stores)
-    const matchedExpense = matchExpenseForReceipt(parsed, matchedStore?.storeId ?? null, expenses)
+    const modelMatches = parsed.matches ?? null
 
-    if (matchedExpense && matchedExpense.confidence >= AUTO_BIND_THRESHOLD) {
-      const exp = expenses.find((e) => e.id === matchedExpense.expenseId)
+    // Existing-expense check: prefer the model's verdict if it was
+    // confident, fall back to the local heuristic otherwise.
+    const productIds = new Set(products.map((p) => p.id))
+    const expenseIds = new Set(expenses.map((e) => e.id))
+    const categoryIds = new Set(expenseCategories.map((c) => c.id))
+
+    let duplicateExpenseId: string | null = null
+    if (modelMatches?.existingExpenseId
+      && expenseIds.has(modelMatches.existingExpenseId)
+      && modelMatches.existingExpenseConfidence >= AUTO_BIND_THRESHOLD) {
+      duplicateExpenseId = modelMatches.existingExpenseId
+    } else {
+      const fallback = matchExpenseForReceipt(parsed, matchedStore?.storeId ?? null, expenses)
+      if (fallback && fallback.confidence >= AUTO_BIND_THRESHOLD) duplicateExpenseId = fallback.expenseId
+    }
+
+    if (duplicateExpenseId) {
+      const exp = expenses.find((e) => e.id === duplicateExpenseId)
       const storeName = exp?.storeId ? stores.find((s) => s.id === exp.storeId)?.name : undefined
       const openExisting = await confirm({
         title: 'Похоже, такой расход уже есть',
@@ -123,10 +167,35 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
       }
     }
 
+    // Per-item match: prefer model confidence, but fall back to local
+    // Jaccard for items the model didn't score or where it returned an
+    // id we don't actually have in the catalog (defensive).
+    const modelItemByIndex = new Map<number, { productId: string | null; confidence: number }>()
+    for (const m of modelMatches?.items ?? []) {
+      modelItemByIndex.set(m.itemIndex, { productId: m.productId, confidence: m.confidence })
+    }
+
     // Build prefill payload for AddExpense.
-    const items: ReceiptItem[] = parsed.items.map((it) => {
-      const match = matchPurchaseForItem(it, products, purchases, matchedStore?.storeId)
-      const autoBind = match && match.confidence >= AUTO_BIND_THRESHOLD
+    const items: ReceiptItem[] = parsed.items.map((it, idx) => {
+      let bindPurchaseId: string | undefined
+      const modelMatch = modelItemByIndex.get(idx)
+      if (modelMatch && modelMatch.productId && productIds.has(modelMatch.productId)
+        && modelMatch.confidence >= AUTO_BIND_THRESHOLD) {
+        // Translate productId → most recent matching purchase (preferring
+        // the same store as this receipt).
+        const productPurchases = purchases.filter((p) => p.productId === modelMatch.productId)
+        if (productPurchases.length) {
+          const sorted = [...productPurchases].sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate))
+          const sameStore = matchedStore?.storeId
+            ? sorted.find((p) => p.storeId === matchedStore.storeId)
+            : undefined
+          bindPurchaseId = (sameStore ?? sorted[0]).id
+        }
+      }
+      if (!bindPurchaseId) {
+        const localMatch = matchPurchaseForItem(it, products, purchases, matchedStore?.storeId)
+        if (localMatch && localMatch.confidence >= AUTO_BIND_THRESHOLD) bindPurchaseId = localMatch.purchaseId
+      }
       return {
         id: crypto.randomUUID(),
         name: it.name,
@@ -134,8 +203,8 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
         currency: parsed.currency,
         manufacturer: it.manufacturer,
         packageVolume: it.packageVolume,
-        addToProducts: !!autoBind,
-        existingPurchaseId: autoBind ? match!.purchaseId : undefined,
+        addToProducts: !!bindPurchaseId,
+        existingPurchaseId: bindPurchaseId,
       }
     })
 
@@ -146,16 +215,27 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
       size: fileBlob.size,
     }]
 
-    // Suggest the expense label/category from receipt items by mining
-    // existing products and historical expenses. Only applied if the
-    // user hasn't already populated this scan elsewhere.
-    const labelSuggestion = suggestExpenseLabel(parsed.items, {
-      products,
-      expenses,
-      expenseCategories,
-      receipts,
-      receiptItems,
-    })
+    // Expense label/category: model first (validated against the catalog),
+    // local heuristic only if the model didn't return anything usable.
+    let suggestedName: string | undefined
+    let suggestedCategoryId: string | undefined
+    if (modelMatches && modelMatches.expenseLabelConfidence >= AUTO_BIND_THRESHOLD) {
+      if (modelMatches.expenseName) suggestedName = modelMatches.expenseName
+      if (modelMatches.expenseCategoryId && categoryIds.has(modelMatches.expenseCategoryId)) {
+        suggestedCategoryId = modelMatches.expenseCategoryId
+      }
+    }
+    if (!suggestedName || !suggestedCategoryId) {
+      const localSuggestion = suggestExpenseLabel(parsed.items, {
+        products,
+        expenses,
+        expenseCategories,
+        receipts,
+        receiptItems,
+      })
+      if (!suggestedName) suggestedName = localSuggestion.name
+      if (!suggestedCategoryId) suggestedCategoryId = localSuggestion.categoryId
+    }
 
     // Normalize date to YYYY-MM-DD for <input type="date">.
     let prefilledDate: string | undefined
@@ -176,8 +256,8 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
           items,
           attachments,
           confidence: parsed.confidence,
-          name: labelSuggestion.name,
-          categoryId: labelSuggestion.categoryId,
+          name: suggestedName,
+          categoryId: suggestedCategoryId,
         },
       },
     })

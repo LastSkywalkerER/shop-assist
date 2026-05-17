@@ -7,6 +7,21 @@ export interface ParsedReceiptItem {
   manufacturer?: string
 }
 
+export interface ItemMatch {
+  itemIndex: number
+  productId: string | null
+  confidence: number
+}
+
+export interface ReceiptMatches {
+  items: ItemMatch[]
+  expenseName: string | null
+  expenseCategoryId: string | null
+  expenseLabelConfidence: number
+  existingExpenseId: string | null
+  existingExpenseConfidence: number
+}
+
 export interface ParsedReceipt {
   store?: { name: string; address?: string }
   date?: string
@@ -15,6 +30,26 @@ export interface ParsedReceipt {
   items: ParsedReceiptItem[]
   confidence: number
   needsEscalation: boolean
+  /** Populated by the validate pass when a catalog is provided. */
+  matches?: ReceiptMatches | null
+}
+
+export interface OcrCatalogProduct { id: string; name: string; category?: string | null }
+export interface OcrCatalogStore { id: string; name: string }
+export interface OcrCatalogCategory { id: string; name: string }
+export interface OcrCatalogExpense {
+  id: string
+  name?: string | null
+  category?: string | null
+  store?: string | null
+  date?: string | null
+  total?: number | null
+}
+export interface OcrCatalog {
+  products?: OcrCatalogProduct[]
+  categories?: OcrCatalogCategory[]
+  stores?: OcrCatalogStore[]
+  expenses?: OcrCatalogExpense[]
 }
 
 export type Pass = 'extract' | 'validate' | 'escalate'
@@ -69,6 +104,7 @@ interface OcrApiBody {
   imageMimeType?: string
   previousJson?: ParsedReceipt
   currency?: string
+  catalog?: OcrCatalog
 }
 
 async function callOcr(body: OcrApiBody, signal: AbortSignal): Promise<ParsedReceipt> {
@@ -156,6 +192,13 @@ export interface RunPipelineOptions {
   forceEscalate?: boolean
   /** Abort signal forwarded to fetch. */
   signal?: AbortSignal
+  /**
+   * Compact user catalog sent to the validate pass so the model can match
+   * receipt items to existing products / categories / expenses with its own
+   * confidence scores. When omitted, matches will come from local heuristics
+   * only.
+   */
+  catalog?: OcrCatalog
 }
 
 /**
@@ -200,6 +243,7 @@ export async function runOcrPipeline(
       pass: 'validate',
       model: settings.modelValidate,
       previousJson: result,
+      catalog: opts.catalog,
     }, makeStepSignal())
   } catch (err) {
     // Validation failures shouldn't kill the whole flow — we still have the
