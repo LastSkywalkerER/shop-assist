@@ -1,5 +1,9 @@
 # Project Rules
 
+## Feature notes
+
+- AI / OCR receipt scanning — see [`docs/AI_FEATURE_NOTES.md`](docs/AI_FEATURE_NOTES.md) for design decisions, gotchas (RLS 42501 stale-JWT fix, mall-name prompt, etc.), and how to debug RLS errors on room-scoped tables.
+
 ## Versioning
 
 - Any code changes → increment app version in `package.json` (`version`)
