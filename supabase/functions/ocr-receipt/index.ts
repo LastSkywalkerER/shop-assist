@@ -268,12 +268,20 @@ async function callOpenRouter(
   model: string,
   messages: unknown[],
   log: Log,
+  opts?: { reasoningEffort?: 'low' | 'medium' | 'high' },
 ): Promise<{ data: ReceiptPayload; rawUsage?: { prompt_tokens?: number; completion_tokens?: number } }> {
-  const reqBody = {
+  const reqBody: Record<string, unknown> = {
     model,
     messages,
     temperature: 0,
     response_format: { type: 'json_schema', json_schema: RECEIPT_JSON_SCHEMA },
+  }
+  // Reasoning models (gpt-5-mini, o1, etc.) burn 2k-3k thinking tokens on
+  // simple JSON wrangling by default. For the validate pass we have a clear
+  // schema and a small prompt — low effort is plenty and shaves ~30s off
+  // the wall time, keeping us under the client's 120s budget.
+  if (opts?.reasoningEffort) {
+    reqBody.reasoning = { effort: opts.reasoningEffort }
   }
 
   // Log the outgoing request, but redact base64 image payloads (they would
@@ -573,7 +581,9 @@ serve(async (req) => {
   let result: { data: ReceiptPayload; rawUsage?: { prompt_tokens?: number; completion_tokens?: number } }
   try {
     log.step('openrouter:call', { pass: body.pass, model: body.model })
-    result = await callOpenRouter(openrouterKey, body.model, messages, log)
+    result = await callOpenRouter(openrouterKey, body.model, messages, log, {
+      reasoningEffort: body.pass === 'validate' ? 'low' : undefined,
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'OpenRouter error'
     log.error('openrouter:exception', { pass: body.pass, model: body.model, error: msg })

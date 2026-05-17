@@ -219,14 +219,13 @@ export async function runOcrPipeline(
   const base64 = await blobToBase64(resized)
   const mime = resized.type || 'image/jpeg'
 
-  const makeStepSignal = (): AbortSignal => {
+  const makeStepSignal = (timeoutMs: number): AbortSignal => {
     const ac = new AbortController()
-    const t = setTimeout(() => ac.abort(), 30_000)
+    const t = setTimeout(() => ac.abort(), timeoutMs)
     if (opts.signal) {
       if (opts.signal.aborted) ac.abort()
       else opts.signal.addEventListener('abort', () => ac.abort(), { once: true })
     }
-    // Clear when consumer attaches `finally` — handled implicitly by fetch.
     void t
     return ac.signal
   }
@@ -238,16 +237,18 @@ export async function runOcrPipeline(
     imageBase64: base64,
     imageMimeType: mime,
     currency: settings.defaultCurrency,
-  }, makeStepSignal())
+  }, makeStepSignal(60_000))
 
   callbacks.onPass?.('validate')
   try {
+    // Validate uses a reasoning model (gpt-5-mini) and can spend 30-60s on
+    // reasoning tokens alone. 120s gives comfortable headroom.
     result = await callOcr({
       pass: 'validate',
       model: settings.modelValidate,
       previousJson: result,
       catalog: opts.catalog,
-    }, makeStepSignal())
+    }, makeStepSignal(120_000))
   } catch (err) {
     // Validation failures shouldn't kill the whole flow — we still have the
     // extract result, which is the most important piece.
@@ -263,7 +264,7 @@ export async function runOcrPipeline(
         imageBase64: base64,
         imageMimeType: mime,
         currency: settings.defaultCurrency,
-      }, makeStepSignal())
+      }, makeStepSignal(60_000))
     } catch (err) {
       console.warn('OCR escalate pass failed, using validated result:', err)
     }
