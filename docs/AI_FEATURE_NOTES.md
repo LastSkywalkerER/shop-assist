@@ -227,6 +227,45 @@ Purchases still store `purchase.price = item.amount` (unit price); no
 quantity is persisted on purchases, so price-history queries work
 unchanged.
 
+## Async scan flow (since 1.13.0)
+
+The camera FAB no longer blocks the user while OCR runs. The flow is now:
+
+1. Capture photo → resize → upload to `sync-attachments/{room_id}/pending_scans/{scanId}.jpg`.
+2. INSERT a `pending_receipt_scans` row (status=`pending`).
+3. POST `start-receipt-scan` edge function. It transitions status to
+   `processing`, returns 202, and runs the 3-pass pipeline in
+   `EdgeRuntime.waitUntil` (with a feature-detect fallback to inline await
+   so the local CLI still works).
+4. The worker writes `status='ready' | 'failed'` plus `parsed_payload` and a
+   fully-resolved `prefill_payload` (server-side equivalent of the old
+   client matching code).
+5. Clients watching `ExpensesDashboard` see the row update via Realtime on
+   `supabase_realtime` publication and re-render the pending row. Tap →
+   `/expenses/add` with `ocrPrefill` carrying both the parsed data and
+   `pendingScanId` / `pendingScanStoragePath`.
+6. On save: `expense_attachments_sync` row is inserted with
+   `storage_path = pendingScanStoragePath` (no re-upload), then the
+   pending row is deleted (storage object stays as the attachment).
+7. On cancel: confirm dialog → both row and storage object are removed.
+
+Tables, RLS and Realtime live in `supabase/migrations/20260518140000_pending_receipt_scans.sql`.
+
+The edge function reuses `_shared/openrouter.ts`, `_shared/log.ts`,
+`_shared/types.ts`, `_shared/matching.ts`, `_shared/catalog.ts`,
+`_shared/resolve.ts`. The old `ocr-receipt` function is preserved verbatim
+(now a thin wrapper over `_shared/`) so `scripts/debug-ocr-prompt.mjs`
+keeps working.
+
+Retry semantics: `start-receipt-scan` accepts `{ force: true }` to reclaim
+either `failed` rows or `processing` rows older than 10 minutes
+(orphan recovery for crashed workers). Atomic claim via `WHERE id=$1 AND
+status IN ('failed','processing')` so two concurrent invocations can't
+both pick up the same row.
+
+The pending table is **cloud-only** — no RxDB collection, no schema
+version bump. Client subscribes directly via `usePendingScans(roomId)`.
+
 ## Files of interest
 
 - `src/components/expenses/ScanReceiptFlow.tsx` — camera + pipeline orchestration.
@@ -237,5 +276,11 @@ unchanged.
 - `src/lib/supabase/aiSettings.ts` — CRUD for `room_ai_settings`.
 - `src/contexts/AiSettingsContext.tsx` — global provider (`useAiSettings()`).
 - `src/components/settings/AiSection.tsx` — Settings UI (toggle + selectors).
-- `supabase/functions/ocr-receipt/index.ts` — JWT auth, rate limit, OpenRouter call.
+- `supabase/functions/ocr-receipt/index.ts` — JWT auth, rate limit, OpenRouter call (sync single-pass; kept for `scripts/debug-ocr-prompt.mjs`).
+- `supabase/functions/start-receipt-scan/index.ts` — async orchestrator, runs full pipeline in `EdgeRuntime.waitUntil`.
+- `supabase/functions/_shared/*.ts` — prompts, JSON schema, logger, catalog builder, server-side matching.
 - `supabase/migrations/20260517120000_ai_settings_and_usage.sql` — tables + `is_room_member()`.
+- `supabase/migrations/20260518140000_pending_receipt_scans.sql` — async scan jobs table + RLS + Realtime.
+- `src/hooks/usePendingScans.ts` — Realtime subscription for pending rows.
+- `src/components/expenses/PendingScanRow.tsx` — list row with spinner / ready / failed / orphan states.
+- `src/lib/ai/pendingScans.ts` — client helpers: `startScan`, `retryScan`, `deletePendingScan`, `promotePendingScan`.
