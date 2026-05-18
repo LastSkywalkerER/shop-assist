@@ -118,7 +118,12 @@ export async function setupCollectionReplication(
 
           const rows = effectiveChanges.map(change => {
             const doc = change.newDocumentState
-            return transformRxDBToSupabase(doc as any, roomId)
+            const row = transformRxDBToSupabase(doc as any, roomId)
+            // doc.remove() does not bump updatedAt, so without this stamp the
+            // tombstone row keeps its old updated_at and other clients' pull
+            // queries (WHERE updated_at > checkpoint) never see the deletion.
+            if (row._deleted) row.updated_at = new Date().toISOString()
+            return row
           })
 
           const { error } = await supabase
@@ -334,6 +339,9 @@ async function pushAttachmentChanges(
       const storagePath = doc.storagePath || getStoragePath(collection.name, roomId, doc.id)
       const row = transformRxDBToSupabase(doc as any, roomId)
       row.data_url = ''
+      // See note on the non-attachment push path: bump updated_at so the
+      // tombstone surfaces in other clients' pull queries.
+      row.updated_at = new Date().toISOString()
 
       const { error } = await supabase.from(tableName).upsert([row], { onConflict: 'id' })
       if (error && error.code !== '42501') {
