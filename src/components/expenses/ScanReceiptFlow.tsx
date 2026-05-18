@@ -309,6 +309,7 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
         id: crypto.randomUUID(),
         name: displayName,
         amount: it.amount,
+        quantity: it.quantity ?? 1,
         currency: parsed.currency,
         manufacturer: it.manufacturer,
         packageVolume: it.packageVolume,
@@ -318,6 +319,7 @@ export function ScanReceiptFlow({ onClose }: ScanReceiptFlowProps) {
         // otherwise a new product/purchase will be created on save.
         addToProducts: true,
         existingPurchaseId: bindPurchaseId,
+        needsReview: it.needsReview === true ? true : undefined,
       }
     })
 

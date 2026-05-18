@@ -81,9 +81,11 @@ export function AddExpense() {
   const [notes, setNotes] = useState('')
   const [attachments, setAttachments] = useState<AttachmentFile[]>(() => ocrPrefill?.attachments ?? [])
   const [receiptItems, setReceiptItems] = useState<ReceiptItem[]>(() => {
-    if (ocrPrefill?.items?.length) return ocrPrefill.items
+    if (ocrPrefill?.items?.length) {
+      return ocrPrefill.items.map((it) => ({ ...it, quantity: it.quantity ?? 1 }))
+    }
     if (prefilledItems?.length) {
-      return prefilledItems.map((item) => ({ id: crypto.randomUUID(), name: item.name, amount: 0, currency: DEFAULT_CURRENCY }))
+      return prefilledItems.map((item) => ({ id: crypto.randomUUID(), name: item.name, amount: 0, quantity: 1, currency: DEFAULT_CURRENCY }))
     }
     return []
   })
@@ -286,12 +288,14 @@ export function AddExpense() {
               }
             }
 
-            // Insert receipt item
+            // Insert receipt item. `needsReview` is transient UI state only —
+            // it's deliberately not persisted.
             await receiptItemsCol.insert({
               id: item.id,
               receiptId,
               name: item.name,
               amount: item.amount,
+              quantity: item.quantity ?? 1,
               currency: item.currency || DEFAULT_CURRENCY,
               manufacturer: item.manufacturer,
               packageVolume: item.packageVolume,
