@@ -22,7 +22,10 @@ import { FileUpload, type AttachmentFile } from './FileUpload'
 import { ReceiptItemsManager, type ReceiptItem } from './ReceiptItemsManager'
 import { CreatorField } from '../shared/CreatorField'
 import { useAuth } from '../../contexts/AuthContext'
-import { addPendingUpload } from '../../db/blobStore'
+import { addPendingUpload, blobStorePut, blobStoreGet } from '../../db/blobStore'
+import { useConfirm } from '../../contexts/ConfirmDialogContext'
+import { supabase } from '../../lib/supabase/client'
+import { deletePendingScan, promotePendingScan } from '../../lib/ai/pendingScans'
 
 export function AddExpense() {
   const navigate = useNavigate()
@@ -43,10 +46,19 @@ export function AddExpense() {
       confidence?: number
       name?: string
       categoryId?: string
+      /** Set when arriving from a pending_receipt_scans row — the storage
+       * object is already uploaded under this path and must be promoted
+       * rather than re-uploaded. The id is the pending row id. */
+      pendingScanId?: string
+      pendingScanStoragePath?: string
+      pendingScanMime?: string
+      duplicateOfExpenseId?: string | null
     }
   } | null
   const prefilledItems = locState?.prefilledItems
   const ocrPrefill = locState?.ocrPrefill
+  const pendingScanId = ocrPrefill?.pendingScanId
+  const pendingScanPath = ocrPrefill?.pendingScanStoragePath
 
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const storesCol = useRxCollection<StoreDocument>('stores')
@@ -91,6 +103,41 @@ export function AddExpense() {
   })
   const [creatorName, setCreatorName] = useState(user?.first_name ?? '')
   const [saving, setSaving] = useState(false)
+  const confirm = useConfirm()
+
+  // When arriving from a pending scan, the image is already in Supabase
+  // Storage. Hydrate the local blobStore so FileUpload's preview works, and
+  // synthesize an attachment entry pointing to the existing storage path.
+  useEffect(() => {
+    if (!pendingScanId || !pendingScanPath) return
+    if (attachments.some((a) => a.id === pendingScanId)) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const cached = await blobStoreGet(pendingScanId)
+        if (!cached) {
+          const { data, error } = await supabase.storage
+            .from('sync-attachments')
+            .download(pendingScanPath)
+          if (error || !data) return
+          await blobStorePut(pendingScanId, data)
+        }
+        if (cancelled) return
+        const blob = await blobStoreGet(pendingScanId)
+        if (!blob) return
+        setAttachments((prev) => prev.some((a) => a.id === pendingScanId) ? prev : [...prev, {
+          id: pendingScanId,
+          fileName: `receipt-${pendingScanId.slice(0, 8)}.jpg`,
+          mimeType: blob.type || ocrPrefill?.pendingScanMime || 'image/jpeg',
+          size: blob.size,
+        }])
+      } catch (err) {
+        console.warn('Failed to hydrate pending scan attachment:', err)
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingScanId, pendingScanPath])
 
   // Fill in default author name once user auth state is resolved
   useEffect(() => {
@@ -209,13 +256,20 @@ export function AddExpense() {
         // 3. Insert attachments (blob already in store from FileUpload)
         if (attachments.length > 0 && attachmentsCol) {
           for (const attachment of attachments) {
-            addPendingUpload(attachment.id)
+            // Attachment promoted from a pending scan is already in Storage;
+            // record its existing path so the sync layer doesn't try to
+            // re-upload it.
+            const isPromoted = pendingScanId
+              && pendingScanPath
+              && attachment.id === pendingScanId
+            if (!isPromoted) addPendingUpload(attachment.id)
             await attachmentsCol.insert({
               id: attachment.id,
               receiptId,
               fileName: attachment.fileName,
               mimeType: attachment.mimeType,
               size: attachment.size,
+              ...(isPromoted ? { storagePath: pendingScanPath } : {}),
               createdAt: now,
               updatedAt: now,
             })
@@ -311,6 +365,16 @@ export function AddExpense() {
         }
       }
 
+      // If this expense came from a pending scan, drop the pending row
+      // (storage object stays — it's now bound to the attachment).
+      if (pendingScanId) {
+        try {
+          await promotePendingScan(pendingScanId)
+        } catch (err) {
+          console.warn('Failed to delete pending scan row after promotion:', err)
+        }
+      }
+
       navigate(-1)
     } catch (err) {
       console.error('Failed to save expense:', err)
@@ -319,13 +383,34 @@ export function AddExpense() {
     }
   }
 
+  const handleCancel = async () => {
+    if (!pendingScanId) {
+      navigate(-1)
+      return
+    }
+    const ok = await confirm({
+      title: 'Отменить распознавание?',
+      message: 'Загруженный чек будет удалён без сохранения.',
+      confirmLabel: 'Удалить',
+      cancelLabel: 'Назад',
+      destructive: true,
+    })
+    if (!ok) return
+    try {
+      await deletePendingScan(pendingScanId, pendingScanPath ?? undefined)
+    } catch (err) {
+      console.warn('Failed to delete pending scan:', err)
+    }
+    navigate(-1)
+  }
+
   return (
     <div className="p-4 space-y-4 pb-10 overflow-y-auto flex-1 min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-[20px] font-bold text-text">Новый расход</h2>
         <button
-          onClick={() => navigate(-1)}
+          onClick={handleCancel}
           className="text-primary-text text-[15px] font-medium active:opacity-60 transition-opacity"
         >
           Отмена
@@ -342,6 +427,11 @@ export function AddExpense() {
             Распознано с фото · проверьте поля перед сохранением
             {typeof ocrPrefill.confidence === 'number' && (
               <span className="ml-1.5 text-text/60">({Math.round(ocrPrefill.confidence * 100)}%)</span>
+            )}
+            {ocrPrefill.duplicateOfExpenseId && (
+              <div className="mt-1 text-amber-700 dark:text-amber-400 font-medium">
+                Возможный дубль уже существующего расхода — проверьте перед сохранением.
+              </div>
             )}
           </div>
         </div>

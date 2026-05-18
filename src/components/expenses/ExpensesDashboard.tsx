@@ -17,7 +17,10 @@ import { ConfirmModal } from '../shared/ConfirmModal'
 import type { ExpenseRowData } from './ExpenseRow'
 import { blobStoreRemove } from '../../db/blobStore'
 import { useAiSettings } from '../../contexts/AiSettingsContext'
+import { useAuth } from '../../contexts/AuthContext'
 import { ScanReceiptFlow } from './ScanReceiptFlow'
+import { PendingScanRow } from './PendingScanRow'
+import { usePendingScans } from '../../hooks/usePendingScans'
 
 export function ExpensesDashboard() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
@@ -28,6 +31,8 @@ export function ExpensesDashboard() {
   const [scanning, setScanning] = useState(false)
 
   const { aiEnabled } = useAiSettings()
+  const { roomId } = useAuth()
+  const pendingScans = usePendingScans(roomId)
 
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const storesCol = useRxCollection<StoreDocument>('stores')
@@ -193,6 +198,13 @@ export function ExpensesDashboard() {
           />
         )}
       </div>
+      {pendingScans.length > 0 && (
+        <div className="px-4 py-2 space-y-2 border-b border-separator/15">
+          {pendingScans.map((s) => (
+            <PendingScanRow key={s.id} scan={s} />
+          ))}
+        </div>
+      )}
       <ExpenseTable
         data={tableData}
         loading={expensesLoading}
