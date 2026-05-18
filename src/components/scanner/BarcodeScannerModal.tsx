@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createBarcodeScanner, type BarcodeScanner } from '../../lib/barcode/detector'
+import { useCameraControls, type FocusRingState } from '../../lib/camera/useCameraControls'
+import { FocusRing } from '../../lib/camera/FocusRing'
 import { ManualBarcodeInput } from './ManualBarcodeInput'
 
 interface BarcodeScannerModalProps {
@@ -21,11 +23,21 @@ export function BarcodeScannerModal({ onDetected, onCancel }: BarcodeScannerModa
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const scannerRef = useRef<BarcodeScanner | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const trackRef = useRef<MediaStreamTrack | null>(null)
   const resolvedRef = useRef(false)
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
+  const [track, setTrack] = useState<MediaStreamTrack | null>(null)
   const [state, setState] = useState<ScannerState>({ kind: 'starting' })
-  const [torchSupported, setTorchSupported] = useState(false)
-  const [torchOn, setTorchOn] = useState(false)
+  const [focusRing, setFocusRing] = useState<FocusRingState | null>(null)
+
+  const { torchSupported, torchOn, toggleTorch, focusAt, tapFocusSupported } = useCameraControls(
+    track,
+    videoEl,
+  )
+
+  const setVideo = useCallback((el: HTMLVideoElement | null) => {
+    videoRef.current = el
+    setVideoEl(el)
+  }, [])
 
   const handleDetected = (barcode: string) => {
     if (resolvedRef.current) return
@@ -40,7 +52,8 @@ export function BarcodeScannerModal({ onDetected, onCancel }: BarcodeScannerModa
     scannerRef.current = null
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
-    trackRef.current = null
+    setTrack(null)
+    setFocusRing(null)
   }
 
   useEffect(() => {
@@ -64,11 +77,7 @@ export function BarcodeScannerModal({ onDetected, onCancel }: BarcodeScannerModa
           return
         }
         streamRef.current = stream
-        const track = stream.getVideoTracks()[0]
-        trackRef.current = track ?? null
-
-        const caps = (track?.getCapabilities?.() ?? {}) as MediaTrackCapabilities & { torch?: boolean }
-        setTorchSupported(!!caps.torch)
+        setTrack(stream.getVideoTracks()[0] ?? null)
 
         const video = videoRef.current
         if (!video) return
@@ -109,15 +118,18 @@ export function BarcodeScannerModal({ onDetected, onCancel }: BarcodeScannerModa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const toggleTorch = async () => {
-    const track = trackRef.current
-    if (!track) return
-    try {
-      await track.applyConstraints({ advanced: [{ torch: !torchOn } as MediaTrackConstraintSet & { torch: boolean }] })
-      setTorchOn((v) => !v)
-    } catch {
-      setTorchSupported(false)
-    }
+  const handleVideoTap = (e: React.PointerEvent<HTMLVideoElement>) => {
+    if (!tapFocusSupported) return
+    const cx = e.clientX
+    const cy = e.clientY
+    void (async () => {
+      const ring = await focusAt(cx, cy)
+      if (!ring) return
+      setFocusRing(ring)
+      window.setTimeout(() => {
+        setFocusRing((cur) => (cur?.id === ring.id ? null : cur))
+      }, 700)
+    })()
   }
 
   if (state.kind === 'manual') {
@@ -139,12 +151,15 @@ export function BarcodeScannerModal({ onDetected, onCancel }: BarcodeScannerModa
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       <div className="absolute inset-0">
         <video
-          ref={videoRef}
+          ref={setVideo}
           muted
           playsInline
           autoPlay
+          onPointerDown={handleVideoTap}
           className="w-full h-full object-cover"
+          style={{ touchAction: 'manipulation' }}
         />
+        {state.kind === 'running' && <FocusRing ring={focusRing} />}
       </div>
 
       {/* Scan window overlay */}
