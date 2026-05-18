@@ -192,7 +192,8 @@ serve(async (req) => {
       })
     }
     const mime = body.imageMimeType && /^image\/(jpeg|png|webp)$/.test(body.imageMimeType) ? body.imageMimeType : 'image/jpeg'
-    const promptText = EXTRACT_PROMPT + (body.currency ? `\n\nВалюта по умолчанию: ${body.currency}.` : '')
+    const currencyHint = body.currency ? `\n\nВалюта по умолчанию: ${body.currency}.` : ''
+    const promptText = `${EXTRACT_PROMPT}${currencyHint}`
     log.block('prep:extract_prompt', 'EXTRACT_PROMPT (with currency hint)', promptText)
     messages = [{
       role: 'user',
@@ -222,9 +223,13 @@ serve(async (req) => {
     log.block('prep:validate_receipt', 'receipt (from extract)', receiptStr)
     log.block('prep:validate_catalog', 'catalog (full)', catalogStr)
 
-    const promptText = VALIDATE_PROMPT
-      + '\n\nreceipt:\n' + JSON.stringify(body.previousJson)
-      + '\n\ncatalog:\n' + JSON.stringify(catalog)
+    const promptText = `${VALIDATE_PROMPT}
+
+receipt:
+${JSON.stringify(body.previousJson)}
+
+catalog:
+${JSON.stringify(catalog)}`
     log.step('prep:validate_prompt_size', { total_chars: promptText.length, approx_tokens: Math.ceil(promptText.length / 4) })
     log.block('prep:validate_prompt', 'VALIDATE prompt (final user message)', promptText)
 

@@ -105,7 +105,8 @@ async function runPipeline(args: {
   }
 
   // Pass 1: extract.
-  const extractPrompt = EXTRACT_PROMPT + (defaultCurrency ? `\n\nВалюта по умолчанию: ${defaultCurrency}.` : '')
+  const currencyHint = defaultCurrency ? `\n\nВалюта по умолчанию: ${defaultCurrency}.` : ''
+  const extractPrompt = `${EXTRACT_PROMPT}${currencyHint}`
   log.step('pass:extract:start', { model: models.extract })
   const extractRes = await callOpenRouter(openrouterKey, models.extract, [{
     role: 'user',
@@ -128,9 +129,13 @@ async function runPipeline(args: {
   const catalog = buildCatalog(roomData)
   log.step('pass:validate:catalog_stats', catalogStats(catalog))
   try {
-    const validateText = VALIDATE_PROMPT
-      + '\n\nreceipt:\n' + JSON.stringify(parsed)
-      + '\n\ncatalog:\n' + JSON.stringify(catalog)
+    const validateText = `${VALIDATE_PROMPT}
+
+receipt:
+${JSON.stringify(parsed)}
+
+catalog:
+${JSON.stringify(catalog)}`
     const validateRes = await callOpenRouter(openrouterKey, models.validate, [
       { role: 'user', content: validateText },
     ], log, { reasoningEffort: 'medium', signal: makeStepSignal(120_000) })
@@ -149,7 +154,7 @@ async function runPipeline(args: {
   if (parsed.needsEscalation) {
     log.step('pass:escalate:start', { model: models.escalate })
     try {
-      const escalatePrompt = EXTRACT_PROMPT + (defaultCurrency ? `\n\nВалюта по умолчанию: ${defaultCurrency}.` : '')
+      const escalatePrompt = `${EXTRACT_PROMPT}${currencyHint}`
       const escalateRes = await callOpenRouter(openrouterKey, models.escalate, [{
         role: 'user',
         content: [
