@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCameraControls, type FocusRingState } from '../../lib/camera/useCameraControls'
+import { FocusRing } from '../../lib/camera/FocusRing'
 
 interface ReceiptCameraModalProps {
   onCaptured: (blob: Blob) => void
@@ -20,16 +22,24 @@ function isTelegramWebView(): boolean {
 export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: ReceiptCameraModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const trackRef = useRef<MediaStreamTrack | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
+  const [track, setTrack] = useState<MediaStreamTrack | null>(null)
   const [state, setState] = useState<CamState>({ kind: 'starting' })
-  const [torchSupported, setTorchSupported] = useState(false)
-  const [torchOn, setTorchOn] = useState(false)
+  const [focusRing, setFocusRing] = useState<FocusRingState | null>(null)
+
+  const { torchSupported, torchOn, toggleTorch, focusAt } = useCameraControls(track, videoEl)
+
+  const setVideo = useCallback((el: HTMLVideoElement | null) => {
+    videoRef.current = el
+    setVideoEl(el)
+  }, [])
 
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
-    trackRef.current = null
+    setTrack(null)
+    setFocusRing(null)
   }
 
   useEffect(() => {
@@ -53,11 +63,7 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
           return
         }
         streamRef.current = stream
-        const track = stream.getVideoTracks()[0]
-        trackRef.current = track ?? null
-
-        const caps = (track?.getCapabilities?.() ?? {}) as MediaTrackCapabilities & { torch?: boolean }
-        setTorchSupported(!!caps.torch)
+        setTrack(stream.getVideoTracks()[0] ?? null)
 
         const video = videoRef.current
         if (!video) return
@@ -99,15 +105,18 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
     }
   }, [state])
 
-  const toggleTorch = async () => {
-    const track = trackRef.current
-    if (!track) return
-    try {
-      await track.applyConstraints({ advanced: [{ torch: !torchOn } as MediaTrackConstraintSet & { torch: boolean }] })
-      setTorchOn((v) => !v)
-    } catch {
-      setTorchSupported(false)
-    }
+  const handleVideoTap = (e: React.PointerEvent<HTMLDivElement>) => {
+    const cx = e.clientX
+    const cy = e.clientY
+    console.debug('[camera] tap', { cx, cy })
+    void (async () => {
+      const ring = await focusAt(cx, cy)
+      if (!ring) return
+      setFocusRing(ring)
+      window.setTimeout(() => {
+        setFocusRing((cur) => (cur?.id === ring.id ? null : cur))
+      }, 700)
+    })()
   }
 
   const snap = async () => {
@@ -149,7 +158,7 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
         audio: false,
       })
       streamRef.current = stream
-      trackRef.current = stream.getVideoTracks()[0] ?? null
+      setTrack(stream.getVideoTracks()[0] ?? null)
       const video = videoRef.current
       if (video) {
         video.srcObject = stream
@@ -168,8 +177,22 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
         {state.kind === 'captured' ? (
           <img src={state.url} alt="Снимок" className="w-full h-full object-contain bg-black" />
         ) : (
-          <video ref={videoRef} muted playsInline autoPlay className="w-full h-full object-cover" />
+          <video
+            ref={setVideo}
+            muted
+            playsInline
+            autoPlay
+            className="w-full h-full object-cover"
+          />
         )}
+        {state.kind !== 'captured' && (
+          <div
+            className="absolute inset-0"
+            onPointerDown={handleVideoTap}
+            style={{ touchAction: 'manipulation' }}
+          />
+        )}
+        {state.kind === 'running' && <FocusRing ring={focusRing} />}
       </div>
 
       {/* Frame overlay for running camera */}
