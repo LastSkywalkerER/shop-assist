@@ -68,7 +68,10 @@ export interface ReceiptItemDocument {
   id: string
   receiptId: string
   name: string
+  /** Unit price (per 1 шт / 1 кг / 1 л). Line total = amount × quantity. */
   amount: number
+  /** Count or weight/volume of the item (decimal, default 1). */
+  quantity: number
   currency: string
   manufacturer?: string
   packageVolume?: string

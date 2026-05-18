@@ -206,6 +206,27 @@ Optional flags:
 If `receipt.json` is omitted the script uses a hardcoded "футболка 33 BYN"
 sample so you can sanity-check the одежда case quickly.
 
+## Quantity & unit-price on receipt items
+
+Since app version 1.12.12 / receiptItem schema v6, each receipt item carries
+a `quantity` (decimal, step 0.001, default 1) and `amount` is the
+**unit price** — price per 1 шт / 1 кг / 1 л. Line total = `amount × quantity`.
+
+The OCR extract prompt now asks the model to decompose each line:
+- `2 × 50.00 = 100.00` → `quantity=2, amount=50.00`
+- `0.350 кг × 12.50 = 4.38` → `quantity=0.350, amount=12.50`
+- `Молоко 1л — 3.50` → `quantity=1, amount=3.50`
+
+When the model cannot decompose a line, it returns
+`quantity=1, amount=lineTotal, needsReview=true`. The flag is **transient
+UI state only** — it surfaces a yellow "Требует проверки" badge in the
+AddExpense form and is dropped on save. The validate-pass sum-check is
+`Σ amount × quantity ≈ total` (1% tolerance).
+
+Purchases still store `purchase.price = item.amount` (unit price); no
+quantity is persisted on purchases, so price-history queries work
+unchanged.
+
 ## Files of interest
 
 - `src/components/expenses/ScanReceiptFlow.tsx` — camera + pipeline orchestration.

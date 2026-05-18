@@ -199,6 +199,10 @@ async function createDb(): Promise<ShopAssistDatabase> {
           variety: undefined,
         }),
         5: (oldDoc: any) => oldDoc,
+        6: (oldDoc: any) => ({
+          ...oldDoc,
+          quantity: 1,
+        }),
       },
     },
     expenseAttachments: {

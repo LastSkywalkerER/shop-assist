@@ -8,7 +8,10 @@ import type { ProductDocument, PurchaseDocument, StoreDocument } from '../../db/
 export interface ReceiptItem {
   id: string
   name: string
+  /** Unit price (per 1 шт / 1 кг / 1 л). Line total = amount × quantity. */
   amount: number
+  /** Count or weight/volume of the item (decimal, default 1). */
+  quantity: number
   currency?: string
   manufacturer?: string
   packageVolume?: string
@@ -18,6 +21,8 @@ export interface ReceiptItem {
   notes?: string
   addToProducts?: boolean
   existingPurchaseId?: string
+  /** Transient: AI couldn't decompose the line; user should verify. Not persisted. */
+  needsReview?: boolean
 }
 
 interface ReceiptItemsManagerProps {
@@ -34,7 +39,10 @@ export function ReceiptItemsManager({ items, onChange, productCategories, produc
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
 
-  const totalAmount = items.reduce((sum, item) => sum + (item.amount || 0), 0)
+  const totalAmount = items.reduce(
+    (sum, item) => sum + (item.amount || 0) * (item.quantity ?? 1),
+    0,
+  )
 
   const handleAdd = (item: ReceiptItem) => {
     onChange([...items, item])
@@ -95,7 +103,7 @@ export function ReceiptItemsManager({ items, onChange, productCategories, produc
                   className="flex-1 min-w-0 cursor-pointer"
                   onClick={() => setEditingId(item.id)}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <div className="text-[14px] font-medium text-text truncate">
                       {item.name}
                     </div>
@@ -104,9 +112,21 @@ export function ReceiptItemsManager({ items, onChange, productCategories, produc
                         {item.existingPurchaseId ? 'Привязано' : 'В товары'}
                       </span>
                     )}
+                    {item.needsReview && (
+                      <span className="text-[11px] px-1.5 py-0.5 bg-yellow-500/15 text-yellow-700 rounded">
+                        Требует проверки
+                      </span>
+                    )}
                   </div>
                   <div className="text-[12px] text-text-hint mt-0.5">
-                    {item.amount > 0 ? `${item.amount.toFixed(2)} ${item.currency || DEFAULT_CURRENCY}` : '—'}
+                    {(() => {
+                      const qty = item.quantity ?? 1
+                      const cur = item.currency || DEFAULT_CURRENCY
+                      if (item.amount <= 0) return '—'
+                      if (qty === 1) return `${item.amount.toFixed(2)} ${cur}`
+                      const total = item.amount * qty
+                      return `${qty} × ${item.amount.toFixed(2)} = ${total.toFixed(2)} ${cur}`
+                    })()}
                     {subtitle && ` · ${subtitle}`}
                   </div>
                 </div>
@@ -188,6 +208,7 @@ interface ReceiptItemFormProps {
 function ReceiptItemForm({ item, productCategories, products, purchases, stores, expenseStoreId, onSave, onCancel }: ReceiptItemFormProps) {
   const [name, setName] = useState(item?.name || '')
   const [amount, setAmount] = useState(item?.amount.toString() || '')
+  const [quantity, setQuantity] = useState((item?.quantity ?? 1).toString())
   const [currency, setCurrency] = useState(item?.currency || DEFAULT_CURRENCY)
   const [manufacturer, setManufacturer] = useState(item?.manufacturer || '')
   const [packageVolume, setPackageVolume] = useState(item?.packageVolume || '')
@@ -197,6 +218,7 @@ function ReceiptItemForm({ item, productCategories, products, purchases, stores,
   const [notes, setNotes] = useState(item?.notes || '')
   const [addToProducts, setAddToProducts] = useState(item?.addToProducts || false)
   const [existingPurchaseId, setExistingPurchaseId] = useState<string | undefined>(item?.existingPurchaseId)
+  const [needsReview, setNeedsReview] = useState(item?.needsReview ?? false)
   const [nameDropdownOpen, setNameDropdownOpen] = useState(false)
   const nameWrapperRef = useRef<HTMLDivElement>(null)
 
@@ -238,6 +260,7 @@ function ReceiptItemForm({ item, productCategories, products, purchases, stores,
     setCategory(product.category || '')
     if (purchase) {
       setAmount(purchase.price.toFixed(2))
+      setQuantity('1')
       setCurrency(purchase.currency || DEFAULT_CURRENCY)
       setManufacturer(purchase.manufacturer || '')
       setPackageVolume(purchase.packageVolume || '')
@@ -269,6 +292,10 @@ function ReceiptItemForm({ item, productCategories, products, purchases, stores,
   const handleSubmit = () => {
     const trimmedName = name.trim()
     const parsedAmount = parseFloat(amount) || 0
+    const parsedQty = parseFloat(quantity)
+    const clampedQty = Number.isFinite(parsedQty) && parsedQty > 0
+      ? Math.min(99999, Math.max(0.001, Math.round(parsedQty * 1000) / 1000))
+      : 1
 
     if (!trimmedName) return
 
@@ -276,6 +303,7 @@ function ReceiptItemForm({ item, productCategories, products, purchases, stores,
       id: item?.id || crypto.randomUUID(),
       name: trimmedName,
       amount: parsedAmount > 0 ? parseFloat(parsedAmount.toFixed(2)) : 0,
+      quantity: clampedQty,
       currency,
       manufacturer: manufacturer.trim() || undefined,
       packageVolume: packageVolume.trim() || undefined,
@@ -285,6 +313,7 @@ function ReceiptItemForm({ item, productCategories, products, purchases, stores,
       notes: notes.trim() || undefined,
       addToProducts,
       existingPurchaseId: addToProducts ? existingPurchaseId : undefined,
+      needsReview: needsReview ? true : undefined,
     })
   }
 
@@ -369,15 +398,61 @@ function ReceiptItemForm({ item, productCategories, products, purchases, stores,
         inputClassName="w-full bg-surface rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
       />
 
-      {/* Amount */}
-      <CurrencyAmountInput
-        label="Сумма"
-        amount={amount}
-        currency={currency}
-        onAmountChange={setAmount}
-        onCurrencyChange={setCurrency}
-        placeholder="3.50"
-      />
+      {/* Quantity + unit price */}
+      <div className="grid grid-cols-[110px_1fr] gap-3 items-end">
+        <div>
+          <label className="block text-[13px] text-section-header font-medium mb-1.5 pl-1">
+            Количество
+          </label>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0.001"
+            max="99999"
+            step="0.001"
+            value={quantity}
+            onChange={(e) => setQuantity(e.currentTarget.value)}
+            placeholder="1"
+            className="w-full bg-bg-secondary rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
+          />
+        </div>
+        <CurrencyAmountInput
+          label="Цена за 1 шт/ед"
+          amount={amount}
+          currency={currency}
+          onAmountChange={setAmount}
+          onCurrencyChange={setCurrency}
+          placeholder="3.50"
+        />
+      </div>
+      {(() => {
+        const a = parseFloat(amount) || 0
+        const q = parseFloat(quantity) || 0
+        if (a > 0 && q > 0 && q !== 1) {
+          return (
+            <div className="text-[12px] text-text-hint pl-1 -mt-1">
+              Итого: {(a * q).toFixed(2)} {currency}
+            </div>
+          )
+        }
+        return null
+      })()}
+
+      {/* Needs-review banner (transient — set by OCR when quantity is uncertain) */}
+      {needsReview && (
+        <div className="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2">
+          <span className="text-[12px] text-yellow-700 flex-1">
+            AI не смог разобрать количество — проверьте цену и количество.
+          </span>
+          <button
+            type="button"
+            onClick={() => setNeedsReview(false)}
+            className="text-[12px] text-yellow-700 font-medium px-2 py-1 rounded active:bg-yellow-500/20 transition-colors"
+          >
+            Подтвердить
+          </button>
+        </div>
+      )}
 
       {/* Quality Rating */}
       <div>

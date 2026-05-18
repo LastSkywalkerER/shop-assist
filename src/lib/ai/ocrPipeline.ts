@@ -2,7 +2,12 @@ import { supabase } from '../supabase/client'
 
 export interface ParsedReceiptItem {
   name: string
+  /** Unit price (per 1 шт / 1 кг / 1 л). Line total = amount × quantity. */
   amount: number
+  /** Count or weight/volume. Defaults to 1 when the model couldn't detect it. */
+  quantity: number
+  /** True when the model couldn't decompose the line — UI flags it. */
+  needsReview: boolean
   packageVolume?: string
   manufacturer?: string
 }

@@ -56,7 +56,12 @@ interface RequestBody {
 
 interface ReceiptItemPayload {
   name: string
+  /** Unit price (per 1 шт / 1 кг / 1 л). Line total = amount × quantity. */
   amount: number
+  /** Count or weight/volume. Defaults to 1 if the model couldn't determine it. */
+  quantity: number
+  /** True when the model couldn't decompose the line — client highlights it. */
+  needsReview: boolean
   packageVolume?: string
   manufacturer?: string
 }
@@ -126,10 +131,12 @@ const RECEIPT_JSON_SCHEMA = {
           properties: {
             name: { type: 'string' },
             amount: { type: 'number' },
+            quantity: { type: 'number' },
+            needsReview: { type: 'boolean' },
             packageVolume: { type: ['string', 'null'] },
             manufacturer: { type: ['string', 'null'] },
           },
-          required: ['name', 'amount', 'packageVolume', 'manufacturer'],
+          required: ['name', 'amount', 'quantity', 'needsReview', 'packageVolume', 'manufacturer'],
         },
       },
       confidence: { type: 'number', minimum: 0, maximum: 1 },
@@ -171,7 +178,16 @@ const EXTRACT_PROMPT = `Ты — парсер кассовых чеков. На 
 - date — YYYY-MM-DD
 - currency — BYN/RUB/USD/EUR и т.п. (по умолчанию BYN)
 - total — итоговая сумма
-- items[] — позиции: name (исправь смешанные o/о, a/а, c/с в кириллице), amount (сумма за позицию), packageVolume и manufacturer
+- items[] — позиции. Для каждой:
+    * name — исправь смешанные o/о, a/а, c/с в кириллице.
+    * amount — ЦЕНА ЗА ЕДИНИЦУ (за 1 шт / 1 кг / 1 л). НЕ итог по строке.
+    * quantity — количество единиц (число, дробное допустимо, шаг 0.001):
+        – "2 × 50.00 = 100.00"           → quantity=2,     amount=50.00
+        – "0.350 кг × 12.50 = 4.38"      → quantity=0.350, amount=12.50
+        – "Молоко 1л — 3.50"             → quantity=1,     amount=3.50
+    * needsReview — true ТОЛЬКО если строку нельзя однозначно разложить на количество × цену за единицу. В этом случае верни quantity=1 и amount=итог по строке. Иначе false.
+    * packageVolume — объём/вес упаковки (например "1л", "500г"), null если не видишь.
+    * manufacturer — производитель, null если не видишь.
 - confidence — 0..1
 - needsEscalation — true если плохо распознали
 
@@ -187,7 +203,7 @@ const VALIDATE_PROMPT = `Ты валидатор и подбиратор свя�
    - products: индекс по уникальным товарам. Каждая запись { name, categories[], stores[] } — это товар который пользователь уже заводил, плюс категории расходов в которых он встречался и магазины в которых его покупали.
 
 A) Очисти receipt — НЕ добавляй и НЕ удаляй позиции:
-   - сумма items[].amount ≈ total (допуск 1%); если total нет — посчитай.
+   - amount — цена за единицу, quantity — количество. Σ items[].amount * items[].quantity ≈ total (допуск 1%); если total нет — посчитай как Σ amount*quantity.
    - Кириллица: латинские o/a/c/p/x/e/H/B → русские внутри слов ("Moлоko" → "Молоко").
    - Название магазина — торговое имя без юр-формы.
    - confidence пересчитай; плохой чек — needsEscalation=true.
@@ -385,6 +401,13 @@ async function callOpenRouter(
   }
 
   if (!Array.isArray(parsed.items)) parsed.items = []
+  // Normalize per-item quantity / needsReview so older models that ignore the
+  // new fields still produce valid output. Default qty=1 keeps `amount × 1 =
+  // line total`, preserving pre-existing behaviour.
+  for (const it of parsed.items) {
+    if (typeof it.quantity !== 'number' || !(it.quantity > 0)) it.quantity = 1
+    if (typeof it.needsReview !== 'boolean') it.needsReview = false
+  }
   if (typeof parsed.currency !== 'string' || !parsed.currency) parsed.currency = 'BYN'
   if (typeof parsed.confidence !== 'number') parsed.confidence = 0.5
   if (typeof parsed.needsEscalation !== 'boolean') parsed.needsEscalation = false

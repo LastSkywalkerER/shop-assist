@@ -85,6 +85,7 @@ export function ExpenseDetails() {
           id: i.id,
           name: i.name,
           amount: linkedPurchase ? linkedPurchase.price : i.amount,
+          quantity: i.quantity ?? 1,
           currency: linkedPurchase ? linkedPurchase.currency : (i.currency || DEFAULT_CURRENCY),
           manufacturer: linkedPurchase ? linkedPurchase.manufacturer : i.manufacturer,
           packageVolume: linkedPurchase ? linkedPurchase.packageVolume : i.packageVolume,
@@ -286,6 +287,7 @@ export function ExpenseDetails() {
           receiptId: currentReceipt.id,
           name: item.name,
           amount: item.amount,
+          quantity: item.quantity ?? 1,
           currency: item.currency || DEFAULT_CURRENCY,
           manufacturer: item.manufacturer,
           packageVolume: item.packageVolume,
@@ -302,6 +304,7 @@ export function ExpenseDetails() {
         const hasChanges =
           oldItem.name !== item.name ||
           oldItem.amount !== item.amount ||
+          (oldItem.quantity ?? 1) !== (item.quantity ?? 1) ||
           oldItem.manufacturer !== item.manufacturer ||
           oldItem.packageVolume !== item.packageVolume ||
           oldItem.variety !== item.variety ||
@@ -376,6 +379,7 @@ export function ExpenseDetails() {
             await doc.patch({
               name: item.name,
               amount: item.amount,
+              quantity: item.quantity ?? 1,
               currency: item.currency || DEFAULT_CURRENCY,
               manufacturer: item.manufacturer,
               packageVolume: item.packageVolume,
