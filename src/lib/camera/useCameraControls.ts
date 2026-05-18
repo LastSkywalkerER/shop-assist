@@ -35,7 +35,6 @@ export interface CameraControls {
   torchOn: boolean
   toggleTorch: () => Promise<void>
   focusAt: (clientX: number, clientY: number) => Promise<FocusRingState | null>
-  tapFocusSupported: boolean
 }
 
 /**
@@ -51,14 +50,12 @@ export function useCameraControls(
 ): CameraControls {
   const [torchSupported, setTorchSupported] = useState(false)
   const [torchOn, setTorchOn] = useState(false)
-  const [tapFocusSupported, setTapFocusSupported] = useState(false)
   const refocusTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!track) {
       setTorchSupported(false)
       setTorchOn(false)
-      setTapFocusSupported(false)
       return
     }
 
@@ -68,8 +65,6 @@ export function useCameraControls(
       const caps = (track.getCapabilities?.() ?? {}) as ExtendedCapabilities
       const focusModes = caps.focusMode ?? []
       const supportsContinuous = focusModes.includes('continuous')
-      const supportsSingleShot = focusModes.includes('single-shot')
-      const supportsPoI = caps.pointsOfInterest === true
       let torch = !!caps.torch
 
       if (supportsContinuous) {
@@ -99,7 +94,7 @@ export function useCameraControls(
 
       if (cancelled) return
       setTorchSupported(torch)
-      setTapFocusSupported(supportsPoI && supportsSingleShot)
+      console.debug('[camera] capabilities', { caps, torch, focusModes })
     }
 
     detect()
@@ -142,7 +137,7 @@ export function useCameraControls(
 
   const focusAt = useCallback(
     async (clientX: number, clientY: number): Promise<FocusRingState | null> => {
-      if (!track || !videoEl || !tapFocusSupported) return null
+      if (!track || !videoEl) return null
 
       const rect = videoEl.getBoundingClientRect()
       const cssX = clientX - rect.left
@@ -172,38 +167,47 @@ export function useCameraControls(
       nx = Math.max(0, Math.min(1, nx))
       ny = Math.max(0, Math.min(1, ny))
 
-      try {
-        await track.applyConstraints({
-          advanced: [
-            {
-              pointsOfInterest: [{ x: nx, y: ny }],
-              focusMode: 'single-shot',
-            } as ExtendedConstraintSet,
-          ],
-        })
-      } catch {
-        return null
+      // Chrome on Android often does not surface `pointsOfInterest` /
+      // `single-shot` in MediaTrackCapabilities even when the underlying
+      // driver accepts them. Try several constraint shapes — Chrome silently
+      // ignores unsupported keys in `advanced`, so the worst case is the
+      // ring is drawn without an actual refocus.
+      const attempts: ExtendedConstraintSet[] = [
+        { pointsOfInterest: [{ x: nx, y: ny }], focusMode: 'single-shot' },
+        { pointsOfInterest: [{ x: nx, y: ny }] },
+        { focusMode: 'single-shot' },
+      ]
+      let appliedShape: ExtendedConstraintSet | null = null
+      let lastError: unknown = null
+      for (const advanced of attempts) {
+        try {
+          await track.applyConstraints({ advanced: [advanced] })
+          appliedShape = advanced
+          break
+        } catch (err) {
+          lastError = err
+        }
       }
+      console.debug('[camera] focusAt', { nx, ny, appliedShape, lastError })
 
-      if (refocusTimeoutRef.current !== null) {
-        clearTimeout(refocusTimeoutRef.current)
-      }
-      refocusTimeoutRef.current = window.setTimeout(() => {
-        refocusTimeoutRef.current = null
-        const caps = (track.getCapabilities?.() ?? {}) as ExtendedCapabilities
-        if (caps.focusMode?.includes('continuous')) {
+      if (appliedShape) {
+        if (refocusTimeoutRef.current !== null) {
+          clearTimeout(refocusTimeoutRef.current)
+        }
+        refocusTimeoutRef.current = window.setTimeout(() => {
+          refocusTimeoutRef.current = null
           track
             .applyConstraints({
               advanced: [{ focusMode: 'continuous' } as ExtendedConstraintSet],
             })
             .catch(() => {})
-        }
-      }, 1500)
+        }, 1500)
+      }
 
       return { x: cssX, y: cssY, id: Date.now() }
     },
-    [track, videoEl, tapFocusSupported],
+    [track, videoEl],
   )
 
-  return { torchSupported, torchOn, toggleTorch, focusAt, tapFocusSupported }
+  return { torchSupported, torchOn, toggleTorch, focusAt }
 }

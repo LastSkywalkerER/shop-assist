@@ -29,10 +29,7 @@ export function BarcodeScannerModal({ onDetected, onCancel }: BarcodeScannerModa
   const [state, setState] = useState<ScannerState>({ kind: 'starting' })
   const [focusRing, setFocusRing] = useState<FocusRingState | null>(null)
 
-  const { torchSupported, torchOn, toggleTorch, focusAt, tapFocusSupported } = useCameraControls(
-    track,
-    videoEl,
-  )
+  const { torchSupported, torchOn, toggleTorch, focusAt } = useCameraControls(track, videoEl)
 
   const setVideo = useCallback((el: HTMLVideoElement | null) => {
     videoRef.current = el
@@ -118,10 +115,10 @@ export function BarcodeScannerModal({ onDetected, onCancel }: BarcodeScannerModa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleVideoTap = (e: React.PointerEvent<HTMLVideoElement>) => {
-    if (!tapFocusSupported) return
+  const handleVideoTap = (e: React.PointerEvent<HTMLDivElement>) => {
     const cx = e.clientX
     const cy = e.clientY
+    console.debug('[camera] tap', { cx, cy })
     void (async () => {
       const ring = await focusAt(cx, cy)
       if (!ring) return
@@ -155,8 +152,11 @@ export function BarcodeScannerModal({ onDetected, onCancel }: BarcodeScannerModa
           muted
           playsInline
           autoPlay
-          onPointerDown={handleVideoTap}
           className="w-full h-full object-cover"
+        />
+        <div
+          className="absolute inset-0"
+          onPointerDown={handleVideoTap}
           style={{ touchAction: 'manipulation' }}
         />
         {state.kind === 'running' && <FocusRing ring={focusRing} />}
