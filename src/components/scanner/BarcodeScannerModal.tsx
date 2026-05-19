@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createBarcodeScanner, type BarcodeScanner } from '../../lib/barcode/detector'
 import { useCameraControls, type FocusRingState } from '../../lib/camera/useCameraControls'
 import { FocusRing } from '../../lib/camera/FocusRing'
+import { findBetterBackCamera } from '../../lib/camera/pickBackCamera'
 import { ManualBarcodeInput } from './ManualBarcodeInput'
 
 interface BarcodeScannerModalProps {
@@ -61,7 +62,7 @@ export function BarcodeScannerModal({ onDetected, onCancel }: BarcodeScannerModa
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new DOMException('Camera API unavailable', 'NotSupportedError')
         }
-        const stream = await navigator.mediaDevices.getUserMedia({
+        const initialStream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: 'environment' },
             width: { ideal: 1280 },
@@ -70,8 +71,28 @@ export function BarcodeScannerModal({ onDetected, onCancel }: BarcodeScannerModa
           audio: false,
         })
         if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop())
+          initialStream.getTracks().forEach((t) => t.stop())
           return
+        }
+        let stream = initialStream
+        const initialTrack = initialStream.getVideoTracks()[0]
+        const initialCaps = (initialTrack?.getCapabilities?.() ?? {}) as MediaTrackCapabilities & {
+          torch?: boolean
+        }
+        if (initialTrack && !initialCaps.torch) {
+          const better = await findBetterBackCamera(initialTrack, {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          })
+          if (cancelled) {
+            initialStream.getTracks().forEach((t) => t.stop())
+            better?.getTracks().forEach((t) => t.stop())
+            return
+          }
+          if (better) {
+            initialStream.getTracks().forEach((t) => t.stop())
+            stream = better
+          }
         }
         streamRef.current = stream
         setTrack(stream.getVideoTracks()[0] ?? null)
