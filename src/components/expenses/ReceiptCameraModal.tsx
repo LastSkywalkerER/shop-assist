@@ -15,6 +15,26 @@ type CamState =
   | { kind: 'running' }
   | { kind: 'captured'; blob: Blob; url: string }
   | { kind: 'error'; message: string; telegramHint?: boolean }
+  | { kind: 'system-fallback' }
+
+const CAMERA_MODE_KEY = 'shop-assist:receipt-camera-mode'
+
+function readCameraMode(): 'system' | 'in-app' | null {
+  try {
+    const v = localStorage.getItem(CAMERA_MODE_KEY)
+    return v === 'system' || v === 'in-app' ? v : null
+  } catch {
+    return null
+  }
+}
+
+function writeCameraMode(mode: 'system' | 'in-app') {
+  try {
+    localStorage.setItem(CAMERA_MODE_KEY, mode)
+  } catch {
+    // ignore — storage may be unavailable in private mode
+  }
+}
 
 function isTelegramWebView(): boolean {
   return typeof window !== 'undefined' && !!(window as unknown as { Telegram?: { WebApp?: unknown } }).Telegram?.WebApp
@@ -46,6 +66,17 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
 
   useEffect(() => {
     let cancelled = false
+
+    // Cached "system" mode: skip detection entirely and trigger the native
+    // camera immediately. The user gesture from the parent's open-modal click
+    // is still active at mount, so input.click() is allowed here.
+    if (readCameraMode() === 'system') {
+      setState({ kind: 'system-fallback' })
+      systemCameraInputRef.current?.click()
+      return () => {
+        cancelled = true
+      }
+    }
 
     async function start() {
       try {
@@ -82,8 +113,18 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
           if (better) {
             initialStream.getTracks().forEach((t) => t.stop())
             stream = better
+          } else {
+            // No back camera with torch on this device — bail out of the
+            // in-app camera and route through the native one. Subsequent
+            // opens will skip detection thanks to the cached flag.
+            initialStream.getTracks().forEach((t) => t.stop())
+            writeCameraMode('system')
+            setState({ kind: 'system-fallback' })
+            systemCameraInputRef.current?.click()
+            return
           }
         }
+        writeCameraMode('in-app')
         streamRef.current = stream
         setTrack(stream.getVideoTracks()[0] ?? null)
 
@@ -171,6 +212,11 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
   }
 
   const retake = async () => {
+    if (readCameraMode() === 'system') {
+      setState({ kind: 'system-fallback' })
+      systemCameraInputRef.current?.click()
+      return
+    }
     setState({ kind: 'starting' })
     // Re-run the start effect by remounting the video: easier — just call the
     // same initialization inline.
@@ -192,8 +238,15 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
         if (better) {
           initialStream.getTracks().forEach((t) => t.stop())
           stream = better
+        } else {
+          initialStream.getTracks().forEach((t) => t.stop())
+          writeCameraMode('system')
+          setState({ kind: 'system-fallback' })
+          systemCameraInputRef.current?.click()
+          return
         }
       }
+      writeCameraMode('in-app')
       streamRef.current = stream
       setTrack(stream.getVideoTracks()[0] ?? null)
       const video = videoRef.current
@@ -248,6 +301,31 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
       {state.kind === 'starting' && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-white/80 text-[14px]">Запуск камеры…</div>
+        </div>
+      )}
+
+      {state.kind === 'system-fallback' && (
+        <div className="absolute inset-0 bg-black/95 flex items-center justify-center p-6">
+          <div className="bg-surface rounded-2xl p-5 w-full max-w-sm space-y-3">
+            <div className="text-[17px] font-semibold text-text">Камера телефона</div>
+            <div className="text-[13px] text-text-hint leading-snug">
+              На этом устройстве встроенная камера браузера не отдаёт фонарик и фокус. Снимок сделаем через стандартную камеру телефона.
+            </div>
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={() => systemCameraInputRef.current?.click()}
+                className="w-full bg-primary text-on-primary py-2.5 rounded-xl font-medium text-[15px] active:opacity-80 transition-opacity"
+              >
+                Открыть камеру
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-2.5 text-primary-text text-[15px] font-medium rounded-xl active:bg-primary/10 transition-colors"
+              >
+                Из галереи
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
