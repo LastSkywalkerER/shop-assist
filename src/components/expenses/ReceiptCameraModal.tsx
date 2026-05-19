@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useCameraControls, type FocusRingState } from '../../lib/camera/useCameraControls'
 import { FocusRing } from '../../lib/camera/FocusRing'
+import { findBetterBackCamera } from '../../lib/camera/pickBackCamera'
 
 interface ReceiptCameraModalProps {
   onCaptured: (blob: Blob) => void
@@ -14,6 +15,26 @@ type CamState =
   | { kind: 'running' }
   | { kind: 'captured'; blob: Blob; url: string }
   | { kind: 'error'; message: string; telegramHint?: boolean }
+  | { kind: 'system-fallback' }
+
+const CAMERA_MODE_KEY = 'shop-assist:receipt-camera-mode'
+
+function readCameraMode(): 'system' | 'in-app' | null {
+  try {
+    const v = localStorage.getItem(CAMERA_MODE_KEY)
+    return v === 'system' || v === 'in-app' ? v : null
+  } catch {
+    return null
+  }
+}
+
+function writeCameraMode(mode: 'system' | 'in-app') {
+  try {
+    localStorage.setItem(CAMERA_MODE_KEY, mode)
+  } catch {
+    // ignore — storage may be unavailable in private mode
+  }
+}
 
 function isTelegramWebView(): boolean {
   return typeof window !== 'undefined' && !!(window as unknown as { Telegram?: { WebApp?: unknown } }).Telegram?.WebApp
@@ -23,6 +44,7 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const systemCameraInputRef = useRef<HTMLInputElement | null>(null)
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
   const [track, setTrack] = useState<MediaStreamTrack | null>(null)
   const [state, setState] = useState<CamState>({ kind: 'starting' })
@@ -45,12 +67,23 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
   useEffect(() => {
     let cancelled = false
 
+    // Cached "system" mode: skip detection entirely and trigger the native
+    // camera immediately. The user gesture from the parent's open-modal click
+    // is still active at mount, so input.click() is allowed here.
+    if (readCameraMode() === 'system') {
+      setState({ kind: 'system-fallback' })
+      systemCameraInputRef.current?.click()
+      return () => {
+        cancelled = true
+      }
+    }
+
     async function start() {
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new DOMException('Camera API unavailable', 'NotSupportedError')
         }
-        const stream = await navigator.mediaDevices.getUserMedia({
+        const initialStream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: 'environment' },
             width: { ideal: 1920 },
@@ -59,9 +92,39 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
           audio: false,
         })
         if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop())
+          initialStream.getTracks().forEach((t) => t.stop())
           return
         }
+        let stream = initialStream
+        const initialTrack = initialStream.getVideoTracks()[0]
+        const initialCaps = (initialTrack?.getCapabilities?.() ?? {}) as MediaTrackCapabilities & {
+          torch?: boolean
+        }
+        if (initialTrack && !initialCaps.torch) {
+          const better = await findBetterBackCamera(initialTrack, {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          })
+          if (cancelled) {
+            initialStream.getTracks().forEach((t) => t.stop())
+            better?.getTracks().forEach((t) => t.stop())
+            return
+          }
+          if (better) {
+            initialStream.getTracks().forEach((t) => t.stop())
+            stream = better
+          } else {
+            // No back camera with torch on this device — bail out of the
+            // in-app camera and route through the native one. Subsequent
+            // opens will skip detection thanks to the cached flag.
+            initialStream.getTracks().forEach((t) => t.stop())
+            writeCameraMode('system')
+            setState({ kind: 'system-fallback' })
+            systemCameraInputRef.current?.click()
+            return
+          }
+        }
+        writeCameraMode('in-app')
         streamRef.current = stream
         setTrack(stream.getVideoTracks()[0] ?? null)
 
@@ -149,14 +212,41 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
   }
 
   const retake = async () => {
+    if (readCameraMode() === 'system') {
+      setState({ kind: 'system-fallback' })
+      systemCameraInputRef.current?.click()
+      return
+    }
     setState({ kind: 'starting' })
     // Re-run the start effect by remounting the video: easier — just call the
     // same initialization inline.
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const initialStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false,
       })
+      let stream = initialStream
+      const initialTrack = initialStream.getVideoTracks()[0]
+      const initialCaps = (initialTrack?.getCapabilities?.() ?? {}) as MediaTrackCapabilities & {
+        torch?: boolean
+      }
+      if (initialTrack && !initialCaps.torch) {
+        const better = await findBetterBackCamera(initialTrack, {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        })
+        if (better) {
+          initialStream.getTracks().forEach((t) => t.stop())
+          stream = better
+        } else {
+          initialStream.getTracks().forEach((t) => t.stop())
+          writeCameraMode('system')
+          setState({ kind: 'system-fallback' })
+          systemCameraInputRef.current?.click()
+          return
+        }
+      }
+      writeCameraMode('in-app')
       streamRef.current = stream
       setTrack(stream.getVideoTracks()[0] ?? null)
       const video = videoRef.current
@@ -214,6 +304,31 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
         </div>
       )}
 
+      {state.kind === 'system-fallback' && (
+        <div className="absolute inset-0 bg-black/95 flex items-center justify-center p-6">
+          <div className="bg-surface rounded-2xl p-5 w-full max-w-sm space-y-3">
+            <div className="text-[17px] font-semibold text-text">Камера телефона</div>
+            <div className="text-[13px] text-text-hint leading-snug">
+              На этом устройстве встроенная камера браузера не отдаёт фонарик и фокус. Снимок сделаем через стандартную камеру телефона.
+            </div>
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={() => systemCameraInputRef.current?.click()}
+                className="w-full bg-primary text-on-primary py-2.5 rounded-xl font-medium text-[15px] active:opacity-80 transition-opacity"
+              >
+                Открыть камеру
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-2.5 text-primary-text text-[15px] font-medium rounded-xl active:bg-primary/10 transition-colors"
+              >
+                Из галереи
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {state.kind === 'error' && (
         <div className="absolute inset-0 bg-black/90 flex items-center justify-center p-6">
           <div className="bg-surface rounded-2xl p-5 w-full max-w-sm space-y-3">
@@ -224,19 +339,27 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
                 Подсказка: откройте приложение во внешнем браузере через меню Telegram (три точки).
               </div>
             )}
-            <div className="flex gap-2 pt-1">
+            <div className="space-y-2 pt-1">
               <button
-                onClick={onCancel}
-                className="px-5 py-2.5 text-primary-text text-[15px] font-medium rounded-xl active:bg-primary/10 transition-colors"
+                onClick={() => systemCameraInputRef.current?.click()}
+                className="w-full bg-primary text-on-primary py-2.5 rounded-xl font-medium text-[15px] active:opacity-80 transition-opacity"
               >
-                Закрыть
+                Камера телефона
               </button>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex-1 bg-primary text-on-primary py-2.5 rounded-xl font-medium text-[15px] active:opacity-80 transition-opacity"
-              >
-                Выбрать из галереи
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={onCancel}
+                  className="px-5 py-2.5 text-primary-text text-[15px] font-medium rounded-xl active:bg-primary/10 transition-colors"
+                >
+                  Закрыть
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 py-2.5 text-primary-text text-[15px] font-medium rounded-xl active:bg-primary/10 transition-colors"
+                >
+                  Из галереи
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -298,7 +421,18 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
               </svg>
             </button>
           ) : (
-            <div className="w-12 h-12" />
+            <button
+              type="button"
+              onClick={() => systemCameraInputRef.current?.click()}
+              aria-label="Камера телефона"
+              className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-sm text-white flex items-center justify-center active:bg-black/60 transition-colors"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="5" y="2" width="14" height="20" rx="2" />
+                <circle cx="12" cy="14" r="3" />
+                <path d="M10 6h4" />
+              </svg>
+            </button>
           )}
         </div>
       )}
@@ -333,6 +467,14 @@ export function ReceiptCameraModal({ onCaptured, onCancel, processingLabel }: Re
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        className="hidden"
+        onChange={handleFilePicked}
+      />
+      <input
+        ref={systemCameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         className="hidden"
         onChange={handleFilePicked}
       />
