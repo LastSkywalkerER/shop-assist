@@ -4,7 +4,11 @@ providers = ["node"]
 nixPkgs = ["nodejs_20", "yarn"]
 
 [phases.install]
-cmds = ["yarn install --frozen-lockfile"]
+# --ignore-engines: a nested vite@7 (pulled only by vite-plugin-pwa) declares
+# node ">=22.12 || >=20.19", which the pinned nixpkgs node (20.18.1 / 22.11.0)
+# fails yarn's engine check on. The app builds with the direct vite@6.4.1, which
+# supports this node, so skip the advisory check rather than chase a newer pin.
+cmds = ["yarn install --frozen-lockfile --ignore-engines"]
 
 [phases.build]
 cmds = ["yarn build"]
