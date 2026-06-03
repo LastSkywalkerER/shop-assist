@@ -250,6 +250,28 @@ async function readJwtMetadata(): Promise<{ user_db_id?: string; room_id?: strin
   }
 }
 
+/**
+ * Ensure the JWT's user_metadata (room_id / user_db_id) matches the active
+ * room. The session-restore path in AuthContext trusts localStorage and skips
+ * completeAccount(), so a JWT room_id that drifted from the active room (e.g.
+ * a room switch that didn't refresh the token) would otherwise never heal —
+ * breaking Storage RLS (receipt upload) and replication push, which both key
+ * off the JWT room. Safe to call in the background; returns true if it
+ * refreshed the session. No-op when already in sync.
+ */
+export async function reconcileJwtRoom(roomId: string, userDbId?: string): Promise<boolean> {
+  const jwtMeta = await readJwtMetadata()
+  const roomMismatch = jwtMeta.room_id !== roomId
+  const userMismatch = userDbId != null && jwtMeta.user_db_id !== userDbId
+  if (!roomMismatch && !userMismatch) return false
+  const { error } = await supabase.auth.updateUser({
+    data: { room_id: roomId, ...(userDbId != null ? { user_db_id: userDbId } : {}) },
+  })
+  if (error) throw error
+  await supabase.auth.refreshSession()
+  return true
+}
+
 export async function completeAccount(): Promise<AccountContext> {
   const { data: ctxData, error: ctxError } = await supabase.rpc('get_my_account_context')
   if (ctxError) throw ctxError
