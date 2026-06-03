@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase/client'
 import type { PrefillPayload } from '../lib/ai/pendingScansTypes'
+import {
+  CONSUMED_SCANS_EVENT,
+  getConsumedScans,
+  unmarkScanConsumed,
+} from '../lib/ai/consumedScans'
+import { promotePendingScan } from '../lib/ai/pendingScans'
 
 export type PendingScanStatus = 'pending' | 'processing' | 'ready' | 'failed'
 
@@ -48,9 +54,34 @@ export function usePendingScans(roomId: string | null): PendingScan[] {
         console.warn('usePendingScans: fetch failed:', error.message)
         return
       }
-      setRows((data ?? []) as PendingScan[])
+      const fetched = (data ?? []) as PendingScan[]
+
+      // Reconcile the local "consumed" registry: rows already promoted to an
+      // expense whose remote delete was deferred (e.g. saved while offline).
+      // Retry the delete for ones still present, drop ids already gone.
+      const consumed = getConsumedScans()
+      if (consumed.size > 0) {
+        const presentIds = new Set(fetched.map((r) => r.id))
+        for (const id of consumed) {
+          if (presentIds.has(id)) {
+            void promotePendingScan(id).catch(() => { /* retried on next refetch */ })
+          } else {
+            unmarkScanConsumed(id)
+          }
+        }
+      }
+
+      setRows(fetched.filter((r) => !getConsumedScans().has(r.id)))
     }
     void refetch()
+
+    // Hide a card the instant it's marked consumed on save — don't wait for a
+    // refetch (which needs the network that may currently be down).
+    const onConsumedChange = () => {
+      const consumed = getConsumedScans()
+      setRows((prev) => prev.filter((r) => !consumed.has(r.id)))
+    }
+    window.addEventListener(CONSUMED_SCANS_EVENT, onConsumedChange)
 
     // postgres_changes payloads are partial for UPDATE/DELETE depending on
     // REPLICA IDENTITY; the safest thing is to refetch the small set on any
@@ -71,6 +102,7 @@ export function usePendingScans(roomId: string | null): PendingScan[] {
 
     return () => {
       cancelled = true
+      window.removeEventListener(CONSUMED_SCANS_EVENT, onConsumedChange)
       void supabase.removeChannel(channel)
     }
   }, [roomId])

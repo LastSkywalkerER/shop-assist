@@ -6,7 +6,13 @@ import { useConfirm } from '../../contexts/ConfirmDialogContext'
 import { deletePendingScan, retryScan } from '../../lib/ai/pendingScans'
 import type { PendingScan } from '../../hooks/usePendingScans'
 
+// A 'processing' row whose worker likely crashed — must match the edge
+// function's ORPHAN_PROCESSING_MINUTES so a forced retry can actually reclaim it.
 const ORPHAN_MS = 10 * 60_000
+// A row still 'pending' this long means the kickoff request never reached the
+// edge function (it flips pending→processing synchronously before responding),
+// e.g. the POST failed while offline. Surface retry/delete instead of spinning.
+const PENDING_STUCK_MS = 60_000
 
 const BUCKET = 'sync-attachments'
 
@@ -36,10 +42,23 @@ export function PendingScanRow({ scan }: PendingScanRowProps) {
   const [busy, setBusy] = useState(false)
   const thumbUrl = useThumbnailUrl(scan.image_storage_path)
 
+  // Re-render periodically while in-flight so the "stuck" recovery UI appears
+  // on its own, without waiting for a Realtime event to repaint the row.
+  const [, forceTick] = useState(0)
+  useEffect(() => {
+    if (scan.status !== 'pending' && scan.status !== 'processing') return
+    const t = setInterval(() => forceTick((n) => n + 1), 15_000)
+    return () => clearInterval(t)
+  }, [scan.status])
+
   const isOrphaned =
     scan.status === 'processing'
     && scan.processing_started_at != null
     && Date.parse(scan.processing_started_at) < Date.now() - ORPHAN_MS
+  const isStuckPending =
+    scan.status === 'pending'
+    && Date.parse(scan.created_at) < Date.now() - PENDING_STUCK_MS
+  const isStuck = isOrphaned || isStuckPending
 
   const handleOpen = () => {
     if (scan.status !== 'ready' || !scan.prefill_payload) return
@@ -119,13 +138,13 @@ export function PendingScanRow({ scan }: PendingScanRowProps) {
                 <path d="M21 12a9 9 0 1 1-6.219-8.56" />
               </svg>
               <div className="text-[15px] font-medium text-text truncate">
-                {isOrphaned ? 'Похоже, что-то зависло' : 'Распознаём чек…'}
+                {isStuck ? 'Похоже, что-то зависло' : 'Распознаём чек…'}
               </div>
             </div>
             <div className="text-[12px] text-text-hint mt-0.5 truncate">
-              {isOrphaned ? 'Распознавание не отвечает — попробуйте ещё раз' : 'Можно продолжать работу — мы сообщим, когда будет готово'}
+              {isStuck ? 'Распознавание не отвечает — попробуйте ещё раз' : 'Можно продолжать работу — мы сообщим, когда будет готово'}
             </div>
-            {isOrphaned && (
+            {isStuck && (
               <div className="flex gap-2 mt-2">
                 <button
                   type="button"

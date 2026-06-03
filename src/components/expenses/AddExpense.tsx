@@ -28,6 +28,7 @@ import { addPendingUpload, blobStorePut, blobStoreGet } from '../../db/blobStore
 import { useConfirm } from '../../contexts/ConfirmDialogContext'
 import { supabase } from '../../lib/supabase/client'
 import { deletePendingScan, promotePendingScan } from '../../lib/ai/pendingScans'
+import { markScanConsumed } from '../../lib/ai/consumedScans'
 
 export function AddExpense() {
   const navigate = useNavigate()
@@ -405,8 +406,13 @@ export function AddExpense() {
       }
 
       // If this expense came from a pending scan, drop the pending row
-      // (storage object stays — it's now bound to the attachment).
+      // (storage object stays — it's now bound to the attachment). The local
+      // expense is already saved at this point, so hide the card immediately
+      // (even offline) to prevent a second save re-inserting the same
+      // receiptItem / attachment ids → RxDB CONFLICT. The remote row delete is
+      // best-effort and retried by usePendingScans once the network is back.
       if (pendingScanId) {
+        markScanConsumed(pendingScanId)
         try {
           await promotePendingScan(pendingScanId)
         } catch (err) {

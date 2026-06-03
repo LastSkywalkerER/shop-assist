@@ -18,6 +18,7 @@ import {
   linkTelegram as authLinkTelegram,
   setEmailPassword as authSetEmailPassword,
   completeAccount,
+  reconcileJwtRoom,
   type EmailSignUpResult,
 } from '../lib/supabase/auth'
 import { supabase } from '../lib/supabase/client'
@@ -163,6 +164,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setRooms(storedRooms)
             lastCompletedAuthUserId.current = sessionAuthUserId
             setIsLoading(false)
+            // This fast path skips completeAccount(), so heal a JWT room_id that
+            // drifted from the active room (e.g. a room switch that didn't
+            // refresh the token). Without this, Storage RLS (receipt upload)
+            // and replication push keep targeting the stale JWT room. Runs in
+            // the background; the resulting USER_UPDATED/TOKEN_REFRESHED is
+            // absorbed by the lastCompletedAuthUserId guard above.
+            reconcileJwtRoom(storedRoomId, storedUser.id).catch((e) =>
+              console.error('JWT room reconcile failed:', e),
+            )
             // Handle URL invite if present
             if (urlInviteCode) {
               handleUrlInvite(urlInviteCode)
