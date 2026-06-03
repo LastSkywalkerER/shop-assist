@@ -7,7 +7,6 @@ import {
   minimizeTransfers,
   type ParticipantInput,
   type ExpenseInput,
-  type PersonBalance,
 } from './splitting'
 
 const p = (over: Partial<ParticipantInput> & { id: string; name: string }): ParticipantInput => ({
@@ -97,12 +96,11 @@ describe('computeShares', () => {
 
 describe('minimizeTransfers', () => {
   it('matches debtors to creditors', () => {
-    const balances: PersonBalance[] = [
-      { name: 'A', paid: 0, share: 0, settled: 0, net: 60 },
-      { name: 'B', paid: 0, share: 0, settled: 0, net: -40 },
-      { name: 'C', paid: 0, share: 0, settled: 0, net: -20 },
-    ]
-    const t = minimizeTransfers(balances)
+    const t = minimizeTransfers([
+      { name: 'A', net: 60 },
+      { name: 'B', net: -40 },
+      { name: 'C', net: -20 },
+    ])
     expect(t).toEqual([
       { from: 'B', to: 'A', amount: 40 },
       { from: 'C', to: 'A', amount: 20 },
@@ -175,6 +173,47 @@ describe('computeCategorySettlement', () => {
     expect(net('Оля')).toBe(-35)
     expect(result.transfers).toEqual([{ from: 'Оля', to: 'Максим', amount: 35 }])
     expect(result.conversionGap).toBe(false)
+  })
+
+  it('applies recorded category repayments to balances and transfers', () => {
+    // Two 300 bills paid by Костя and Maksim, split equally three ways:
+    // each share 200, so Костя +100, Maksim +100, Оля -200.
+    const expenses: ExpenseInput[] = [
+      { id: 'e1', amount: 300, currency: 'BYN', creatorName: 'Костя' },
+      { id: 'e2', amount: 300, currency: 'BYN', creatorName: 'Maksim' },
+    ]
+    const participantsByExpenseId = new Map<string, ParticipantInput[]>([
+      ['e1', [
+        p({ id: 'k1', name: 'Костя' }),
+        p({ id: 'm1', name: 'Maksim' }),
+        p({ id: 'o1', name: 'Оля' }),
+      ]],
+      ['e2', [
+        p({ id: 'k2', name: 'Костя' }),
+        p({ id: 'm2', name: 'Maksim' }),
+        p({ id: 'o2', name: 'Оля' }),
+      ]],
+    ])
+    const net = (r: ReturnType<typeof computeCategorySettlement>, name: string) =>
+      r.perPerson.find((x) => x.name === name)!.net
+
+    const before = computeCategorySettlement(expenses, participantsByExpenseId, new Map(), [])
+    expect(net(before, 'Оля')).toBe(-200)
+    expect(net(before, 'Костя')).toBe(100)
+    expect(net(before, 'Maksim')).toBe(100)
+    expect(before.transfers).toEqual([
+      { from: 'Оля', to: 'Костя', amount: 100 },
+      { from: 'Оля', to: 'Maksim', amount: 100 },
+    ])
+
+    // Оля repays Костя the full 100: that debt clears, only Maksim remains.
+    const after = computeCategorySettlement(expenses, participantsByExpenseId, new Map(), [], [
+      { from: 'Оля', to: 'Костя', amount: 100 },
+    ])
+    expect(net(after, 'Костя')).toBe(0)
+    expect(net(after, 'Оля')).toBe(-100)
+    expect(after.perPerson.find((x) => x.name === 'Оля')!.categoryPaid).toBe(100)
+    expect(after.transfers).toEqual([{ from: 'Оля', to: 'Maksim', amount: 100 }])
   })
 
   it('flags a conversion gap when a currency has no rate', () => {

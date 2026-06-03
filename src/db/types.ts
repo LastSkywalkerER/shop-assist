@@ -82,6 +82,21 @@ export interface ReceiptDocument {
   updatedAt: string
 }
 
+export interface ExpenseSettlementDocument {
+  id: string
+  /** Category this repayment belongs to (not tied to any single expense). */
+  categoryId: string
+  /** Person who paid (the debtor). */
+  fromName: string
+  /** Person who received the money (the creditor). */
+  toName: string
+  /** Amount in the base currency (BYN). */
+  amount: number
+  currency?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ReceiptItemDocument {
   id: string
   receiptId: string

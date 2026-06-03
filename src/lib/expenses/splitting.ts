@@ -109,13 +109,22 @@ export interface PersonBalance {
   paid: number
   /** Total owed share (consumption), in base currency. */
   share: number
-  /** Total already paid back toward expenses, in base currency. */
+  /** Total already paid back via per-expense settledAmount, in base currency. */
   settled: number
-  /** paid − share + settled − settledReceived; > 0 owed, < 0 owes. */
+  /** Sum of category-level repayments this person made, in base currency. */
+  categoryPaid: number
+  /** Remaining balance after all settlements; > 0 owed, < 0 owes. */
   net: number
 }
 
 export interface Transfer {
+  from: string
+  to: string
+  amount: number
+}
+
+/** A recorded category-level repayment (debtor → creditor), in base currency. */
+export interface SettlementPayment {
   from: string
   to: string
   amount: number
@@ -146,6 +155,7 @@ export function computeCategorySettlement(
   participantsByExpenseId: Map<string, ParticipantInput[]>,
   itemTotalsByExpenseId: Map<string, Map<string, number>>,
   rates: CurrencyRateDocument[],
+  settlements: SettlementPayment[] = [],
 ): SettlementResult {
   const rateMap = buildLatestRateMap(rates)
   const acc = new Map<string, Acc>()
@@ -195,14 +205,40 @@ export function computeCategorySettlement(
 
   const perPerson: PersonBalance[] = []
   for (const [name, a] of acc) {
-    const net = round2(a.paid - a.share + a.settledPaid - a.settledReceived)
     perPerson.push({
       name,
       paid: round2(a.paid),
       share: round2(a.share),
       settled: round2(a.settledPaid),
-      net,
+      categoryPaid: 0,
+      net: a.paid - a.share + a.settledPaid - a.settledReceived,
     })
+  }
+
+  // Apply recorded category-level repayments: the payer's debt shrinks, the
+  // recipient's credit shrinks. People may appear here even if they were only
+  // creditors/debtors via these payments.
+  const byName = new Map(perPerson.map((p) => [p.name, p]))
+  const ensurePerson = (name: string): PersonBalance => {
+    let p = byName.get(name)
+    if (!p) {
+      p = { name, paid: 0, share: 0, settled: 0, categoryPaid: 0, net: 0 }
+      byName.set(name, p)
+      perPerson.push(p)
+    }
+    return p
+  }
+  for (const s of settlements) {
+    const from = ensurePerson(s.from)
+    const to = ensurePerson(s.to)
+    from.net += s.amount
+    from.categoryPaid += s.amount
+    to.net -= s.amount
+  }
+
+  for (const p of perPerson) {
+    p.net = round2(p.net)
+    p.categoryPaid = round2(p.categoryPaid)
   }
   perPerson.sort((x, y) => y.net - x.net)
 
@@ -222,7 +258,7 @@ function round2(x: number): number {
  * Greedy minimal-transfer settlement: repeatedly match the largest debtor with
  * the largest creditor. Produces at most (n − 1) transfers.
  */
-export function minimizeTransfers(balances: PersonBalance[]): Transfer[] {
+export function minimizeTransfers(balances: Array<{ name: string; net: number }>): Transfer[] {
   const creditors: Array<{ name: string; cents: number }> = []
   const debtors: Array<{ name: string; cents: number }> = []
 
