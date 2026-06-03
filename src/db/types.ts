@@ -57,9 +57,42 @@ export interface ExpenseDocument {
   updatedAt: string
 }
 
+export type ExpenseShareMode = 'equal' | 'amount' | 'items'
+
+export interface ExpenseParticipantDocument {
+  id: string
+  expenseId: string
+  /** Free-text name (same convention as expense.creatorName). */
+  name: string
+  shareMode: ExpenseShareMode
+  /** Fixed owed sum; used when shareMode === 'amount'. */
+  shareAmount?: number
+  /** Receipt line-item ids; used when shareMode === 'items'. */
+  itemIds?: string[]
+  /** How much this person has already paid back toward the expense. */
+  settledAmount?: number
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ReceiptDocument {
   id: string
   expenseId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ExpenseSettlementDocument {
+  id: string
+  /** Category this repayment belongs to (not tied to any single expense). */
+  categoryId: string
+  /** Person who paid (the debtor). */
+  fromName: string
+  /** Person who received the money (the creditor). */
+  toName: string
+  /** Amount in the base currency (BYN). */
+  amount: number
+  currency?: string
   createdAt: string
   updatedAt: string
 }

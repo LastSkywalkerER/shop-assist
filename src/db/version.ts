@@ -3,6 +3,8 @@ import { storeSchema } from './schemas/store.schema'
 import { purchaseSchema } from './schemas/purchase.schema'
 import { expenseCategorySchema } from './schemas/expenseCategory.schema'
 import { expenseSchema } from './schemas/expense.schema'
+import { expenseParticipantSchema } from './schemas/expenseParticipant.schema'
+import { expenseSettlementSchema } from './schemas/expenseSettlement.schema'
 import { receiptSchema } from './schemas/receipt.schema'
 import { receiptItemSchema } from './schemas/receiptItem.schema'
 import { expenseAttachmentSchema } from './schemas/expenseAttachment.schema'
@@ -20,6 +22,8 @@ export function getDatabaseVersion(): number {
     purchaseSchema,
     expenseCategorySchema,
     expenseSchema,
+    expenseParticipantSchema,
+    expenseSettlementSchema,
     receiptSchema,
     receiptItemSchema,
     expenseAttachmentSchema,

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type {
@@ -8,6 +8,7 @@ import type {
   ReceiptDocument,
   ReceiptItemDocument,
   ExpenseAttachmentDocument,
+  ExpenseParticipantDocument,
   ProductDocument,
   PurchaseDocument,
 } from '../../db/types'
@@ -15,6 +16,8 @@ import { ConfirmModal } from '../shared/ConfirmModal'
 import { EditExpense } from './EditExpense'
 import { FileUpload, type AttachmentFile } from './FileUpload'
 import { ReceiptItemsManager, type ReceiptItem } from './ReceiptItemsManager'
+import { ExpenseSplitManager, type SplitParticipant } from './ExpenseSplitManager'
+import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { showBackButton } from '../../telegram/backButton'
 import { addPendingUpload, blobStoreRemove } from '../../db/blobStore'
@@ -26,6 +29,8 @@ export function ExpenseDetails() {
   const [deleting, setDeleting] = useState(false)
   const [localAttachments, setLocalAttachments] = useState<AttachmentFile[]>([])
   const [localReceiptItems, setLocalReceiptItems] = useState<ReceiptItem[]>([])
+  const [localParticipants, setLocalParticipants] = useState<SplitParticipant[]>([])
+  const { roomId } = useAuth()
 
   useEffect(() => {
     return showBackButton(() => navigate(-1))
@@ -37,6 +42,7 @@ export function ExpenseDetails() {
   const receiptsCol = useRxCollection<ReceiptDocument>('receipts')
   const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
   const attachmentsCol = useRxCollection<ExpenseAttachmentDocument>('expenseAttachments')
+  const participantsCol = useRxCollection<ExpenseParticipantDocument>('expenseParticipants')
   const productsCol = useRxCollection<ProductDocument>('products')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
 
@@ -46,6 +52,7 @@ export function ExpenseDetails() {
   const { data: receipts } = useRxQuery(receiptsCol)
   const { data: receiptItems } = useRxQuery(receiptItemsCol)
   const { data: attachments } = useRxQuery(attachmentsCol)
+  const { data: allParticipants } = useRxQuery(participantsCol)
   const { data: products } = useRxQuery(productsCol)
   const { data: purchases } = useRxQuery(purchasesCol)
 
@@ -62,6 +69,7 @@ export function ExpenseDetails() {
   const receipt = useMemo(() => receipts.find((r) => r.expenseId === id), [receipts, id])
   const expenseReceiptItems = useMemo(() => (receipt ? receiptItems.filter((i) => i.receiptId === receipt.id) : []), [receipt, receiptItems])
   const expenseAttachments = useMemo(() => (receipt ? attachments.filter((a) => a.receiptId === receipt.id) : []), [receipt, attachments])
+  const expenseParticipants = useMemo(() => allParticipants.filter((p) => p.expenseId === id), [allParticipants, id])
 
   // Sync local state with DB data
   useEffect(() => {
@@ -99,6 +107,44 @@ export function ExpenseDetails() {
       })
     )
   }, [expenseReceiptItems, purchases])
+
+  // Hydrate local participants from the DB on load. While there are unsaved
+  // edits, stop hydrating so async DB data doesn't clobber in-progress input.
+  // The dirty flag resets when navigating to a different expense.
+  const [participantsDirty, setParticipantsDirty] = useState(false)
+  const [savingParticipants, setSavingParticipants] = useState(false)
+  const hydratedExpenseId = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (hydratedExpenseId.current !== id) {
+      hydratedExpenseId.current = id
+      setParticipantsDirty(false)
+    }
+    if (participantsDirty) return
+    setLocalParticipants(
+      expenseParticipants.map((p) => ({
+        id: p.id,
+        name: p.name,
+        shareMode: p.shareMode,
+        shareAmount: p.shareAmount,
+        itemIds: p.itemIds,
+        settledAmount: p.settledAmount,
+      }))
+    )
+  }, [id, expenseParticipants, participantsDirty])
+
+  // Names already used across this expense's category — seeded as equal-split
+  // participants when the split section is opened on an empty expense.
+  const categoryParticipantNames = useMemo(() => {
+    if (!expense?.categoryId) return []
+    const categoryExpenseIds = new Set(
+      expenses.filter((e) => e.categoryId === expense.categoryId).map((e) => e.id),
+    )
+    const names = new Set<string>()
+    for (const p of allParticipants) {
+      if (categoryExpenseIds.has(p.expenseId)) names.add(p.name)
+    }
+    return Array.from(names)
+  }, [expenses, allParticipants, expense?.categoryId])
 
   const handleCreateStore = async (data: { name: string; address?: string }): Promise<StoreDocument | undefined> => {
     if (!storesCol) return undefined
@@ -412,10 +458,74 @@ export function ExpenseDetails() {
     setLocalReceiptItems(newItems)
   }
 
+  const handleParticipantsChange = (newItems: SplitParticipant[]) => {
+    // Hold edits in local state only — they are written to the DB when the
+    // user presses "Сохранить участников", not while typing.
+    setParticipantsDirty(true)
+    setLocalParticipants(newItems)
+  }
+
+  const handleSaveParticipants = async () => {
+    setSavingParticipants(true)
+    try {
+      await persistParticipants(localParticipants)
+      setParticipantsDirty(false)
+    } catch (err) {
+      console.error('Failed to save participants:', err)
+    } finally {
+      setSavingParticipants(false)
+    }
+  }
+
+  const persistParticipants = async (items: SplitParticipant[]) => {
+    if (!id || !participantsCol) return
+    const now = new Date().toISOString()
+    const keepIds = new Set<string>()
+
+    for (const part of items) {
+      const trimmed = part.name.trim()
+      if (!trimmed) continue
+      keepIds.add(part.id)
+      const fields = {
+        name: trimmed,
+        shareMode: part.shareMode,
+        shareAmount: part.shareMode === 'amount' ? part.shareAmount : undefined,
+        itemIds: part.shareMode === 'items' ? (part.itemIds ?? []) : undefined,
+        settledAmount: part.settledAmount ?? 0,
+      }
+      const doc = await participantsCol.findOne(part.id).exec()
+      if (doc) {
+        const changed =
+          doc.name !== trimmed ||
+          doc.shareMode !== part.shareMode ||
+          doc.shareAmount !== fields.shareAmount ||
+          JSON.stringify(doc.itemIds ?? []) !== JSON.stringify(fields.itemIds ?? []) ||
+          (doc.settledAmount ?? 0) !== fields.settledAmount
+        if (changed) await doc.patch({ ...fields, updatedAt: now })
+      } else {
+        await participantsCol.insert({ id: part.id, expenseId: id, ...fields, createdAt: now, updatedAt: now })
+      }
+    }
+
+    // Remove DB rows for this expense that are no longer present or were blanked.
+    const existing = await participantsCol.find({ selector: { expenseId: id } }).exec()
+    for (const doc of existing) {
+      if (!keepIds.has(doc.id)) await doc.remove()
+    }
+  }
+
   const handleDelete = async () => {
     if (!expensesCol || !expense) return
     setDeleting(true)
     try {
+      // Delete split participants
+      if (participantsCol) {
+        for (const part of expenseParticipants) {
+          const doc = await participantsCol.findOne(part.id).exec()
+          if (doc) await doc.remove()
+        }
+      }
+
       // Delete receipt items
       if (receipt && receiptItemsCol) {
         for (const item of expenseReceiptItems) {
@@ -495,6 +605,29 @@ export function ExpenseDetails() {
           stores={stores}
           expenseStoreId={expense?.storeId}
         />
+      </div>
+
+      {/* Split between participants */}
+      <div className="px-4 mt-4">
+        <ExpenseSplitManager
+          participants={localParticipants}
+          onChange={handleParticipantsChange}
+          expenseAmount={expense.amount}
+          currency={expense.currency}
+          receiptItems={localReceiptItems}
+          payerName={expense.creatorName ?? ''}
+          categoryParticipantNames={categoryParticipantNames}
+          roomId={roomId}
+        />
+        {participantsDirty && (
+          <button
+            onClick={handleSaveParticipants}
+            disabled={savingParticipants}
+            className="w-full mt-3 bg-primary text-on-primary py-3 rounded-2xl font-semibold text-[15px] disabled:opacity-30 active:opacity-80 transition-opacity"
+          >
+            {savingParticipants ? 'Сохранение...' : 'Сохранить участников'}
+          </button>
+        )}
       </div>
 
       {/* Delete button */}
