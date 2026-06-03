@@ -77,6 +77,7 @@ export function AddExpense() {
   const { data: categories } = useRxQuery(categoriesCol)
   const { data: products } = useRxQuery(productsCol)
   const { data: purchases } = useRxQuery(purchasesCol)
+  const { data: allParticipants } = useRxQuery(participantsCol)
 
   // Extract product categories
   const productCategories = useMemo(() => {
@@ -107,6 +108,21 @@ export function AddExpense() {
   const [creatorName, setCreatorName] = useState(user?.first_name ?? '')
   const [participants, setParticipants] = useState<SplitParticipant[]>([])
   const [saving, setSaving] = useState(false)
+
+  // Names already used across the selected category — seeded as equal-split
+  // participants when the split section is opened.
+  const categoryParticipantNames = useMemo(() => {
+    const categoryId = selectedCategory?.id
+    if (!categoryId) return []
+    const categoryExpenseIds = new Set(
+      expenses.filter((e) => e.categoryId === categoryId).map((e) => e.id),
+    )
+    const names = new Set<string>()
+    for (const part of allParticipants) {
+      if (categoryExpenseIds.has(part.expenseId)) names.add(part.name)
+    }
+    return Array.from(names)
+  }, [expenses, allParticipants, selectedCategory?.id])
   const confirm = useConfirm()
 
   // When arriving from a pending scan, the image is already in Supabase
@@ -523,6 +539,7 @@ export function AddExpense() {
         currency={currency}
         receiptItems={receiptItems}
         payerName={creatorName}
+        categoryParticipantNames={categoryParticipantNames}
         roomId={roomId}
       />
 

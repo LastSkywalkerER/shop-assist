@@ -30,6 +30,9 @@ interface ExpenseSplitManagerProps {
   receiptItems: SplitItem[]
   /** Main payer (expense.creatorName); seeded as the first equal participant. */
   payerName: string
+  /** Distinct participant names already used in this expense's category;
+   *  seeded as equal-split participants when the split is opened empty. */
+  categoryParticipantNames?: string[]
   roomId: string | null
 }
 
@@ -46,6 +49,7 @@ export function ExpenseSplitManager({
   currency,
   receiptItems,
   payerName,
+  categoryParticipantNames = [],
   roomId,
 }: ExpenseSplitManagerProps) {
   const [expanded, setExpanded] = useState(participants.length > 0)
@@ -57,13 +61,21 @@ export function ExpenseSplitManager({
     if (participants.length > 0) setExpanded(true)
   }, [participants.length])
 
-  // Seed the payer as the first equal participant when the split is opened empty.
+  // When the split is opened empty, seed the payer plus everyone already used
+  // in this category — all defaulting to an equal split.
   useEffect(() => {
-    if (expanded && participants.length === 0) {
-      onChange([
-        { id: crypto.randomUUID(), name: payerName.trim() || 'Плательщик', shareMode: 'equal' },
-      ])
+    if (!(expanded && participants.length === 0)) return
+    const payer = payerName.trim() || 'Плательщик'
+    const seeded: SplitParticipant[] = [{ id: crypto.randomUUID(), name: payer, shareMode: 'equal' }]
+    const seen = new Set([payer.toLowerCase()])
+    for (const raw of categoryParticipantNames) {
+      const name = raw.trim()
+      if (name && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase())
+        seeded.push({ id: crypto.randomUUID(), name, shareMode: 'equal' })
+      }
     }
+    onChange(seeded)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded])
 

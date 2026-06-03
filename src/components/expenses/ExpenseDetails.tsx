@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type {
@@ -108,8 +108,17 @@ export function ExpenseDetails() {
     )
   }, [expenseReceiptItems, purchases])
 
-  // Sync local participants with DB data
+  // Hydrate local participants from the DB on load, but stop once the user
+  // starts editing so async DB round-trips don't clobber in-progress input.
+  // The dirty flag resets when navigating to a different expense.
+  const participantsDirty = useRef(false)
+  const hydratedExpenseId = useRef<string | undefined>(undefined)
   useEffect(() => {
+    if (hydratedExpenseId.current !== id) {
+      hydratedExpenseId.current = id
+      participantsDirty.current = false
+    }
+    if (participantsDirty.current) return
     setLocalParticipants(
       expenseParticipants.map((p) => ({
         id: p.id,
@@ -120,7 +129,21 @@ export function ExpenseDetails() {
         settledAmount: p.settledAmount,
       }))
     )
-  }, [expenseParticipants])
+  }, [id, expenseParticipants])
+
+  // Names already used across this expense's category — seeded as equal-split
+  // participants when the split section is opened on an empty expense.
+  const categoryParticipantNames = useMemo(() => {
+    if (!expense?.categoryId) return []
+    const categoryExpenseIds = new Set(
+      expenses.filter((e) => e.categoryId === expense.categoryId).map((e) => e.id),
+    )
+    const names = new Set<string>()
+    for (const p of allParticipants) {
+      if (categoryExpenseIds.has(p.expenseId)) names.add(p.name)
+    }
+    return Array.from(names)
+  }, [expenses, allParticipants, expense?.categoryId])
 
   const handleCreateStore = async (data: { name: string; address?: string }): Promise<StoreDocument | undefined> => {
     if (!storesCol) return undefined
@@ -434,16 +457,25 @@ export function ExpenseDetails() {
     setLocalReceiptItems(newItems)
   }
 
-  const handleParticipantsChange = async (newItems: SplitParticipant[]) => {
+  const handleParticipantsChange = (newItems: SplitParticipant[]) => {
+    // Update the UI synchronously so the inputs stay responsive, then persist
+    // in the background. Insert-vs-update is decided by what's actually in the
+    // DB (not local state), so a row first added blank and named later still
+    // gets inserted.
+    participantsDirty.current = true
+    setLocalParticipants(newItems)
+    void persistParticipants(newItems)
+  }
+
+  const persistParticipants = async (items: SplitParticipant[]) => {
     if (!id || !participantsCol) return
     const now = new Date().toISOString()
-    const oldMap = new Map(localParticipants.map((p) => [p.id, p]))
-    const newMap = new Map(newItems.map((p) => [p.id, p]))
+    const keepIds = new Set<string>()
 
-    // Insert/update non-blank rows
-    for (const part of newItems) {
+    for (const part of items) {
       const trimmed = part.name.trim()
       if (!trimmed) continue
+      keepIds.add(part.id)
       const fields = {
         name: trimmed,
         shareMode: part.shareMode,
@@ -451,33 +483,25 @@ export function ExpenseDetails() {
         itemIds: part.shareMode === 'items' ? (part.itemIds ?? []) : undefined,
         settledAmount: part.settledAmount ?? 0,
       }
-      const old = oldMap.get(part.id)
-      if (!old) {
-        await participantsCol.insert({ id: part.id, expenseId: id, ...fields, createdAt: now, updatedAt: now })
-      } else {
+      const doc = await participantsCol.findOne(part.id).exec()
+      if (doc) {
         const changed =
-          old.name !== trimmed ||
-          old.shareMode !== part.shareMode ||
-          old.shareAmount !== part.shareAmount ||
-          JSON.stringify(old.itemIds ?? []) !== JSON.stringify(part.itemIds ?? []) ||
-          (old.settledAmount ?? 0) !== (part.settledAmount ?? 0)
-        if (changed) {
-          const doc = await participantsCol.findOne(part.id).exec()
-          if (doc) await doc.patch({ ...fields, updatedAt: now })
-        }
+          doc.name !== trimmed ||
+          doc.shareMode !== part.shareMode ||
+          doc.shareAmount !== fields.shareAmount ||
+          JSON.stringify(doc.itemIds ?? []) !== JSON.stringify(fields.itemIds ?? []) ||
+          (doc.settledAmount ?? 0) !== fields.settledAmount
+        if (changed) await doc.patch({ ...fields, updatedAt: now })
+      } else {
+        await participantsCol.insert({ id: part.id, expenseId: id, ...fields, createdAt: now, updatedAt: now })
       }
     }
 
-    // Remove rows that were deleted or had their name cleared
-    for (const old of localParticipants) {
-      const still = newMap.get(old.id)
-      if (!still || !still.name.trim()) {
-        const doc = await participantsCol.findOne(old.id).exec()
-        if (doc) await doc.remove()
-      }
+    // Remove DB rows for this expense that are no longer present or were blanked.
+    const existing = await participantsCol.find({ selector: { expenseId: id } }).exec()
+    for (const doc of existing) {
+      if (!keepIds.has(doc.id)) await doc.remove()
     }
-
-    setLocalParticipants(newItems)
   }
 
   const handleDelete = async () => {
@@ -582,6 +606,7 @@ export function ExpenseDetails() {
           currency={expense.currency}
           receiptItems={localReceiptItems}
           payerName={expense.creatorName ?? ''}
+          categoryParticipantNames={categoryParticipantNames}
           roomId={roomId}
         />
       </div>
