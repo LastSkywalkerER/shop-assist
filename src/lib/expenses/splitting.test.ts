@@ -5,6 +5,9 @@ import {
   computeShares,
   computeCategorySettlement,
   minimizeTransfers,
+  buildItemTotals,
+  creatorSplitInfo,
+  annotateExpensesWithSplit,
   type ParticipantInput,
   type ExpenseInput,
 } from './splitting'
@@ -237,5 +240,147 @@ describe('computeCategorySettlement', () => {
       [],
     )
     expect(result.perPerson).toHaveLength(0)
+  })
+})
+
+describe('buildItemTotals', () => {
+  it('groups line totals per expense via each receipt', () => {
+    const totals = buildItemTotals(
+      [
+        { id: 'r1', expenseId: 'e1' },
+        { id: 'r2', expenseId: 'e2' },
+      ],
+      [
+        { id: 'i1', receiptId: 'r1', amount: 5, quantity: 2 }, // 10
+        { id: 'i2', receiptId: 'r1', amount: 3 }, // 3 (quantity defaults to 1)
+        { id: 'i3', receiptId: 'r2', amount: 7 },
+      ],
+    )
+    expect(totals.get('e1')!.get('i1')).toBe(10)
+    expect(totals.get('e1')!.get('i2')).toBe(3)
+    expect(totals.get('e2')!.get('i3')).toBe(7)
+  })
+})
+
+describe('creatorSplitInfo', () => {
+  it('counts the creator at their own share for a split expense', () => {
+    // Worked example: bill 100, creator Максим splits equally with the items case.
+    const info = creatorSplitInfo(
+      { id: 'e1', amount: 100, currency: 'BYN', creatorName: 'Максим', categoryId: 'food' },
+      [
+        p({ id: 'maxim', name: 'Максим' }),
+        p({ id: 'olya', name: 'Оля', settledAmount: 25 }),
+        p({ id: 'kostya', name: 'Костя', shareMode: 'items', itemIds: ['i1', 'i2'] }),
+        p({ id: 'ilya', name: 'Илья' }),
+      ],
+      new Map([['i1', 5], ['i2', 10]]),
+      [],
+    )
+    expect(info.isSplit).toBe(true)
+    expect(info.categoryId).toBe('food')
+    // 85 / 3 = 28.333..., first equal participant (the creator) absorbs the extra cent.
+    expect(info.creatorShareNative).toBe(28.34)
+    expect(info.creatorShareBase).toBe(28.34)
+    expect(info.fullAmountBase).toBe(100)
+    expect(info.conversionGap).toBe(false)
+  })
+
+  it('counts the full amount for a non-split (personal) expense', () => {
+    const info = creatorSplitInfo(
+      { id: 'e1', amount: 100, currency: 'BYN', creatorName: 'Максим', categoryId: 'food' },
+      [],
+      new Map(),
+      [],
+    )
+    expect(info.isSplit).toBe(false)
+    expect(info.creatorShareNative).toBe(100)
+    expect(info.creatorShareBase).toBe(100)
+  })
+
+  it('counts zero when the creator only fronted money but did not consume', () => {
+    const info = creatorSplitInfo(
+      { id: 'e1', amount: 90, currency: 'BYN', creatorName: 'Максим' },
+      [p({ id: 'a', name: 'Оля' }), p({ id: 'b', name: 'Илья' })],
+      new Map(),
+      [],
+    )
+    expect(info.isSplit).toBe(true)
+    expect(info.creatorShareNative).toBe(0)
+    expect(info.creatorShareBase).toBe(0)
+    expect(info.conversionGap).toBe(false)
+    // The full bill is still available for the payer view.
+    expect(info.fullAmountBase).toBe(90)
+  })
+
+  it('matches the creator participant case-insensitively / trimmed', () => {
+    const info = creatorSplitInfo(
+      { id: 'e1', amount: 100, currency: 'BYN', creatorName: '  Максим ' },
+      [p({ id: 'a', name: 'максим' }), p({ id: 'b', name: 'Оля' })],
+      new Map(),
+      [],
+    )
+    expect(info.creatorShareNative).toBe(50)
+  })
+
+  it('converts the creator share to the base currency', () => {
+    const rates: CurrencyRateDocument[] = [
+      { id: 'r1', currency: 'USD', date: '2026-06-01', rate: 3, scale: 1, createdAt: '', updatedAt: '' },
+    ]
+    const info = creatorSplitInfo(
+      { id: 'e1', amount: 10, currency: 'USD', creatorName: 'Максим' },
+      [p({ id: 'a', name: 'Максим' }), p({ id: 'b', name: 'Оля' })],
+      new Map(),
+      rates,
+    )
+    expect(info.creatorShareNative).toBe(5) // 10 USD split two ways
+    expect(info.creatorShareBase).toBe(15) // 5 USD × 3
+    expect(info.fullAmountBase).toBe(30)
+    expect(info.conversionGap).toBe(false)
+  })
+
+  it('flags a conversion gap when the currency has no rate', () => {
+    const info = creatorSplitInfo(
+      { id: 'e1', amount: 10, currency: 'EUR', creatorName: 'Максим' },
+      [p({ id: 'a', name: 'Максим' }), p({ id: 'b', name: 'Оля' })],
+      new Map(),
+      [],
+    )
+    expect(info.creatorShareBase).toBe(null)
+    expect(info.fullAmountBase).toBe(null)
+    expect(info.conversionGap).toBe(true)
+  })
+})
+
+describe('annotateExpensesWithSplit', () => {
+  it('keeps category (type) and isSplit (group) as orthogonal dimensions', () => {
+    const expenses: ExpenseInput[] = [
+      { id: 'e1', amount: 100, currency: 'BYN', creatorName: 'Максим', categoryId: 'food' },
+      { id: 'e2', amount: 40, currency: 'BYN', creatorName: 'Максим', categoryId: 'food' },
+      { id: 'e3', amount: 200, currency: 'BYN', creatorName: 'Максим', categoryId: 'travel' },
+    ]
+    const participantsByExpenseId = new Map<string, ParticipantInput[]>([
+      ['e1', [p({ id: 'm', name: 'Максим' }), p({ id: 'o', name: 'Оля' })]],
+      // e2 has no participants -> personal; e3 split travel.
+      ['e3', [p({ id: 'm3', name: 'Максим' }), p({ id: 'i3', name: 'Илья' })]],
+    ])
+
+    const map = annotateExpensesWithSplit(expenses, participantsByExpenseId, new Map(), [])
+
+    expect(map.get('e1')!.isSplit).toBe(true)
+    expect(map.get('e1')!.creatorShareBase).toBe(50)
+    expect(map.get('e2')!.isSplit).toBe(false)
+    expect(map.get('e2')!.creatorShareBase).toBe(40)
+    expect(map.get('e3')!.isSplit).toBe(true)
+    expect(map.get('e3')!.creatorShareBase).toBe(100)
+
+    // Consumer view: total the creator's cost by category (type), NOT lumping all
+    // split together. Split rows count at the creator's share, personal at full.
+    const byCategory = new Map<string, number>()
+    for (const info of map.values()) {
+      const prev = byCategory.get(info.categoryId!) ?? 0
+      byCategory.set(info.categoryId!, prev + (info.creatorShareBase ?? 0))
+    }
+    expect(byCategory.get('food')).toBe(90) // 50 (split share) + 40 (personal)
+    expect(byCategory.get('travel')).toBe(100) // 100 (split share)
   })
 })

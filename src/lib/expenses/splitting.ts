@@ -101,6 +101,142 @@ export interface ExpenseInput {
   currency: string
   /** Main payer who fronted the whole bill. */
   creatorName?: string
+  /** The expense "type" (food, transport, …). Orthogonal to whether it is split. */
+  categoryId?: string
+}
+
+/**
+ * Per-expense view of "what did this expense cost *the creator*", plus the two
+ * orthogonal dimensions a personal-stats screen groups by: the **type**
+ * (`categoryId`) and the **group** (`isSplit`). "Раздельный" is a separate
+ * flag, not a type — a split expense keeps its category and is still summed
+ * by category, just counted at the creator's own share.
+ */
+export interface ExpenseSplitInfo {
+  expenseId: string
+  /** Type dimension — unchanged from the expense. */
+  categoryId?: string
+  /** Group dimension — true when the expense has at least one participant row. */
+  isSplit: boolean
+  creatorName: string
+  /** Creator's own share, in the expense's currency. */
+  creatorShareNative: number
+  /** Creator's own share, converted to the base currency (BYN); null if no rate. */
+  creatorShareBase: number | null
+  /** Full bill, converted to the base currency (BYN); null if no rate. */
+  fullAmountBase: number | null
+  /** True when a needed conversion was skipped because the currency had no rate. */
+  conversionGap: boolean
+}
+
+/**
+ * Assemble `expenseId -> (receiptItemId -> line total)` from receipts and their
+ * items, mirroring the logic the settlement view uses. Shared so the same
+ * `items`-mode resolution feeds both the settlement and the split-info helpers.
+ */
+export function buildItemTotals(
+  receipts: Array<{ id: string; expenseId: string }>,
+  receiptItems: Array<{ id: string; receiptId: string; amount: number; quantity?: number }>,
+): Map<string, Map<string, number>> {
+  const itemsByReceipt = new Map<string, typeof receiptItems>()
+  for (const it of receiptItems) {
+    const list = itemsByReceipt.get(it.receiptId) ?? []
+    list.push(it)
+    itemsByReceipt.set(it.receiptId, list)
+  }
+  const totalsByExpenseId = new Map<string, Map<string, number>>()
+  for (const r of receipts) {
+    const totals = totalsByExpenseId.get(r.expenseId) ?? new Map<string, number>()
+    for (const it of itemsByReceipt.get(r.id) ?? []) {
+      totals.set(it.id, lineItemTotal(it))
+    }
+    totalsByExpenseId.set(r.expenseId, totals)
+  }
+  return totalsByExpenseId
+}
+
+function splitInfoWithRateMap(
+  expense: ExpenseInput,
+  participants: ParticipantInput[],
+  itemTotals: Map<string, number>,
+  rateMap: Map<string, CurrencyRateDocument>,
+): ExpenseSplitInfo {
+  const creatorName = expense.creatorName?.trim() ?? ''
+  const isSplit = participants.length > 0
+  const convert = (x: number): number | null => convertToBase(x, expense.currency, rateMap)
+
+  const fullAmountBase = convert(expense.amount)
+
+  let creatorShareNative: number
+  if (!isSplit) {
+    // Personal expense: the whole bill is the creator's own cost.
+    creatorShareNative = expense.amount
+  } else {
+    const { shares } = computeShares(expense.amount, participants, itemTotals)
+    // The creator's share is the share of the participant row that carries the
+    // creator's name. If the creator only fronted money but did not consume
+    // (no matching participant), their own cost is 0 — matching settlement net.
+    creatorShareNative = creatorName
+      ? participants
+          .filter((p) => p.name.trim().toLowerCase() === creatorName.toLowerCase())
+          .reduce((sum, p) => sum + (shares.get(p.id) ?? 0), 0)
+      : 0
+  }
+
+  // A zero share needs no conversion and never counts as a gap.
+  const creatorShareBase = creatorShareNative === 0 ? 0 : convert(creatorShareNative)
+  const conversionGap = fullAmountBase === null || creatorShareBase === null
+
+  return {
+    expenseId: expense.id,
+    categoryId: expense.categoryId,
+    isSplit,
+    creatorName,
+    creatorShareNative: round2(creatorShareNative),
+    creatorShareBase: creatorShareBase === null ? null : round2(creatorShareBase),
+    fullAmountBase: fullAmountBase === null ? null : round2(fullAmountBase),
+    conversionGap,
+  }
+}
+
+/**
+ * Compute the creator's own cost of a single expense (see {@link ExpenseSplitInfo}).
+ */
+export function creatorSplitInfo(
+  expense: ExpenseInput,
+  participants: ParticipantInput[],
+  itemTotals: Map<string, number>,
+  rates: CurrencyRateDocument[],
+): ExpenseSplitInfo {
+  return splitInfoWithRateMap(expense, participants, itemTotals, buildLatestRateMap(rates))
+}
+
+/**
+ * Annotate a set of expenses with their split info, keyed by expense id. Each
+ * entry keeps its `categoryId` (type) alongside the derived `isSplit` (group),
+ * so a stats consumer can total **by category** while filtering split vs not —
+ * without ever lumping all split expenses into a single bucket.
+ */
+export function annotateExpensesWithSplit(
+  expenses: ExpenseInput[],
+  participantsByExpenseId: Map<string, ParticipantInput[]>,
+  itemTotalsByExpenseId: Map<string, Map<string, number>>,
+  rates: CurrencyRateDocument[],
+): Map<string, ExpenseSplitInfo> {
+  const rateMap = buildLatestRateMap(rates)
+  const result = new Map<string, ExpenseSplitInfo>()
+  for (const expense of expenses) {
+    result.set(
+      expense.id,
+      splitInfoWithRateMap(
+        expense,
+        participantsByExpenseId.get(expense.id) ?? [],
+        itemTotalsByExpenseId.get(expense.id) ?? new Map(),
+        rateMap,
+      ),
+    )
+  }
+  return result
 }
 
 export interface PersonBalance {
