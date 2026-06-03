@@ -402,7 +402,7 @@ serve(async (req) => {
     })
     .eq('id', scan.id)
   const { error: claimErr } = body.force
-    ? await claimQuery.in('status', ['failed', 'processing'])
+    ? await claimQuery.in('status', ['failed', 'processing', 'pending'])
     : await claimQuery.eq('status', 'pending')
   if (claimErr) {
     log.error('row:claim_failed', { error: claimErr.message })
