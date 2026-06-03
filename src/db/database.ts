@@ -6,6 +6,7 @@ import { storeSchema } from './schemas/store.schema'
 import { purchaseSchema } from './schemas/purchase.schema'
 import { expenseCategorySchema } from './schemas/expenseCategory.schema'
 import { expenseSchema } from './schemas/expense.schema'
+import { expenseParticipantSchema } from './schemas/expenseParticipant.schema'
 import { receiptSchema } from './schemas/receipt.schema'
 import { receiptItemSchema } from './schemas/receiptItem.schema'
 import { expenseAttachmentSchema } from './schemas/expenseAttachment.schema'
@@ -19,6 +20,7 @@ import type {
   PurchaseDocument,
   ExpenseCategoryDocument,
   ExpenseDocument,
+  ExpenseParticipantDocument,
   ReceiptDocument,
   ReceiptItemDocument,
   ExpenseAttachmentDocument,
@@ -37,6 +39,7 @@ export type ShopAssistCollections = {
   purchases: RxCollection<PurchaseDocument>
   expenseCategories: RxCollection<ExpenseCategoryDocument>
   expenses: RxCollection<ExpenseDocument>
+  expenseParticipants: RxCollection<ExpenseParticipantDocument>
   receipts: RxCollection<ReceiptDocument>
   receiptItems: RxCollection<ReceiptItemDocument>
   expenseAttachments: RxCollection<ExpenseAttachmentDocument>
@@ -228,6 +231,10 @@ async function createDb(): Promise<ShopAssistDatabase> {
   // New collections added in a separate call: Dexie must add new object stores
   // (requiring a version upgrade) only after existing migrations have finished.
   await db.addCollections({
+    expenseParticipants: {
+      schema: expenseParticipantSchema,
+      migrationStrategies: {},
+    },
     shoppingListItems: {
       schema: shoppingListItemSchema,
       migrationStrategies: {

@@ -8,6 +8,7 @@ import type {
   ReceiptDocument,
   ReceiptItemDocument,
   ExpenseAttachmentDocument,
+  ExpenseParticipantDocument,
   ProductDocument,
   PurchaseDocument,
   ShoppingListItemDocument,
@@ -20,6 +21,7 @@ import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { FileUpload, type AttachmentFile } from './FileUpload'
 import { ReceiptItemsManager, type ReceiptItem } from './ReceiptItemsManager'
+import { ExpenseSplitManager, type SplitParticipant } from './ExpenseSplitManager'
 import { CreatorField } from '../shared/CreatorField'
 import { useAuth } from '../../contexts/AuthContext'
 import { addPendingUpload, blobStorePut, blobStoreGet } from '../../db/blobStore'
@@ -66,6 +68,7 @@ export function AddExpense() {
   const receiptsCol = useRxCollection<ReceiptDocument>('receipts')
   const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
   const attachmentsCol = useRxCollection<ExpenseAttachmentDocument>('expenseAttachments')
+  const participantsCol = useRxCollection<ExpenseParticipantDocument>('expenseParticipants')
   const productsCol = useRxCollection<ProductDocument>('products')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
 
@@ -102,6 +105,7 @@ export function AddExpense() {
     return []
   })
   const [creatorName, setCreatorName] = useState(user?.first_name ?? '')
+  const [participants, setParticipants] = useState<SplitParticipant[]>([])
   const [saving, setSaving] = useState(false)
   const confirm = useConfirm()
 
@@ -239,6 +243,25 @@ export function AddExpense() {
         createdAt: now,
         updatedAt: now,
       })
+
+      // 1b. Insert split participants (skip blank rows)
+      if (participantsCol) {
+        for (const part of participants) {
+          const trimmed = part.name.trim()
+          if (!trimmed) continue
+          await participantsCol.insert({
+            id: part.id,
+            expenseId,
+            name: trimmed,
+            shareMode: part.shareMode,
+            shareAmount: part.shareMode === 'amount' ? part.shareAmount : undefined,
+            itemIds: part.shareMode === 'items' ? (part.itemIds ?? []) : undefined,
+            settledAmount: part.settledAmount ?? 0,
+            createdAt: now,
+            updatedAt: now,
+          })
+        }
+      }
 
       // 2. Lazy create receipt if needed (has attachments or items)
       const needsReceipt = attachments.length > 0 || receiptItems.length > 0
@@ -491,6 +514,17 @@ export function AddExpense() {
 
       {/* Author */}
       <CreatorField value={creatorName} onChange={setCreatorName} roomId={roomId} />
+
+      {/* Split between participants */}
+      <ExpenseSplitManager
+        participants={participants}
+        onChange={setParticipants}
+        expenseAmount={parseFloat(amount) || 0}
+        currency={currency}
+        receiptItems={receiptItems}
+        payerName={creatorName}
+        roomId={roomId}
+      />
 
       {/* File upload */}
       <FileUpload attachments={attachments} onChange={setAttachments} />

@@ -8,6 +8,7 @@ import type {
   ReceiptDocument,
   ReceiptItemDocument,
   ExpenseAttachmentDocument,
+  ExpenseParticipantDocument,
   ProductDocument,
   PurchaseDocument,
 } from '../../db/types'
@@ -15,6 +16,8 @@ import { ConfirmModal } from '../shared/ConfirmModal'
 import { EditExpense } from './EditExpense'
 import { FileUpload, type AttachmentFile } from './FileUpload'
 import { ReceiptItemsManager, type ReceiptItem } from './ReceiptItemsManager'
+import { ExpenseSplitManager, type SplitParticipant } from './ExpenseSplitManager'
+import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { showBackButton } from '../../telegram/backButton'
 import { addPendingUpload, blobStoreRemove } from '../../db/blobStore'
@@ -26,6 +29,8 @@ export function ExpenseDetails() {
   const [deleting, setDeleting] = useState(false)
   const [localAttachments, setLocalAttachments] = useState<AttachmentFile[]>([])
   const [localReceiptItems, setLocalReceiptItems] = useState<ReceiptItem[]>([])
+  const [localParticipants, setLocalParticipants] = useState<SplitParticipant[]>([])
+  const { roomId } = useAuth()
 
   useEffect(() => {
     return showBackButton(() => navigate(-1))
@@ -37,6 +42,7 @@ export function ExpenseDetails() {
   const receiptsCol = useRxCollection<ReceiptDocument>('receipts')
   const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
   const attachmentsCol = useRxCollection<ExpenseAttachmentDocument>('expenseAttachments')
+  const participantsCol = useRxCollection<ExpenseParticipantDocument>('expenseParticipants')
   const productsCol = useRxCollection<ProductDocument>('products')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
 
@@ -46,6 +52,7 @@ export function ExpenseDetails() {
   const { data: receipts } = useRxQuery(receiptsCol)
   const { data: receiptItems } = useRxQuery(receiptItemsCol)
   const { data: attachments } = useRxQuery(attachmentsCol)
+  const { data: allParticipants } = useRxQuery(participantsCol)
   const { data: products } = useRxQuery(productsCol)
   const { data: purchases } = useRxQuery(purchasesCol)
 
@@ -62,6 +69,7 @@ export function ExpenseDetails() {
   const receipt = useMemo(() => receipts.find((r) => r.expenseId === id), [receipts, id])
   const expenseReceiptItems = useMemo(() => (receipt ? receiptItems.filter((i) => i.receiptId === receipt.id) : []), [receipt, receiptItems])
   const expenseAttachments = useMemo(() => (receipt ? attachments.filter((a) => a.receiptId === receipt.id) : []), [receipt, attachments])
+  const expenseParticipants = useMemo(() => allParticipants.filter((p) => p.expenseId === id), [allParticipants, id])
 
   // Sync local state with DB data
   useEffect(() => {
@@ -99,6 +107,20 @@ export function ExpenseDetails() {
       })
     )
   }, [expenseReceiptItems, purchases])
+
+  // Sync local participants with DB data
+  useEffect(() => {
+    setLocalParticipants(
+      expenseParticipants.map((p) => ({
+        id: p.id,
+        name: p.name,
+        shareMode: p.shareMode,
+        shareAmount: p.shareAmount,
+        itemIds: p.itemIds,
+        settledAmount: p.settledAmount,
+      }))
+    )
+  }, [expenseParticipants])
 
   const handleCreateStore = async (data: { name: string; address?: string }): Promise<StoreDocument | undefined> => {
     if (!storesCol) return undefined
@@ -412,10 +434,64 @@ export function ExpenseDetails() {
     setLocalReceiptItems(newItems)
   }
 
+  const handleParticipantsChange = async (newItems: SplitParticipant[]) => {
+    if (!id || !participantsCol) return
+    const now = new Date().toISOString()
+    const oldMap = new Map(localParticipants.map((p) => [p.id, p]))
+    const newMap = new Map(newItems.map((p) => [p.id, p]))
+
+    // Insert/update non-blank rows
+    for (const part of newItems) {
+      const trimmed = part.name.trim()
+      if (!trimmed) continue
+      const fields = {
+        name: trimmed,
+        shareMode: part.shareMode,
+        shareAmount: part.shareMode === 'amount' ? part.shareAmount : undefined,
+        itemIds: part.shareMode === 'items' ? (part.itemIds ?? []) : undefined,
+        settledAmount: part.settledAmount ?? 0,
+      }
+      const old = oldMap.get(part.id)
+      if (!old) {
+        await participantsCol.insert({ id: part.id, expenseId: id, ...fields, createdAt: now, updatedAt: now })
+      } else {
+        const changed =
+          old.name !== trimmed ||
+          old.shareMode !== part.shareMode ||
+          old.shareAmount !== part.shareAmount ||
+          JSON.stringify(old.itemIds ?? []) !== JSON.stringify(part.itemIds ?? []) ||
+          (old.settledAmount ?? 0) !== (part.settledAmount ?? 0)
+        if (changed) {
+          const doc = await participantsCol.findOne(part.id).exec()
+          if (doc) await doc.patch({ ...fields, updatedAt: now })
+        }
+      }
+    }
+
+    // Remove rows that were deleted or had their name cleared
+    for (const old of localParticipants) {
+      const still = newMap.get(old.id)
+      if (!still || !still.name.trim()) {
+        const doc = await participantsCol.findOne(old.id).exec()
+        if (doc) await doc.remove()
+      }
+    }
+
+    setLocalParticipants(newItems)
+  }
+
   const handleDelete = async () => {
     if (!expensesCol || !expense) return
     setDeleting(true)
     try {
+      // Delete split participants
+      if (participantsCol) {
+        for (const part of expenseParticipants) {
+          const doc = await participantsCol.findOne(part.id).exec()
+          if (doc) await doc.remove()
+        }
+      }
+
       // Delete receipt items
       if (receipt && receiptItemsCol) {
         for (const item of expenseReceiptItems) {
@@ -494,6 +570,19 @@ export function ExpenseDetails() {
           purchases={purchases}
           stores={stores}
           expenseStoreId={expense?.storeId}
+        />
+      </div>
+
+      {/* Split between participants */}
+      <div className="px-4 mt-4">
+        <ExpenseSplitManager
+          participants={localParticipants}
+          onChange={handleParticipantsChange}
+          expenseAmount={expense.amount}
+          currency={expense.currency}
+          receiptItems={localReceiptItems}
+          payerName={expense.creatorName ?? ''}
+          roomId={roomId}
         />
       </div>
 

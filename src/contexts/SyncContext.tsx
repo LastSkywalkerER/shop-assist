@@ -24,6 +24,7 @@ const COLLECTION_NAMES = [
   'purchases',
   'expenseCategories',
   'expenses',
+  'expenseParticipants',
   'receipts',
   'receiptItems',
   'expenseAttachments',

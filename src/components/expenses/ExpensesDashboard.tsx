@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { MangoQuery } from 'rxdb'
 import { useRxCollection, useRxPaginatedQuery, useRxQuery } from '../../db/hooks'
 import { useDragSelect } from '../../hooks/useDragSelect'
@@ -9,6 +10,7 @@ import type {
   ReceiptDocument,
   ReceiptItemDocument,
   ExpenseAttachmentDocument,
+  ExpenseParticipantDocument,
 } from '../../db/types'
 import { ExpenseCategoryFilter } from './ExpenseCategoryFilter'
 import { ExpenseTable } from './ExpenseTable'
@@ -23,6 +25,7 @@ import { PendingScanRow } from './PendingScanRow'
 import { usePendingScans } from '../../hooks/usePendingScans'
 
 export function ExpensesDashboard() {
+  const navigate = useNavigate()
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -40,6 +43,7 @@ export function ExpensesDashboard() {
   const receiptsCol = useRxCollection<ReceiptDocument>('receipts')
   const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
   const attachmentsCol = useRxCollection<ExpenseAttachmentDocument>('expenseAttachments')
+  const participantsCol = useRxCollection<ExpenseParticipantDocument>('expenseParticipants')
 
   const buildPagedExpenseQuery = useCallback(
     (limit: number): MangoQuery<ExpenseDocument> => ({
@@ -71,6 +75,7 @@ export function ExpensesDashboard() {
   const { data: receipts } = useRxQuery(receiptsCol)
   const { data: receiptItems } = useRxQuery(receiptItemsCol)
   const { data: attachments } = useRxQuery(attachmentsCol)
+  const { data: participants } = useRxQuery(participantsCol)
 
   const tableData: ExpenseRowData[] = useMemo(() => {
     const storeMap = new Map(stores.map((s) => [s.id, s]))
@@ -126,6 +131,15 @@ export function ExpensesDashboard() {
     setDeleting(true)
     try {
       for (const expenseId of selectedIds) {
+        // Delete split participants
+        if (participantsCol) {
+          const parts = participants.filter((p) => p.expenseId === expenseId)
+          for (const part of parts) {
+            const doc = await participantsCol.findOne(part.id).exec()
+            if (doc) await doc.remove()
+          }
+        }
+
         // Find receipt for this expense
         const receipt = receipts.find((r) => r.expenseId === expenseId)
 
@@ -196,6 +210,21 @@ export function ExpensesDashboard() {
             selected={selectedCategoryId}
             onSelect={setSelectedCategoryId}
           />
+        )}
+        {selectedCategoryId && (
+          <div className="px-4 pb-2">
+            <button
+              type="button"
+              onClick={() => navigate(`/expenses/settlement/${selectedCategoryId}`)}
+              className="w-full py-2 bg-surface text-primary-text text-[14px] font-medium rounded-xl active:bg-bg-secondary/50 transition-colors flex items-center justify-center gap-2"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 3v18h18" />
+                <path d="M18 17V9M13 17V5M8 17v-3" />
+              </svg>
+              Сводка: кто кому должен
+            </button>
+          </div>
         )}
       </div>
       {pendingScans.length > 0 && (
