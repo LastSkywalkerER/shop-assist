@@ -108,17 +108,18 @@ export function ExpenseDetails() {
     )
   }, [expenseReceiptItems, purchases])
 
-  // Hydrate local participants from the DB on load, but stop once the user
-  // starts editing so async DB round-trips don't clobber in-progress input.
+  // Hydrate local participants from the DB on load. While there are unsaved
+  // edits, stop hydrating so async DB data doesn't clobber in-progress input.
   // The dirty flag resets when navigating to a different expense.
-  const participantsDirty = useRef(false)
+  const [participantsDirty, setParticipantsDirty] = useState(false)
+  const [savingParticipants, setSavingParticipants] = useState(false)
   const hydratedExpenseId = useRef<string | undefined>(undefined)
   useEffect(() => {
     if (hydratedExpenseId.current !== id) {
       hydratedExpenseId.current = id
-      participantsDirty.current = false
+      setParticipantsDirty(false)
     }
-    if (participantsDirty.current) return
+    if (participantsDirty) return
     setLocalParticipants(
       expenseParticipants.map((p) => ({
         id: p.id,
@@ -129,7 +130,7 @@ export function ExpenseDetails() {
         settledAmount: p.settledAmount,
       }))
     )
-  }, [id, expenseParticipants])
+  }, [id, expenseParticipants, participantsDirty])
 
   // Names already used across this expense's category — seeded as equal-split
   // participants when the split section is opened on an empty expense.
@@ -458,13 +459,22 @@ export function ExpenseDetails() {
   }
 
   const handleParticipantsChange = (newItems: SplitParticipant[]) => {
-    // Update the UI synchronously so the inputs stay responsive, then persist
-    // in the background. Insert-vs-update is decided by what's actually in the
-    // DB (not local state), so a row first added blank and named later still
-    // gets inserted.
-    participantsDirty.current = true
+    // Hold edits in local state only — they are written to the DB when the
+    // user presses "Сохранить участников", not while typing.
+    setParticipantsDirty(true)
     setLocalParticipants(newItems)
-    void persistParticipants(newItems)
+  }
+
+  const handleSaveParticipants = async () => {
+    setSavingParticipants(true)
+    try {
+      await persistParticipants(localParticipants)
+      setParticipantsDirty(false)
+    } catch (err) {
+      console.error('Failed to save participants:', err)
+    } finally {
+      setSavingParticipants(false)
+    }
   }
 
   const persistParticipants = async (items: SplitParticipant[]) => {
@@ -609,6 +619,15 @@ export function ExpenseDetails() {
           categoryParticipantNames={categoryParticipantNames}
           roomId={roomId}
         />
+        {participantsDirty && (
+          <button
+            onClick={handleSaveParticipants}
+            disabled={savingParticipants}
+            className="w-full mt-3 bg-primary text-on-primary py-3 rounded-2xl font-semibold text-[15px] disabled:opacity-30 active:opacity-80 transition-opacity"
+          >
+            {savingParticipants ? 'Сохранение...' : 'Сохранить участников'}
+          </button>
+        )}
       </div>
 
       {/* Delete button */}
