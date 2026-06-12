@@ -51,8 +51,21 @@ export interface ExpenseDocument {
   currency: string
   date: string
   categoryId?: string
+  /** Split group this expense belongs to for the who-owes-whom settlement. */
+  splitGroupId?: string
   notes?: string
   creatorName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Settlement scope for shared expenses, decoupled from categories: categories
+ * are an analytics dimension, split groups drive the who-owes-whom math.
+ */
+export interface SplitGroupDocument {
+  id: string
+  name: string
   createdAt: string
   updatedAt: string
 }
@@ -84,7 +97,12 @@ export interface ReceiptDocument {
 
 export interface ExpenseSettlementDocument {
   id: string
-  /** Category this repayment belongs to (not tied to any single expense). */
+  /**
+   * Settlement scope this repayment belongs to (not tied to any single
+   * expense). Historically this held an expense category id; since split
+   * groups were introduced, new records store a split group id here. The
+   * field name is kept for sync compatibility (additive-only schema rule).
+   */
   categoryId: string
   /** Person who paid (the debtor). */
   fromName: string

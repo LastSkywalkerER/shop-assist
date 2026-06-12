@@ -12,10 +12,12 @@ import type {
   ProductDocument,
   PurchaseDocument,
   ShoppingListItemDocument,
+  SplitGroupDocument,
 } from '../../db/types'
 import { ExpenseNameAutocomplete } from './ExpenseNameAutocomplete'
 import { StoreSelect } from '../purchase/StoreSelect'
 import { ExpenseCategorySelect } from './ExpenseCategorySelect'
+import { SplitGroupSelect } from './SplitGroupSelect'
 import { Input } from '../shared/Input'
 import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
@@ -72,6 +74,7 @@ export function AddExpense() {
   const participantsCol = useRxCollection<ExpenseParticipantDocument>('expenseParticipants')
   const productsCol = useRxCollection<ProductDocument>('products')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
+  const splitGroupsCol = useRxCollection<SplitGroupDocument>('splitGroups')
 
   const { data: expenses } = useRxQuery(expensesCol)
   const { data: stores } = useRxQuery(storesCol)
@@ -79,6 +82,7 @@ export function AddExpense() {
   const { data: products } = useRxQuery(productsCol)
   const { data: purchases } = useRxQuery(purchasesCol)
   const { data: allParticipants } = useRxQuery(participantsCol)
+  const { data: splitGroups } = useRxQuery(splitGroupsCol)
 
   // Extract product categories
   const productCategories = useMemo(() => {
@@ -95,6 +99,7 @@ export function AddExpense() {
   const [currency, setCurrency] = useState(ocrPrefill?.currency ?? DEFAULT_CURRENCY)
   const [date, setDate] = useState(() => ocrPrefill?.date || new Date().toISOString().split('T')[0])
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryDocument | null>(null)
+  const [selectedSplitGroup, setSelectedSplitGroup] = useState<SplitGroupDocument | null>(null)
   const [notes, setNotes] = useState('')
   const [attachments, setAttachments] = useState<AttachmentFile[]>(() => ocrPrefill?.attachments ?? [])
   const [receiptItems, setReceiptItems] = useState<ReceiptItem[]>(() => {
@@ -110,20 +115,20 @@ export function AddExpense() {
   const [participants, setParticipants] = useState<SplitParticipant[]>([])
   const [saving, setSaving] = useState(false)
 
-  // Names already used across the selected category — seeded as equal-split
+  // Names already used across the selected split group — seeded as equal-split
   // participants when the split section is opened.
-  const categoryParticipantNames = useMemo(() => {
-    const categoryId = selectedCategory?.id
-    if (!categoryId) return []
-    const categoryExpenseIds = new Set(
-      expenses.filter((e) => e.categoryId === categoryId).map((e) => e.id),
+  const groupParticipantNames = useMemo(() => {
+    const groupId = selectedSplitGroup?.id
+    if (!groupId) return []
+    const groupExpenseIds = new Set(
+      expenses.filter((e) => e.splitGroupId === groupId).map((e) => e.id),
     )
     const names = new Set<string>()
     for (const part of allParticipants) {
-      if (categoryExpenseIds.has(part.expenseId)) names.add(part.name)
+      if (groupExpenseIds.has(part.expenseId)) names.add(part.name)
     }
     return Array.from(names)
-  }, [expenses, allParticipants, selectedCategory?.id])
+  }, [expenses, allParticipants, selectedSplitGroup?.id])
   const confirm = useConfirm()
 
   // When arriving from a pending scan, the image is already in Supabase
@@ -231,6 +236,19 @@ export function AddExpense() {
     setSelectedCategory(category)
   }
 
+  const handleCreateSplitGroup = async (groupName: string) => {
+    if (!splitGroupsCol) return
+    const now = new Date().toISOString()
+    const group: SplitGroupDocument = {
+      id: crypto.randomUUID(),
+      name: groupName,
+      createdAt: now,
+      updatedAt: now,
+    }
+    await splitGroupsCol.insert(group)
+    setSelectedSplitGroup(group)
+  }
+
   const handleSubmit = async () => {
     if (!canSubmit || !expensesCol) return
 
@@ -255,6 +273,7 @@ export function AddExpense() {
         currency,
         date: new Date(date).toISOString(),
         categoryId: selectedCategory?.id,
+        splitGroupId: selectedSplitGroup?.id,
         notes: notes.trim() || undefined,
         creatorName: creatorName.trim() || undefined,
         createdAt: now,
@@ -537,7 +556,13 @@ export function AddExpense() {
       {/* Author */}
       <CreatorField value={creatorName} onChange={setCreatorName} roomId={roomId} />
 
-      {/* Split between participants */}
+      {/* Split group (settlement scope) + split between participants */}
+      <SplitGroupSelect
+        groups={splitGroups}
+        selected={selectedSplitGroup}
+        onSelect={setSelectedSplitGroup}
+        onCreate={handleCreateSplitGroup}
+      />
       <ExpenseSplitManager
         participants={participants}
         onChange={setParticipants}
@@ -545,7 +570,7 @@ export function AddExpense() {
         currency={currency}
         receiptItems={receiptItems}
         payerName={creatorName}
-        categoryParticipantNames={categoryParticipantNames}
+        groupParticipantNames={groupParticipantNames}
         roomId={roomId}
       />
 

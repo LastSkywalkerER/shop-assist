@@ -30,9 +30,9 @@ interface ExpenseSplitManagerProps {
   receiptItems: SplitItem[]
   /** Main payer (expense.creatorName); seeded as the first equal participant. */
   payerName: string
-  /** Distinct participant names already used in this expense's category;
+  /** Distinct participant names already used in this expense's split group;
    *  seeded as equal-split participants when the split is opened empty. */
-  categoryParticipantNames?: string[]
+  groupParticipantNames?: string[]
   roomId: string | null
 }
 
@@ -49,7 +49,7 @@ export function ExpenseSplitManager({
   currency,
   receiptItems,
   payerName,
-  categoryParticipantNames = [],
+  groupParticipantNames = [],
   roomId,
 }: ExpenseSplitManagerProps) {
   const [expanded, setExpanded] = useState(participants.length > 0)
@@ -62,13 +62,13 @@ export function ExpenseSplitManager({
   }, [participants.length])
 
   // When the split is opened empty, seed the payer plus everyone already used
-  // in this category — all defaulting to an equal split.
+  // in this split group — all defaulting to an equal split.
   useEffect(() => {
     if (!(expanded && participants.length === 0)) return
     const payer = payerName.trim() || 'Плательщик'
     const seeded: SplitParticipant[] = [{ id: crypto.randomUUID(), name: payer, shareMode: 'equal' }]
     const seen = new Set([payer.toLowerCase()])
-    for (const raw of categoryParticipantNames) {
+    for (const raw of groupParticipantNames) {
       const name = raw.trim()
       if (name && !seen.has(name.toLowerCase())) {
         seen.add(name.toLowerCase())

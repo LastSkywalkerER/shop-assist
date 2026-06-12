@@ -31,6 +31,7 @@ const COLLECTION_NAMES = [
   'expenseAttachments',
   'shoppingListItems',
   'purchaseAttachments',
+  'splitGroups',
 ]
 
 export function SyncProvider({ children }: { children: ReactNode }) {

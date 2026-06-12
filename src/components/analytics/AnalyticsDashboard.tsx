@@ -1,0 +1,117 @@
+import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useRxCollection, useRxQuery } from '../../db/hooks'
+import type { ExpenseCategoryDocument } from '../../db/types'
+import { useExpenseAnalytics } from '../../hooks/useExpenseAnalytics'
+import { BASE_CURRENCY } from '../../lib/currency/convert'
+import type { AnalyticsPeriod } from '../../lib/analytics/aggregate'
+import { AnalyticsConfigPanel } from './AnalyticsConfigPanel'
+import { SpendingLineChart } from './SpendingLineChart'
+import { PieCard } from './PieCard'
+
+const fmtMoney = (n: number) => `${n.toFixed(2)} ${BASE_CURRENCY}`
+const fmtCount = (n: number) => `${Math.round(n)} раз`
+
+export function AnalyticsDashboard() {
+  const navigate = useNavigate()
+  const [period, setPeriod] = useState<AnalyticsPeriod>({ mode: 'all' })
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set())
+
+  const categoriesCol = useRxCollection<ExpenseCategoryDocument>('expenseCategories')
+  const { data: categories } = useRxQuery(categoriesCol)
+
+  // Newest categories first; sorted in memory (createdAt is not indexed).
+  const sortedCategories = useMemo(
+    () => [...categories].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [categories],
+  )
+
+  const categoryIds = useMemo(() => [...selectedCategoryIds], [selectedCategoryIds])
+  const analytics = useExpenseAnalytics(period, categoryIds)
+
+  const toggleCategory = (id: string) => {
+    setSelectedCategoryIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const invalidRange = period.mode === 'range' && !analytics.hasBounds
+
+  return (
+    <div className="pb-10 flex-1 overflow-y-auto min-h-0">
+      <div className="p-4 pb-2 flex items-center justify-between">
+        <h2 className="text-[20px] font-bold text-text">Аналитика</h2>
+        <button
+          onClick={() => navigate(-1)}
+          className="text-primary-text text-[15px] font-medium active:opacity-60 transition-opacity"
+        >
+          Назад
+        </button>
+      </div>
+
+      <div className="px-4 space-y-3">
+        <AnalyticsConfigPanel
+          period={period}
+          onPeriodChange={setPeriod}
+          categories={sortedCategories}
+          selectedCategoryIds={selectedCategoryIds}
+          onToggleCategory={toggleCategory}
+          onClearCategories={() => setSelectedCategoryIds(new Set())}
+        />
+
+        {analytics.conversionGaps > 0 && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2 text-[12px] text-yellow-700 dark:text-yellow-400">
+            Не удалось сконвертировать {analytics.conversionGaps}{' '}
+            {analytics.conversionGaps === 1 ? 'сумму' : 'сумм(ы)'} — нет курса валюты.
+          </div>
+        )}
+
+        {invalidRange ? (
+          <div className="bg-surface rounded-2xl px-4 py-6 text-center text-[13px] text-text-hint">
+            Начальная дата позже конечной — поправьте период.
+          </div>
+        ) : (
+          <>
+            <SpendingLineChart
+              series={analytics.series}
+              granularity={analytics.granularity}
+              average={analytics.average}
+              maxKey={analytics.maxKey}
+            />
+
+            <PieCard
+              title="Распределение по категориям"
+              data={analytics.pies.byCategory}
+              valueFormatter={fmtMoney}
+            />
+            <PieCard
+              title="Самые дорогие расходы"
+              data={analytics.pies.expensiveExpenses}
+              valueFormatter={fmtMoney}
+            />
+            <PieCard
+              title="Самые частые расходы"
+              data={analytics.pies.frequentExpenses}
+              valueFormatter={fmtCount}
+            />
+            <PieCard
+              title="Самые дорогие позиции чеков"
+              data={analytics.pies.expensiveItems}
+              valueFormatter={fmtMoney}
+              emptyText="Нет позиций чеков за период"
+            />
+            <PieCard
+              title="Самые частые позиции чеков"
+              data={analytics.pies.frequentItems}
+              valueFormatter={fmtCount}
+              emptyText="Нет позиций чеков за период"
+            />
+          </>
+        )}
+      </div>
+    </div>
+  )
+}

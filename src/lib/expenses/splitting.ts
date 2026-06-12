@@ -282,8 +282,8 @@ interface Acc {
 }
 
 /**
- * Aggregate a set of expenses (e.g. one category) into per-person balances and
- * the minimal set of transfers that settles everyone up. All amounts are
+ * Aggregate a set of expenses (e.g. one split group) into per-person balances
+ * and the minimal set of transfers that settles everyone up. All amounts are
  * converted to the base currency (BYN) using the latest NBRB rates.
  */
 export function computeCategorySettlement(

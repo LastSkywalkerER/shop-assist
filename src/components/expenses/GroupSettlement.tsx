@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type {
   ExpenseDocument,
-  ExpenseCategoryDocument,
+  SplitGroupDocument,
   ExpenseParticipantDocument,
   ExpenseSettlementDocument,
   ReceiptDocument,
@@ -20,14 +20,14 @@ import {
 } from '../../lib/expenses/splitting'
 import { BASE_CURRENCY } from '../../lib/currency/convert'
 
-export function CategorySettlement() {
-  const { categoryId } = useParams<{ categoryId: string }>()
+export function GroupSettlement() {
+  const { groupId } = useParams<{ groupId: string }>()
   const navigate = useNavigate()
 
   useEffect(() => showBackButton(() => navigate(-1)), [navigate])
 
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
-  const categoriesCol = useRxCollection<ExpenseCategoryDocument>('expenseCategories')
+  const groupsCol = useRxCollection<SplitGroupDocument>('splitGroups')
   const participantsCol = useRxCollection<ExpenseParticipantDocument>('expenseParticipants')
   const receiptsCol = useRxCollection<ReceiptDocument>('receipts')
   const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
@@ -35,30 +35,32 @@ export function CategorySettlement() {
   const settlementsCol = useRxCollection<ExpenseSettlementDocument>('expenseSettlements')
 
   const { data: expenses } = useRxQuery(expensesCol)
-  const { data: categories } = useRxQuery(categoriesCol)
+  const { data: groups } = useRxQuery(groupsCol)
   const { data: allParticipants } = useRxQuery(participantsCol)
   const { data: receipts } = useRxQuery(receiptsCol)
   const { data: receiptItems } = useRxQuery(receiptItemsCol)
   const { data: rates } = useRxQuery(ratesCol)
   const { data: allSettlements } = useRxQuery(settlementsCol)
 
-  const categorySettlements = useMemo(
-    () => allSettlements.filter((s) => s.categoryId === categoryId),
-    [allSettlements, categoryId],
+  // A settlement row's `categoryId` is the scope id: a split group id for rows
+  // recorded since groups were introduced (see ExpenseSettlementDocument).
+  const groupSettlements = useMemo(
+    () => allSettlements.filter((s) => s.categoryId === groupId),
+    [allSettlements, groupId],
   )
 
   const [recording, setRecording] = useState<{ from: string; to: string } | null>(null)
   const [amountInput, setAmountInput] = useState('')
 
-  const category = useMemo(
-    () => categories.find((c) => c.id === categoryId),
-    [categories, categoryId],
+  const group = useMemo(
+    () => groups.find((g) => g.id === groupId),
+    [groups, groupId],
   )
 
   const result = useMemo(() => {
-    const categoryExpenses = expenses.filter((e) => e.categoryId === categoryId)
+    const groupExpenses = expenses.filter((e) => e.splitGroupId === groupId)
 
-    const expenseInputs: ExpenseInput[] = categoryExpenses.map((e) => ({
+    const expenseInputs: ExpenseInput[] = groupExpenses.map((e) => ({
       id: e.id,
       amount: e.amount,
       currency: e.currency,
@@ -88,7 +90,7 @@ export function CategorySettlement() {
       itemsByReceipt.set(it.receiptId, list)
     }
     const itemTotalsByExpenseId = new Map<string, Map<string, number>>()
-    for (const e of categoryExpenses) {
+    for (const e of groupExpenses) {
       const receipt = receiptByExpense.get(e.id)
       if (!receipt) continue
       const totals = new Map<string, number>()
@@ -98,14 +100,14 @@ export function CategorySettlement() {
       itemTotalsByExpenseId.set(e.id, totals)
     }
 
-    const payments: SettlementPayment[] = categorySettlements.map((s) => ({
+    const payments: SettlementPayment[] = groupSettlements.map((s) => ({
       from: s.fromName,
       to: s.toName,
       amount: s.amount,
     }))
 
     return computeCategorySettlement(expenseInputs, participantsByExpenseId, itemTotalsByExpenseId, rates, payments)
-  }, [expenses, allParticipants, receipts, receiptItems, rates, categorySettlements, categoryId])
+  }, [expenses, allParticipants, receipts, receiptItems, rates, groupSettlements, groupId])
 
   const startRecording = (from: string, to: string, suggested: number) => {
     setRecording({ from, to })
@@ -113,13 +115,14 @@ export function CategorySettlement() {
   }
 
   const confirmRecording = async () => {
-    if (!recording || !settlementsCol || !categoryId) return
+    if (!recording || !settlementsCol || !groupId) return
     const amount = parseFloat(amountInput)
     if (!Number.isFinite(amount) || amount <= 0) return
     const now = new Date().toISOString()
     await settlementsCol.insert({
       id: crypto.randomUUID(),
-      categoryId,
+      // Scope id: the split group this repayment settles (legacy field name).
+      categoryId: groupId,
       fromName: recording.from,
       toName: recording.to,
       amount: parseFloat(amount.toFixed(2)),
@@ -145,13 +148,13 @@ export function CategorySettlement() {
     <div className="pb-10 flex-1 overflow-y-auto min-h-0">
       <div className="p-4 pb-2">
         <h2 className="text-[20px] font-bold text-text">Сводка по расходам</h2>
-        {category && <p className="text-[14px] text-text-hint mt-0.5">{category.name}</p>}
+        {group && <p className="text-[14px] text-text-hint mt-0.5">{group.name}</p>}
       </div>
 
       {!hasData ? (
         <div className="px-4 mt-4 text-[15px] text-text-hint">
-          В этой категории пока нет расходов с участниками. Откройте расход и нажмите
-          «Разделить расход», чтобы добавить участников.
+          В этой группе пока нет расходов с участниками. Откройте расход, укажите
+          группу разделения и нажмите «Разделить расход», чтобы добавить участников.
         </div>
       ) : (
         <>
@@ -246,11 +249,11 @@ export function CategorySettlement() {
           )}
 
           {/* Recorded repayments */}
-          {categorySettlements.length > 0 && (
+          {groupSettlements.length > 0 && (
             <div className="px-4 mt-5">
               <div className="text-[13px] text-section-header font-medium pl-1 mb-2">Записанные оплаты</div>
               <div className="space-y-2">
-                {categorySettlements.map((s) => (
+                {groupSettlements.map((s) => (
                   <div key={s.id} className="bg-surface rounded-2xl px-3.5 py-2.5 flex items-center gap-2">
                     <span className="text-[14px] text-text truncate">{s.fromName}</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-text-hint shrink-0">

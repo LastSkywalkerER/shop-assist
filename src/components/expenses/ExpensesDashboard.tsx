@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import type { MangoQuery } from 'rxdb'
 import { useRxCollection, useRxPaginatedQuery, useRxQuery } from '../../db/hooks'
 import { useDragSelect } from '../../hooks/useDragSelect'
@@ -25,7 +24,6 @@ import { PendingScanRow } from './PendingScanRow'
 import { usePendingScans } from '../../hooks/usePendingScans'
 
 export function ExpensesDashboard() {
-  const navigate = useNavigate()
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -76,6 +74,13 @@ export function ExpensesDashboard() {
   const { data: receiptItems } = useRxQuery(receiptItemsCol)
   const { data: attachments } = useRxQuery(attachmentsCol)
   const { data: participants } = useRxQuery(participantsCol)
+
+  // Newest categories first (left) in the filter chips; sorted in memory
+  // because createdAt is not indexed in the category schema.
+  const sortedCategories = useMemo(
+    () => [...categories].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [categories],
+  )
 
   const tableData: ExpenseRowData[] = useMemo(() => {
     const storeMap = new Map(stores.map((s) => [s.id, s]))
@@ -206,25 +211,10 @@ export function ExpensesDashboard() {
           </div>
         ) : categories.length > 0 && (
           <ExpenseCategoryFilter
-            categories={categories}
+            categories={sortedCategories}
             selected={selectedCategoryId}
             onSelect={setSelectedCategoryId}
           />
-        )}
-        {selectedCategoryId && (
-          <div className="px-4 pb-2">
-            <button
-              type="button"
-              onClick={() => navigate(`/expenses/settlement/${selectedCategoryId}`)}
-              className="w-full py-2 bg-surface text-primary-text text-[14px] font-medium rounded-xl active:bg-bg-secondary/50 transition-colors flex items-center justify-center gap-2"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 3v18h18" />
-                <path d="M18 17V9M13 17V5M8 17v-3" />
-              </svg>
-              Сводка: кто кому должен
-            </button>
-          </div>
         )}
       </div>
       {pendingScans.length > 0 && (
