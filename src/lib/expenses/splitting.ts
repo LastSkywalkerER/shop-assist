@@ -16,6 +16,56 @@ export function lineItemTotal(item: { amount: number; quantity?: number }): numb
   return (item.amount || 0) * (item.quantity ?? 1)
 }
 
+/** Distinct participant names used across a split group's expenses. */
+export function collectGroupParticipantNames(
+  groupId: string,
+  expenses: Array<{ id: string; splitGroupId?: string }>,
+  participants: Array<{ expenseId: string; name: string }>,
+): string[] {
+  const groupExpenseIds = new Set(
+    expenses.filter((e) => e.splitGroupId === groupId).map((e) => e.id),
+  )
+  const names = new Set<string>()
+  for (const p of participants) {
+    if (groupExpenseIds.has(p.expenseId)) names.add(p.name)
+  }
+  return Array.from(names)
+}
+
+/**
+ * Merge a split group's known members into the current participant list:
+ * existing rows are kept untouched, the payer is seeded first when the list
+ * is empty, and missing group members are appended as equal-split rows.
+ * Returns the original array when there is nothing to add.
+ */
+export function mergeGroupParticipants<T extends ParticipantInput>(
+  current: T[],
+  payerName: string,
+  groupNames: string[],
+): Array<T | ParticipantInput> {
+  if (groupNames.length === 0) return current
+
+  const seen = new Set(
+    current.map((p) => p.name.trim().toLowerCase()).filter(Boolean),
+  )
+  const added: ParticipantInput[] = []
+
+  if (current.length === 0) {
+    const payer = payerName.trim() || 'Плательщик'
+    seen.add(payer.toLowerCase())
+    added.push({ id: crypto.randomUUID(), name: payer, shareMode: 'equal' })
+  }
+
+  for (const raw of groupNames) {
+    const name = raw.trim()
+    if (!name || seen.has(name.toLowerCase())) continue
+    seen.add(name.toLowerCase())
+    added.push({ id: crypto.randomUUID(), name, shareMode: 'equal' })
+  }
+
+  return added.length > 0 ? [...current, ...added] : current
+}
+
 const toCents = (x: number): number => Math.round((x || 0) * 100)
 const fromCents = (c: number): number => c / 100
 
@@ -282,8 +332,8 @@ interface Acc {
 }
 
 /**
- * Aggregate a set of expenses (e.g. one category) into per-person balances and
- * the minimal set of transfers that settles everyone up. All amounts are
+ * Aggregate a set of expenses (e.g. one split group) into per-person balances
+ * and the minimal set of transfers that settles everyone up. All amounts are
  * converted to the base currency (BYN) using the latest NBRB rates.
  */
 export function computeCategorySettlement(

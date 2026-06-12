@@ -11,6 +11,8 @@ import { expenseAttachmentSchema } from './schemas/expenseAttachment.schema'
 import { shoppingListItemSchema } from './schemas/shoppingListItem.schema'
 import { purchaseAttachmentSchema } from './schemas/purchaseAttachment.schema'
 import { currencyRateSchema } from './schemas/currencyRate.schema'
+import { splitGroupSchema } from './schemas/splitGroup.schema'
+import { superCategorySchema } from './schemas/superCategory.schema'
 
 /**
  * Returns the current DB version (max version across all schemas).
@@ -30,6 +32,8 @@ export function getDatabaseVersion(): number {
     shoppingListItemSchema,
     purchaseAttachmentSchema,
     currencyRateSchema,
+    splitGroupSchema,
+    superCategorySchema,
   ]
 
   const maxVersion = Math.max(...schemas.map((schema) => schema.version))

@@ -14,6 +14,8 @@ import { expenseAttachmentSchema } from './schemas/expenseAttachment.schema'
 import { shoppingListItemSchema } from './schemas/shoppingListItem.schema'
 import { purchaseAttachmentSchema } from './schemas/purchaseAttachment.schema'
 import { currencyRateSchema } from './schemas/currencyRate.schema'
+import { splitGroupSchema } from './schemas/splitGroup.schema'
+import { superCategorySchema } from './schemas/superCategory.schema'
 import type { RxDatabase, RxCollection } from 'rxdb'
 import type {
   ProductDocument,
@@ -29,6 +31,8 @@ import type {
   ShoppingListItemDocument,
   PurchaseAttachmentDocument,
   CurrencyRateDocument,
+  SplitGroupDocument,
+  SuperCategoryDocument,
 } from './types'
 import { getDatabaseVersion, getStoredDbVersion, setStoredDbVersion } from './version'
 import { readRawIndexedDB, buildBackupFromRawData, downloadBackup } from './backup'
@@ -49,6 +53,8 @@ export type ShopAssistCollections = {
   shoppingListItems: RxCollection<ShoppingListItemDocument>
   purchaseAttachments: RxCollection<PurchaseAttachmentDocument>
   currencyRates: RxCollection<CurrencyRateDocument>
+  splitGroups: RxCollection<SplitGroupDocument>
+  superCategories: RxCollection<SuperCategoryDocument>
 }
 
 export type ShopAssistDatabase = RxDatabase<ShopAssistCollections>
@@ -159,7 +165,10 @@ async function createDb(): Promise<ShopAssistDatabase> {
     },
     expenseCategories: {
       schema: expenseCategorySchema,
-      migrationStrategies: {},
+      migrationStrategies: {
+        // v1 adds the optional superCategoryId; old categories stay ungrouped.
+        1: (oldDoc: any) => oldDoc,
+      },
     },
     expenses: {
       schema: expenseSchema,
@@ -174,6 +183,8 @@ async function createDb(): Promise<ShopAssistDatabase> {
         }),
         3: (oldDoc: any) => oldDoc,
         4: (oldDoc: any) => oldDoc,
+        // v5 adds the optional splitGroupId; old expenses stay ungrouped by design.
+        5: (oldDoc: any) => oldDoc,
       },
     },
     receipts: {
@@ -296,6 +307,23 @@ async function createDb(): Promise<ShopAssistDatabase> {
   await db.addCollections({
     currencyRates: {
       schema: currencyRateSchema,
+      migrationStrategies: {},
+    },
+  })
+
+  // Split groups — settlement scopes decoupled from expense categories.
+  // Separate addCollections call for the same Dexie versioning reason as above.
+  await db.addCollections({
+    splitGroups: {
+      schema: splitGroupSchema,
+      migrationStrategies: {},
+    },
+  })
+
+  // Super categories — coarse analytics grouping over expense categories.
+  await db.addCollections({
+    superCategories: {
+      schema: superCategorySchema,
       migrationStrategies: {},
     },
   })

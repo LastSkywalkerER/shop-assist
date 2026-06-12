@@ -11,16 +11,19 @@ import type {
   ExpenseParticipantDocument,
   ProductDocument,
   PurchaseDocument,
+  SplitGroupDocument,
 } from '../../db/types'
 import { ConfirmModal } from '../shared/ConfirmModal'
 import { EditExpense } from './EditExpense'
 import { FileUpload, type AttachmentFile } from './FileUpload'
 import { ReceiptItemsManager, type ReceiptItem } from './ReceiptItemsManager'
 import { ExpenseSplitManager, type SplitParticipant } from './ExpenseSplitManager'
+import { SplitGroupSelect } from './SplitGroupSelect'
 import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { showBackButton } from '../../telegram/backButton'
 import { addPendingUpload, blobStoreRemove } from '../../db/blobStore'
+import { collectGroupParticipantNames, mergeGroupParticipants } from '../../lib/expenses/splitting'
 
 export function ExpenseDetails() {
   const { id } = useParams<{ id: string }>()
@@ -45,6 +48,7 @@ export function ExpenseDetails() {
   const participantsCol = useRxCollection<ExpenseParticipantDocument>('expenseParticipants')
   const productsCol = useRxCollection<ProductDocument>('products')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
+  const splitGroupsCol = useRxCollection<SplitGroupDocument>('splitGroups')
 
   const { data: expenses } = useRxQuery(expensesCol)
   const { data: stores } = useRxQuery(storesCol)
@@ -55,6 +59,7 @@ export function ExpenseDetails() {
   const { data: allParticipants } = useRxQuery(participantsCol)
   const { data: products } = useRxQuery(productsCol)
   const { data: purchases } = useRxQuery(purchasesCol)
+  const { data: splitGroups } = useRxQuery(splitGroupsCol)
 
   // Extract product categories
   const productCategories = useMemo(() => {
@@ -132,19 +137,50 @@ export function ExpenseDetails() {
     )
   }, [id, expenseParticipants, participantsDirty])
 
-  // Names already used across this expense's category — seeded as equal-split
-  // participants when the split section is opened on an empty expense.
-  const categoryParticipantNames = useMemo(() => {
-    if (!expense?.categoryId) return []
-    const categoryExpenseIds = new Set(
-      expenses.filter((e) => e.categoryId === expense.categoryId).map((e) => e.id),
-    )
-    const names = new Set<string>()
-    for (const p of allParticipants) {
-      if (categoryExpenseIds.has(p.expenseId)) names.add(p.name)
+  // Names already used across this expense's split group — seeded as
+  // equal-split participants when the split section is opened on an empty
+  // expense.
+  const groupParticipantNames = useMemo(() => {
+    if (!expense?.splitGroupId) return []
+    return collectGroupParticipantNames(expense.splitGroupId, expenses, allParticipants)
+  }, [expenses, allParticipants, expense?.splitGroupId])
+
+  const selectedSplitGroup = useMemo(
+    () => (expense?.splitGroupId ? splitGroups.find((g) => g.id === expense.splitGroupId) ?? null : null),
+    [splitGroups, expense?.splitGroupId],
+  )
+
+  const setExpenseSplitGroup = async (groupId: string | undefined) => {
+    if (!expensesCol || !expense) return
+    const doc = await expensesCol.findOne(expense.id).exec()
+    if (doc) await doc.patch({ splitGroupId: groupId, updatedAt: new Date().toISOString() })
+  }
+
+  // Picking a split group pulls its known members into the split right away;
+  // the merged rows stay local until «Сохранить участников» is pressed.
+  const handleSelectSplitGroup = async (group: SplitGroupDocument | null) => {
+    await setExpenseSplitGroup(group?.id)
+    if (!group) return
+    const names = collectGroupParticipantNames(group.id, expenses, allParticipants)
+    const merged = mergeGroupParticipants(localParticipants, expense?.creatorName ?? '', names) as SplitParticipant[]
+    if (merged !== localParticipants) {
+      setParticipantsDirty(true)
+      setLocalParticipants(merged)
     }
-    return Array.from(names)
-  }, [expenses, allParticipants, expense?.categoryId])
+  }
+
+  const handleCreateSplitGroup = async (groupName: string) => {
+    if (!splitGroupsCol) return
+    const now = new Date().toISOString()
+    const group: SplitGroupDocument = {
+      id: crypto.randomUUID(),
+      name: groupName,
+      createdAt: now,
+      updatedAt: now,
+    }
+    await splitGroupsCol.insert(group)
+    await setExpenseSplitGroup(group.id)
+  }
 
   const handleCreateStore = async (data: { name: string; address?: string }): Promise<StoreDocument | undefined> => {
     if (!storesCol) return undefined
@@ -607,7 +643,15 @@ export function ExpenseDetails() {
         />
       </div>
 
-      {/* Split between participants */}
+      {/* Split group (settlement scope) + split between participants */}
+      <div className="px-4 mt-4">
+        <SplitGroupSelect
+          groups={splitGroups}
+          selected={selectedSplitGroup}
+          onSelect={(group) => void handleSelectSplitGroup(group)}
+          onCreate={handleCreateSplitGroup}
+        />
+      </div>
       <div className="px-4 mt-4">
         <ExpenseSplitManager
           participants={localParticipants}
@@ -616,7 +660,7 @@ export function ExpenseDetails() {
           currency={expense.currency}
           receiptItems={localReceiptItems}
           payerName={expense.creatorName ?? ''}
-          categoryParticipantNames={categoryParticipantNames}
+          groupParticipantNames={groupParticipantNames}
           roomId={roomId}
         />
         {participantsDirty && (
