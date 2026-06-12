@@ -31,9 +31,14 @@ export function Header({ city, onCityChange }: HeaderProps) {
         <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={() => navigate('/')}
-            className="text-[17px] font-semibold text-text shrink-0 active:opacity-60 transition-opacity"
+            className="w-8 h-8 -ml-1.5 flex items-center justify-center rounded-full text-primary-text shrink-0 active:bg-primary/10 transition-colors"
+            title="Shop Assist"
           >
-            Shop Assist
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+              <path d="M3 6h18" />
+              <path d="M16 10a4 4 0 0 1-8 0" />
+            </svg>
           </button>
           {/* Room name */}
           {isAuthenticated && currentRoom && !currentRoom.is_personal && (
