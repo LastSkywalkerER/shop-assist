@@ -3,6 +3,7 @@ import {
   dateKeyOf,
   resolveBounds,
   resolveGranularity,
+  resolveBarGranularity,
   buildSpendingSeries,
   seriesAverage,
   seriesMaxKey,
@@ -59,6 +60,20 @@ describe('resolveGranularity', () => {
     const long: AnalyticsPeriod = { mode: 'range', from: '2026-03-01', to: '2026-05-31' }
     expect(resolveGranularity(short, { fromKey: short.from, toKey: short.to })).toBe('day')
     expect(resolveGranularity(long, { fromKey: long.from, toKey: long.to })).toBe('month')
+  })
+})
+
+describe('resolveBarGranularity', () => {
+  it('is monthly for all-time and daily for a selected month', () => {
+    expect(resolveBarGranularity({ mode: 'all' }, { fromKey: '2026-01-01', toKey: TODAY })).toBe('month')
+    expect(resolveBarGranularity({ mode: 'month', month: '2026-06' }, { fromKey: '2026-06-01', toKey: TODAY })).toBe('day')
+  })
+
+  it('switches a custom range from daily to monthly beyond one month', () => {
+    const month: AnalyticsPeriod = { mode: 'range', from: '2026-05-01', to: '2026-05-31' }
+    const longer: AnalyticsPeriod = { mode: 'range', from: '2026-05-01', to: '2026-06-05' }
+    expect(resolveBarGranularity(month, { fromKey: month.from, toKey: month.to })).toBe('day')
+    expect(resolveBarGranularity(longer, { fromKey: longer.from, toKey: longer.to })).toBe('month')
   })
 })
 
@@ -142,5 +157,58 @@ describe('PieAccumulator', () => {
     const acc = new PieAccumulator()
     acc.add('  ', 5)
     expect(acc.toPie()).toEqual([])
+  })
+
+  it('keeps an accumulated «Другое» group out of the top-N and always last', () => {
+    const acc = new PieAccumulator()
+    acc.add(PIE_OTHER_LABEL, 100) // bigger than every named group
+    acc.add('a', 3)
+    acc.add('b', 2)
+    acc.add('c', 1)
+    const pie = acc.toPie(2)
+    expect(pie.map((p) => p.name)).toEqual(['a', 'b', PIE_OTHER_LABEL])
+    expect(pie[2].value).toBe(101) // 100 + collapsed 'c'
+  })
+})
+
+describe('PieAccumulator.toStackedSeries', () => {
+  const bounds = { fromKey: '2026-01-01', toKey: '2026-03-31' }
+
+  it('matches the pie group order and zero-fills buckets', () => {
+    const acc = new PieAccumulator()
+    acc.add('Еда', 10, '2026-01-05')
+    acc.add('Еда', 5, '2026-03-10')
+    acc.add('Транспорт', 7, '2026-01-20')
+    const series = acc.toStackedSeries('month', bounds)
+    expect(series.names).toEqual(acc.toPie().map((p) => p.name))
+    expect(series.points.map((p) => p.key)).toEqual(['2026-01', '2026-02', '2026-03'])
+    expect(series.points.map((p) => p.values)).toEqual([
+      [10, 7],
+      [0, 0],
+      [5, 0],
+    ])
+  })
+
+  it('collapses overflow and accumulated «Другое» into a trailing group', () => {
+    const acc = new PieAccumulator()
+    acc.add('a', 5, '2026-01-05')
+    acc.add('b', 4, '2026-01-05')
+    acc.add('c', 1, '2026-02-10')
+    acc.add(PIE_OTHER_LABEL, 2, '2026-02-10')
+    const series = acc.toStackedSeries('month', bounds, 2)
+    expect(series.names).toEqual(['a', 'b', PIE_OTHER_LABEL])
+    expect(series.points.map((p) => p.values)).toEqual([
+      [5, 4, 0],
+      [0, 0, 3], // 'c' + accumulated «Другое»
+      [0, 0, 0],
+    ])
+  })
+
+  it('buckets by day within a month', () => {
+    const acc = new PieAccumulator()
+    acc.add('a', 2, '2026-06-01')
+    acc.add('a', 3, '2026-06-01')
+    const series = acc.toStackedSeries('day', { fromKey: '2026-06-01', toKey: '2026-06-02' })
+    expect(series.points.map((p) => p.values)).toEqual([[5], [0]])
   })
 })

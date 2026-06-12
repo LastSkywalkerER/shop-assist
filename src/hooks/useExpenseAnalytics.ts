@@ -15,15 +15,18 @@ import {
   dateKeyOf,
   resolveBounds,
   resolveGranularity,
+  resolveBarGranularity,
   buildSpendingSeries,
   seriesAverage,
   seriesMaxKey,
   PieAccumulator,
   PIE_OTHER_LABEL,
+  EMPTY_STACKED_SERIES,
   type AnalyticsPeriod,
   type Granularity,
   type SeriesPoint,
   type PieDatum,
+  type StackedSeries,
   type SpendingEntry,
 } from '../lib/analytics/aggregate'
 
@@ -42,6 +45,16 @@ export interface ExpenseAnalytics {
     expensiveExpenses: PieDatum[]
     byCategory: PieDatum[]
   }
+  /** Stacked-bar counterparts of the pies (same groups, time-bucketed). */
+  bars: {
+    frequentItems: StackedSeries
+    expensiveItems: StackedSeries
+    frequentExpenses: StackedSeries
+    expensiveExpenses: StackedSeries
+    byCategory: StackedSeries
+  }
+  /** Bucket size of the bar charts: monthly above a one-month span, else daily. */
+  barGranularity: Granularity
   /** Dimension of the byCategory pie: super categories by default, regular
    *  categories when a super category or explicit categories are selected. */
   byCategoryDimension: 'super' | 'category'
@@ -116,6 +129,7 @@ export function useExpenseAnalytics(
     const allDateKeys = expenses.map((e) => dateKeyOf(e.date))
     const bounds = resolveBounds(period, allDateKeys)
     const granularity = resolveGranularity(period, bounds)
+    const barGranularity = resolveBarGranularity(period, bounds)
 
     let conversionGaps = 0
     const entries: SpendingEntry[] = []
@@ -138,7 +152,7 @@ export function useExpenseAnalytics(
           expense.name?.trim() ||
           (expense.storeId ? storeNames.get(expense.storeId) : undefined) ||
           NO_NAME_LABEL
-        frequentExpenses.add(displayName, 1)
+        frequentExpenses.add(displayName, 1, dateKey)
 
         const amountBase = convertToBaseAtDate(expense.amount, expense.currency, dateKey, rateHistory)
         if (amountBase === null) {
@@ -146,8 +160,8 @@ export function useExpenseAnalytics(
           continue
         }
         entries.push({ dateKey, amount: amountBase })
-        expensiveExpenses.add(displayName, amountBase)
-        byCategory.add(categoryPieName(expense.categoryId), amountBase)
+        expensiveExpenses.add(displayName, amountBase, dateKey)
+        byCategory.add(categoryPieName(expense.categoryId), amountBase, dateKey)
       }
     }
 
@@ -161,16 +175,18 @@ export function useExpenseAnalytics(
       const dateKey = expenseId ? includedExpenses.get(expenseId) : undefined
       if (!dateKey) continue
 
-      frequentItems.add(item.name, 1)
+      frequentItems.add(item.name, 1, dateKey)
       const totalBase = convertToBaseAtDate(lineItemTotal(item), item.currency, dateKey, rateHistory)
       if (totalBase === null) {
         conversionGaps++
         continue
       }
-      expensiveItems.add(item.name, totalBase)
+      expensiveItems.add(item.name, totalBase, dateKey)
     }
 
     const series = bounds ? buildSpendingSeries(entries, granularity, bounds) : []
+    const toBars = (acc: PieAccumulator): StackedSeries =>
+      bounds ? acc.toStackedSeries(barGranularity, bounds) : EMPTY_STACKED_SERIES
 
     return {
       loading,
@@ -186,6 +202,14 @@ export function useExpenseAnalytics(
         expensiveExpenses: expensiveExpenses.toPie(),
         byCategory: byCategory.toPie(),
       },
+      bars: {
+        frequentItems: toBars(frequentItems),
+        expensiveItems: toBars(expensiveItems),
+        frequentExpenses: toBars(frequentExpenses),
+        expensiveExpenses: toBars(expensiveExpenses),
+        byCategory: toBars(byCategory),
+      },
+      barGranularity,
       byCategoryDimension,
       conversionGaps,
     }

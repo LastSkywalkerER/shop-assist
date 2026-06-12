@@ -81,6 +81,8 @@ export function CategoriesManager() {
 
   /** Source category of an in-progress merge; rows become merge targets. */
   const [mergeSourceId, setMergeSourceId] = useState<string | null>(null)
+  /** Super category whose member checklist is open. */
+  const [expandedSuperId, setExpandedSuperId] = useState<string | null>(null)
 
   // Newest first; sorted in memory (createdAt is not indexed).
   const sortedCategories = useMemo(
@@ -132,6 +134,7 @@ export function CategoriesManager() {
       destructive: true,
     })
     if (!ok) return
+    if (expandedSuperId === sup.id) setExpandedSuperId(null)
     const now = new Date().toISOString()
     const members = await categoriesCol.find({ selector: { superCategoryId: sup.id } }).exec()
     for (const member of members) {
@@ -142,12 +145,38 @@ export function CategoriesManager() {
     showToast(`Суперкатегория «${sup.name}» удалена`, 'success')
   }
 
-  const assignSuperCategory = async (cat: ExpenseCategoryDocument, superId: string) => {
+  /**
+   * Checkbox toggle inside an expanded super category: members are removed,
+   * free categories are added, and taking a category from another super
+   * category requires confirmation.
+   */
+  const toggleMembership = async (cat: ExpenseCategoryDocument, sup: SuperCategoryDocument) => {
     if (!categoriesCol) return
-    const doc = await categoriesCol.findOne(cat.id).exec()
-    if (doc) {
-      await doc.patch({ superCategoryId: superId || undefined, updatedAt: new Date().toISOString() })
+    const now = new Date().toISOString()
+    if (cat.superCategoryId && cat.superCategoryId !== sup.id) {
+      const fromName =
+        superCategories.find((s) => s.id === cat.superCategoryId)?.name ?? 'другой суперкатегории'
+      const ok = await confirm({
+        title: `Перенести «${cat.name}»?`,
+        message: `Категория сейчас в суперкатегории «${fromName}». Перенести её в «${sup.name}»?`,
+        confirmLabel: 'Перенести',
+        cancelLabel: 'Отмена',
+      })
+      if (!ok) return
     }
+    const doc = await categoriesCol.findOne(cat.id).exec()
+    if (!doc) return
+    await doc.patch({
+      superCategoryId: cat.superCategoryId === sup.id ? undefined : sup.id,
+      updatedAt: now,
+    })
+  }
+
+  /** Checklist order: members first, then free categories, then foreign ones. */
+  const checklistFor = (supId: string): ExpenseCategoryDocument[] => {
+    const rank = (c: ExpenseCategoryDocument) =>
+      c.superCategoryId === supId ? 0 : !c.superCategoryId ? 1 : 2
+    return [...categories].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'ru'))
   }
 
   const deleteCategory = async (cat: ExpenseCategoryDocument) => {
@@ -216,28 +245,104 @@ export function CategoriesManager() {
             умолчанию строится по ним.
           </div>
         ) : (
-          sortedSuperCategories.map((sup) => (
-            <div key={sup.id} className="bg-surface rounded-2xl px-4 py-3 flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="text-[15px] font-medium text-text truncate">{sup.name}</div>
-                <div className="text-[12px] text-text-hint mt-0.5">
-                  {pluralize(memberCounts.get(sup.id) ?? 0, 'категория', 'категории', 'категорий')}
+          sortedSuperCategories.map((sup) => {
+            const expanded = expandedSuperId === sup.id
+            return (
+              <div key={sup.id} className="bg-surface rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedSuperId(expanded ? null : sup.id)}
+                    className="flex-1 min-w-0 flex items-center gap-2 text-left active:opacity-70 transition-opacity"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[15px] font-medium text-text truncate">{sup.name}</div>
+                      <div className="text-[12px] text-text-hint mt-0.5">
+                        {pluralize(memberCounts.get(sup.id) ?? 0, 'категория', 'категории', 'категорий')}
+                      </div>
+                    </div>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={`shrink-0 text-text-hint transition-transform ${expanded ? 'rotate-180' : ''}`}
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteSuperCategory(sup)}
+                    className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full active:bg-destructive/10 transition-colors"
+                    title="Удалить суперкатегорию"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-destructive">
+                      <path d="M3 6h18" />
+                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                    </svg>
+                  </button>
                 </div>
+
+                {/* Member checklist: tick to add, untick to remove; categories
+                    from other super categories are dimmed and need confirmation. */}
+                {expanded && (
+                  <div className="border-t border-separator/20">
+                    {categories.length === 0 ? (
+                      <div className="px-4 py-4 text-center text-[13px] text-text-hint">
+                        Категорий пока нет — создайте их в списке ниже.
+                      </div>
+                    ) : (
+                      checklistFor(sup.id).map((cat) => {
+                        const isMember = cat.superCategoryId === sup.id
+                        const foreignName =
+                          cat.superCategoryId && !isMember
+                            ? superCategories.find((s) => s.id === cat.superCategoryId)?.name
+                            : undefined
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => void toggleMembership(cat, sup)}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 border-b border-separator/10 last:border-b-0 text-left active:bg-bg-secondary/50 transition-colors ${
+                              foreignName ? 'opacity-45' : ''
+                            }`}
+                          >
+                            <span
+                              className={`w-5 h-5 shrink-0 rounded-md border flex items-center justify-center transition-colors ${
+                                isMember
+                                  ? 'bg-primary border-primary text-on-primary'
+                                  : 'border-separator/60'
+                              }`}
+                            >
+                              {isMember && (
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M20 6 9 17l-5-5" />
+                                </svg>
+                              )}
+                            </span>
+                            <span className="text-[14px] text-text truncate flex-1 min-w-0">
+                              {cat.name}
+                            </span>
+                            {foreignName && (
+                              <span className="text-[11px] text-text-hint shrink-0 truncate max-w-[40%]">
+                                в «{foreignName}»
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => void deleteSuperCategory(sup)}
-                className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full active:bg-destructive/10 transition-colors"
-                title="Удалить суперкатегорию"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-destructive">
-                  <path d="M3 6h18" />
-                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                </svg>
-              </button>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
 
@@ -271,18 +376,22 @@ export function CategoriesManager() {
           sortedCategories.map((cat) => {
             const isMergeSource = mergeSourceId === cat.id
             const isMergeTarget = mergeSource != null && !isMergeSource
+            const superName = cat.superCategoryId
+              ? superCategories.find((s) => s.id === cat.superCategoryId)?.name
+              : undefined
             return (
               <div
                 key={cat.id}
-                className={`bg-surface rounded-2xl px-4 py-3 space-y-2.5 transition-colors ${
+                className={`bg-surface rounded-2xl px-4 py-3 transition-colors ${
                   isMergeSource ? 'ring-2 ring-primary/40' : ''
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="text-[15px] font-medium text-text truncate">{cat.name}</div>
-                    <div className="text-[12px] text-text-hint mt-0.5">
+                    <div className="text-[12px] text-text-hint mt-0.5 truncate">
                       {pluralize(expenseCounts.get(cat.id) ?? 0, 'расход', 'расхода', 'расходов')}
+                      {superName && <> · в «{superName}»</>}
                     </div>
                   </div>
                   {isMergeTarget ? (
@@ -323,22 +432,6 @@ export function CategoriesManager() {
                     </>
                   )}
                 </div>
-
-                {/* Super-category assignment */}
-                {superCategories.length > 0 && (
-                  <select
-                    value={cat.superCategoryId ?? ''}
-                    onChange={(e) => void assignSuperCategory(cat, e.currentTarget.value)}
-                    className="w-full bg-bg-secondary/40 rounded-xl px-3 py-2 text-[13px] text-text focus:ring-2 focus:ring-primary/30 transition-shadow appearance-none"
-                  >
-                    <option value="">Без суперкатегории</option>
-                    {sortedSuperCategories.map((sup) => (
-                      <option key={sup.id} value={sup.id}>
-                        {sup.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
               </div>
             )
           })

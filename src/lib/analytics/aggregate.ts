@@ -24,6 +24,14 @@ export interface PieDatum {
   value: number
 }
 
+/** Time-bucketed breakdown for a stacked bar chart, aligned with the pie. */
+export interface StackedSeries {
+  /** Group names in the same order (and colors) as the pie slices. */
+  names: string[]
+  /** One point per bucket; values[i] belongs to names[i]. */
+  points: { key: string; label: string; values: number[] }[]
+}
+
 /** Spending entry already converted to the base currency. */
 export interface SpendingEntry {
   dateKey: string // YYYY-MM-DD
@@ -117,6 +125,21 @@ export function resolveBounds(
   return { fromKey: min, toKey: today >= min ? today : min }
 }
 
+/**
+ * Bucket granularity for the stacked bar charts: monthly bars for all-time
+ * and ranges longer than a month, daily bars for a month and shorter.
+ */
+export function resolveBarGranularity(
+  period: AnalyticsPeriod,
+  bounds: { fromKey: string; toKey: string } | null,
+): Granularity {
+  if (period.mode === 'month') return 'day'
+  if (period.mode === 'range' && bounds) {
+    return daySpan(bounds.fromKey, bounds.toKey) <= 31 ? 'day' : 'month'
+  }
+  return 'month'
+}
+
 /** Bucket granularity for a resolved period. */
 export function resolveGranularity(
   period: AnalyticsPeriod,
@@ -139,25 +162,44 @@ export function buildSpendingSeries(
   granularity: Granularity,
   bounds: { fromKey: string; toKey: string },
 ): SeriesPoint[] {
-  const sums = new Map<string, number>()
-  for (const e of entries) {
-    const key = granularity === 'month' ? e.dateKey.slice(0, 7) : e.dateKey
-    sums.set(key, (sums.get(key) ?? 0) + e.amount)
-  }
+  const sums = bucketSums(
+    entries.map((e) => [e.dateKey, e.amount]),
+    granularity,
+  )
+  return bucketsBetween(granularity, bounds).map(({ key, label }) => ({
+    key,
+    label,
+    total: round2(sums.get(key) ?? 0),
+  }))
+}
 
-  const points: SeriesPoint[] = []
+/** Every bucket key/label between the bounds, inclusive. */
+function bucketsBetween(
+  granularity: Granularity,
+  bounds: { fromKey: string; toKey: string },
+): { key: string; label: string }[] {
+  const buckets: { key: string; label: string }[] = []
   if (granularity === 'month') {
-    const fromMonth = bounds.fromKey.slice(0, 7)
     const toMonth = bounds.toKey.slice(0, 7)
-    for (let m = fromMonth; m <= toMonth; m = addMonths(m, 1)) {
-      points.push({ key: m, label: monthLabel(m), total: round2(sums.get(m) ?? 0) })
+    for (let m = bounds.fromKey.slice(0, 7); m <= toMonth; m = addMonths(m, 1)) {
+      buckets.push({ key: m, label: monthLabel(m) })
     }
   } else {
     for (let d = bounds.fromKey; d <= bounds.toKey; d = addDays(d, 1)) {
-      points.push({ key: d, label: dayLabel(d), total: round2(sums.get(d) ?? 0) })
+      buckets.push({ key: d, label: dayLabel(d) })
     }
   }
-  return points
+  return buckets
+}
+
+/** Sum (dateKey, value) pairs into day or month buckets. */
+function bucketSums(pairs: Iterable<[string, number]>, granularity: Granularity): Map<string, number> {
+  const sums = new Map<string, number>()
+  for (const [dateKey, value] of pairs) {
+    const key = granularity === 'month' ? dateKey.slice(0, 7) : dateKey
+    sums.set(key, (sums.get(key) ?? 0) + value)
+  }
+  return sums
 }
 
 /** Mean of bucket totals (zero buckets included). */
@@ -175,30 +217,88 @@ export function seriesMaxKey(series: SeriesPoint[]): string | null {
   return max?.key ?? null
 }
 
+interface PieGroup {
+  name: string
+  value: number
+  /** Per-day totals, for the stacked bar series. */
+  byDate: Map<string, number>
+}
+
 /**
  * Accumulates name → value groups for pie charts. Names are matched
  * case-insensitively; the first-seen original spelling is displayed.
+ * A group named «Другое» (however accumulated) never competes for the
+ * top-N — it is merged with the overflow remainder and always shown last.
  */
 export class PieAccumulator {
-  private groups = new Map<string, { name: string; value: number }>()
+  private groups = new Map<string, PieGroup>()
 
-  add(name: string, value: number): void {
+  add(name: string, value: number, dateKey?: string): void {
     const key = name.trim().toLowerCase()
     if (!key) return
-    const group = this.groups.get(key)
-    if (group) group.value += value
-    else this.groups.set(key, { name: name.trim(), value })
+    let group = this.groups.get(key)
+    if (!group) {
+      group = { name: name.trim(), value: 0, byDate: new Map() }
+      this.groups.set(key, group)
+    }
+    group.value += value
+    if (dateKey) group.byDate.set(dateKey, (group.byDate.get(dateKey) ?? 0) + value)
+  }
+
+  /** Top-N named groups plus everything else destined for «Другое». */
+  private split(topN: number): { top: PieGroup[]; rest: PieGroup[] } {
+    const otherKey = PIE_OTHER_LABEL.toLowerCase()
+    const sorted = [...this.groups.entries()]
+      .filter(([key]) => key !== otherKey)
+      .map(([, g]) => g)
+      .sort((a, b) => b.value - a.value)
+    const top = sorted.slice(0, topN)
+    const rest = sorted.slice(topN)
+    const other = this.groups.get(otherKey)
+    if (other) rest.push(other)
+    return { top, rest }
   }
 
   /** Top-N groups by value, with the remainder collapsed into «Другое». */
   toPie(topN: number = PIE_TOP_N): PieDatum[] {
-    const sorted = [...this.groups.values()].sort((a, b) => b.value - a.value)
-    const top = sorted.slice(0, topN).map((g) => ({ name: g.name, value: round2(g.value) }))
-    const rest = sorted.slice(topN).reduce((sum, g) => sum + g.value, 0)
-    if (rest > 0) top.push({ name: PIE_OTHER_LABEL, value: round2(rest) })
-    return top
+    const { top, rest } = this.split(topN)
+    const pie = top.map((g) => ({ name: g.name, value: round2(g.value) }))
+    const restTotal = rest.reduce((sum, g) => sum + g.value, 0)
+    if (restTotal > 0) pie.push({ name: PIE_OTHER_LABEL, value: round2(restTotal) })
+    return pie
+  }
+
+  /**
+   * Same groups as `toPie` (same order, so chart colors match), but spread
+   * over time buckets for a stacked bar chart. Buckets are zero-filled.
+   */
+  toStackedSeries(
+    granularity: Granularity,
+    bounds: { fromKey: string; toKey: string },
+    topN: number = PIE_TOP_N,
+  ): StackedSeries {
+    const { top, rest } = this.split(topN)
+    const names = top.map((g) => g.name)
+    const groupSums = top.map((g) => bucketSums(g.byDate, granularity))
+
+    const restTotal = rest.reduce((sum, g) => sum + g.value, 0)
+    if (restTotal > 0) {
+      names.push(PIE_OTHER_LABEL)
+      const merged: [string, number][] = rest.flatMap((g) => [...g.byDate])
+      groupSums.push(bucketSums(merged, granularity))
+    }
+
+    const points = bucketsBetween(granularity, bounds).map(({ key, label }) => ({
+      key,
+      label,
+      values: groupSums.map((sums) => round2(sums.get(key) ?? 0)),
+    }))
+    return { names, points }
   }
 }
+
+/** Empty stacked series for periods without resolvable bounds. */
+export const EMPTY_STACKED_SERIES: StackedSeries = { names: [], points: [] }
 
 function round2(x: number): number {
   return Math.round(x * 100) / 100

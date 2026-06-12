@@ -115,28 +115,38 @@ export function AnalyticsDashboard() {
               }
               data={analytics.pies.byCategory}
               valueFormatter={fmtMoney}
+              bars={analytics.bars.byCategory}
+              barGranularity={analytics.barGranularity}
             />
             <PieCard
               title="Самые дорогие расходы"
               data={analytics.pies.expensiveExpenses}
               valueFormatter={fmtMoney}
+              bars={analytics.bars.expensiveExpenses}
+              barGranularity={analytics.barGranularity}
             />
             <PieCard
               title="Самые частые расходы"
               data={analytics.pies.frequentExpenses}
               valueFormatter={fmtCount}
+              bars={analytics.bars.frequentExpenses}
+              barGranularity={analytics.barGranularity}
             />
             <PieCard
               title="Самые дорогие позиции чеков"
               data={analytics.pies.expensiveItems}
               valueFormatter={fmtMoney}
               emptyText="Нет позиций чеков за период"
+              bars={analytics.bars.expensiveItems}
+              barGranularity={analytics.barGranularity}
             />
             <PieCard
               title="Самые частые позиции чеков"
               data={analytics.pies.frequentItems}
               valueFormatter={fmtCount}
               emptyText="Нет позиций чеков за период"
+              bars={analytics.bars.frequentItems}
+              barGranularity={analytics.barGranularity}
             />
           </>
         )}
