@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { Header } from './Header'
 import { UpdatePrompt } from './UpdatePrompt'
 import { useUpdatePrompt } from '../../pwa/useUpdatePrompt'
-import { useCity } from '../../config/CityContext'
 
 interface AppShellProps {
   children: ReactNode
@@ -10,7 +9,6 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const { needRefresh, offlineReady, applyUpdate, dismissUpdate } = useUpdatePrompt()
-  const { city, setCity } = useCity()
 
   return (
     <div className="h-dvh flex flex-col bg-bg-secondary">
@@ -20,7 +18,7 @@ export function AppShell({ children }: AppShellProps) {
         onUpdate={applyUpdate}
         onDismiss={dismissUpdate}
       />
-      <Header city={city} onCityChange={setCity} />
+      <Header />
       <main className="flex-1 flex flex-col min-h-0">
         {children}
       </main>

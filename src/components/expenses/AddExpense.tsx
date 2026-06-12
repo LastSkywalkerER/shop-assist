@@ -30,6 +30,7 @@ import { addPendingUpload, blobStorePut, blobStoreGet } from '../../db/blobStore
 import { useConfirm } from '../../contexts/ConfirmDialogContext'
 import { supabase } from '../../lib/supabase/client'
 import { deletePendingScan, promotePendingScan } from '../../lib/ai/pendingScans'
+import { collectGroupParticipantNames, mergeGroupParticipants } from '../../lib/expenses/splitting'
 import { markScanConsumed } from '../../lib/ai/consumedScans'
 
 export function AddExpense() {
@@ -120,16 +121,18 @@ export function AddExpense() {
   const groupParticipantNames = useMemo(() => {
     const groupId = selectedSplitGroup?.id
     if (!groupId) return []
-    const groupExpenseIds = new Set(
-      expenses.filter((e) => e.splitGroupId === groupId).map((e) => e.id),
-    )
-    const names = new Set<string>()
-    for (const part of allParticipants) {
-      if (groupExpenseIds.has(part.expenseId)) names.add(part.name)
-    }
-    return Array.from(names)
+    return collectGroupParticipantNames(groupId, expenses, allParticipants)
   }, [expenses, allParticipants, selectedSplitGroup?.id])
   const confirm = useConfirm()
+
+  // Picking a split group pulls its known members into the split right away
+  // (the split section auto-expands once participants appear).
+  const handleSelectSplitGroup = (group: SplitGroupDocument | null) => {
+    setSelectedSplitGroup(group)
+    if (!group) return
+    const names = collectGroupParticipantNames(group.id, expenses, allParticipants)
+    setParticipants((prev) => mergeGroupParticipants(prev, creatorName, names) as SplitParticipant[])
+  }
 
   // When arriving from a pending scan, the image is already in Supabase
   // Storage. Hydrate the local blobStore so FileUpload's preview works, and
@@ -560,7 +563,7 @@ export function AddExpense() {
       <SplitGroupSelect
         groups={splitGroups}
         selected={selectedSplitGroup}
-        onSelect={setSelectedSplitGroup}
+        onSelect={handleSelectSplitGroup}
         onCreate={handleCreateSplitGroup}
       />
       <ExpenseSplitManager

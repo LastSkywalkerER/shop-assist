@@ -39,6 +39,19 @@ export interface PurchaseDocument {
 export interface ExpenseCategoryDocument {
   id: string
   name: string
+  /** Super category this category belongs to (analytics grouping). */
+  superCategoryId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Coarse analytics grouping over expense categories. Categories outside any
+ * super category fall under «Другое» in the default analytics breakdown.
+ */
+export interface SuperCategoryDocument {
+  id: string
+  name: string
   createdAt: string
   updatedAt: string
 }

@@ -11,6 +11,7 @@ import { ExpenseDetailsPage } from './pages/ExpenseDetailsPage'
 import { SplitGroupsPage } from './pages/SplitGroupsPage'
 import { GroupSettlementPage } from './pages/GroupSettlementPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
+import { CategoriesPage } from './pages/CategoriesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ShoppingListPage } from './pages/ShoppingListPage'
 
@@ -30,6 +31,7 @@ function AnimatedRoutes() {
         <Route path="/expenses/settlement/:groupId" element={<GroupSettlementPage />} />
         <Route path="/expenses/:id" element={<ExpenseDetailsPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/categories" element={<CategoriesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/shopping-list" element={<ShoppingListPage />} />
       </Routes>

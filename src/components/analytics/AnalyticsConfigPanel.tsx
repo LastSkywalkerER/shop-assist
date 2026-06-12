@@ -1,9 +1,12 @@
-import type { ExpenseCategoryDocument } from '../../db/types'
+import type { ExpenseCategoryDocument, SuperCategoryDocument } from '../../db/types'
 import type { AnalyticsPeriod } from '../../lib/analytics/aggregate'
 
 interface AnalyticsConfigPanelProps {
   period: AnalyticsPeriod
   onPeriodChange: (period: AnalyticsPeriod) => void
+  superCategories: SuperCategoryDocument[]
+  selectedSuperCategoryId: string | null
+  onSelectSuperCategory: (id: string | null) => void
   categories: ExpenseCategoryDocument[]
   selectedCategoryIds: Set<string>
   onToggleCategory: (id: string) => void
@@ -32,6 +35,9 @@ const inputClass =
 export function AnalyticsConfigPanel({
   period,
   onPeriodChange,
+  superCategories,
+  selectedSuperCategoryId,
+  onSelectSuperCategory,
   categories,
   selectedCategoryIds,
   onToggleCategory,
@@ -95,6 +101,40 @@ export function AnalyticsConfigPanel({
               className={inputClass}
               style={{ colorScheme: 'inherit' }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Super-category single-select: scopes both the category chips below
+          and the analytics itself. */}
+      {superCategories.length > 0 && (
+        <div className="overflow-x-auto scrollbar-none -mx-4 px-4">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => onSelectSuperCategory(null)}
+              className={`shrink-0 px-3.5 py-1.5 rounded-full text-[13px] font-semibold outline-none transition-colors ${
+                selectedSuperCategoryId === null
+                  ? 'bg-primary text-on-primary'
+                  : 'bg-bg-secondary/40 text-text-hint active:opacity-70'
+              }`}
+            >
+              Все
+            </button>
+            {superCategories.map((sup) => (
+              <button
+                key={sup.id}
+                type="button"
+                onClick={() => onSelectSuperCategory(selectedSuperCategoryId === sup.id ? null : sup.id)}
+                className={`shrink-0 px-3.5 py-1.5 rounded-full text-[13px] font-semibold outline-none transition-colors ${
+                  selectedSuperCategoryId === sup.id
+                    ? 'bg-primary text-on-primary'
+                    : 'bg-bg-secondary/40 text-text-hint active:opacity-70'
+                }`}
+              >
+                {sup.name}
+              </button>
+            ))}
           </div>
         </div>
       )}

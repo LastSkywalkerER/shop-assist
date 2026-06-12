@@ -3,6 +3,7 @@ import { useRxCollection, useRxQuery } from '../db/hooks'
 import type {
   ExpenseDocument,
   ExpenseCategoryDocument,
+  SuperCategoryDocument,
   StoreDocument,
   ReceiptDocument,
   ReceiptItemDocument,
@@ -18,6 +19,7 @@ import {
   seriesAverage,
   seriesMaxKey,
   PieAccumulator,
+  PIE_OTHER_LABEL,
   type AnalyticsPeriod,
   type Granularity,
   type SeriesPoint,
@@ -40,6 +42,9 @@ export interface ExpenseAnalytics {
     expensiveExpenses: PieDatum[]
     byCategory: PieDatum[]
   }
+  /** Dimension of the byCategory pie: super categories by default, regular
+   *  categories when a super category or explicit categories are selected. */
+  byCategoryDimension: 'super' | 'category'
   /** Amounts skipped because their currency had no stored rate. */
   conversionGaps: number
 }
@@ -56,9 +61,11 @@ const NO_CATEGORY_LABEL = 'Без категории'
 export function useExpenseAnalytics(
   period: AnalyticsPeriod,
   categoryIds: string[],
+  superCategoryId: string | null = null,
 ): ExpenseAnalytics {
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const categoriesCol = useRxCollection<ExpenseCategoryDocument>('expenseCategories')
+  const superCategoriesCol = useRxCollection<SuperCategoryDocument>('superCategories')
   const storesCol = useRxCollection<StoreDocument>('stores')
   const receiptsCol = useRxCollection<ReceiptDocument>('receipts')
   const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
@@ -66,6 +73,7 @@ export function useExpenseAnalytics(
 
   const { data: expenses, loading } = useRxQuery(expensesCol)
   const { data: categories } = useRxQuery(categoriesCol)
+  const { data: superCategories } = useRxQuery(superCategoriesCol)
   const { data: stores } = useRxQuery(storesCol)
   const { data: receipts } = useRxQuery(receiptsCol)
   const { data: receiptItems } = useRxQuery(receiptItemsCol)
@@ -75,9 +83,34 @@ export function useExpenseAnalytics(
 
   return useMemo(() => {
     const rateHistory = buildRateHistoryMap(rates)
-    const categoryFilter = categoryIds.length > 0 ? new Set(categoryIds) : null
     const categoryNames = new Map(categories.map((c) => [c.id, c.name]))
     const storeNames = new Map(stores.map((s) => [s.id, s.name]))
+    const superNames = new Map(superCategories.map((s) => [s.id, s.name]))
+
+    // Effective category filter: explicit chips win; otherwise a selected
+    // super category narrows the scope to its member categories.
+    let categoryFilter: Set<string> | null = null
+    if (categoryIds.length > 0) {
+      categoryFilter = new Set(categoryIds)
+    } else if (superCategoryId) {
+      categoryFilter = new Set(
+        categories.filter((c) => c.superCategoryId === superCategoryId).map((c) => c.id),
+      )
+    }
+
+    // Default breakdown is by super category (when any exist); selecting a
+    // super category or explicit categories switches it to regular categories.
+    const byCategoryDimension: 'super' | 'category' =
+      !superCategoryId && categoryIds.length === 0 && superCategories.length > 0
+        ? 'super'
+        : 'category'
+    const categorySuper = new Map(categories.map((c) => [c.id, c.superCategoryId]))
+    const categoryPieName = (catId: string | undefined): string => {
+      if (!catId) return NO_CATEGORY_LABEL
+      if (byCategoryDimension === 'category') return categoryNames.get(catId) ?? NO_CATEGORY_LABEL
+      const superId = categorySuper.get(catId)
+      return (superId ? superNames.get(superId) : undefined) ?? PIE_OTHER_LABEL
+    }
 
     // Filter expenses by period bounds and selected categories.
     const allDateKeys = expenses.map((e) => dateKeyOf(e.date))
@@ -114,10 +147,7 @@ export function useExpenseAnalytics(
         }
         entries.push({ dateKey, amount: amountBase })
         expensiveExpenses.add(displayName, amountBase)
-        byCategory.add(
-          (expense.categoryId ? categoryNames.get(expense.categoryId) : undefined) ?? NO_CATEGORY_LABEL,
-          amountBase,
-        )
+        byCategory.add(categoryPieName(expense.categoryId), amountBase)
       }
     }
 
@@ -156,8 +186,9 @@ export function useExpenseAnalytics(
         expensiveExpenses: expensiveExpenses.toPie(),
         byCategory: byCategory.toPie(),
       },
+      byCategoryDimension,
       conversionGaps,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expenses, categories, stores, receipts, receiptItems, rates, period, categoryIdsKey, loading])
+  }, [expenses, categories, superCategories, stores, receipts, receiptItems, rates, period, categoryIdsKey, superCategoryId, loading])
 }

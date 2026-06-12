@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
-import type { ExpenseCategoryDocument } from '../../db/types'
+import type { ExpenseCategoryDocument, SuperCategoryDocument } from '../../db/types'
 import { useExpenseAnalytics } from '../../hooks/useExpenseAnalytics'
 import { BASE_CURRENCY } from '../../lib/currency/convert'
 import type { AnalyticsPeriod } from '../../lib/analytics/aggregate'
@@ -16,18 +16,34 @@ export function AnalyticsDashboard() {
   const navigate = useNavigate()
   const [period, setPeriod] = useState<AnalyticsPeriod>({ mode: 'all' })
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set())
+  const [selectedSuperCategoryId, setSelectedSuperCategoryId] = useState<string | null>(null)
 
   const categoriesCol = useRxCollection<ExpenseCategoryDocument>('expenseCategories')
+  const superCategoriesCol = useRxCollection<SuperCategoryDocument>('superCategories')
   const { data: categories } = useRxQuery(categoriesCol)
+  const { data: superCategories } = useRxQuery(superCategoriesCol)
 
-  // Newest categories first; sorted in memory (createdAt is not indexed).
+  // Newest first; sorted in memory (createdAt is not indexed).
   const sortedCategories = useMemo(
     () => [...categories].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [categories],
   )
+  const sortedSuperCategories = useMemo(
+    () => [...superCategories].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [superCategories],
+  )
+
+  // A selected super category narrows the category chips to its members.
+  const visibleCategories = useMemo(
+    () =>
+      selectedSuperCategoryId
+        ? sortedCategories.filter((c) => c.superCategoryId === selectedSuperCategoryId)
+        : sortedCategories,
+    [sortedCategories, selectedSuperCategoryId],
+  )
 
   const categoryIds = useMemo(() => [...selectedCategoryIds], [selectedCategoryIds])
-  const analytics = useExpenseAnalytics(period, categoryIds)
+  const analytics = useExpenseAnalytics(period, categoryIds, selectedSuperCategoryId)
 
   const toggleCategory = (id: string) => {
     setSelectedCategoryIds((prev) => {
@@ -36,6 +52,12 @@ export function AnalyticsDashboard() {
       else next.add(id)
       return next
     })
+  }
+
+  const selectSuperCategory = (id: string | null) => {
+    setSelectedSuperCategoryId(id)
+    // Scope changed — drop the per-category selection.
+    setSelectedCategoryIds(new Set())
   }
 
   const invalidRange = period.mode === 'range' && !analytics.hasBounds
@@ -56,7 +78,10 @@ export function AnalyticsDashboard() {
         <AnalyticsConfigPanel
           period={period}
           onPeriodChange={setPeriod}
-          categories={sortedCategories}
+          superCategories={sortedSuperCategories}
+          selectedSuperCategoryId={selectedSuperCategoryId}
+          onSelectSuperCategory={selectSuperCategory}
+          categories={visibleCategories}
           selectedCategoryIds={selectedCategoryIds}
           onToggleCategory={toggleCategory}
           onClearCategories={() => setSelectedCategoryIds(new Set())}
@@ -83,7 +108,11 @@ export function AnalyticsDashboard() {
             />
 
             <PieCard
-              title="Распределение по категориям"
+              title={
+                analytics.byCategoryDimension === 'super'
+                  ? 'Распределение по суперкатегориям'
+                  : 'Распределение по категориям'
+              }
               data={analytics.pies.byCategory}
               valueFormatter={fmtMoney}
             />

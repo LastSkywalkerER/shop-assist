@@ -23,6 +23,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { showBackButton } from '../../telegram/backButton'
 import { addPendingUpload, blobStoreRemove } from '../../db/blobStore'
+import { collectGroupParticipantNames, mergeGroupParticipants } from '../../lib/expenses/splitting'
 
 export function ExpenseDetails() {
   const { id } = useParams<{ id: string }>()
@@ -141,14 +142,7 @@ export function ExpenseDetails() {
   // expense.
   const groupParticipantNames = useMemo(() => {
     if (!expense?.splitGroupId) return []
-    const groupExpenseIds = new Set(
-      expenses.filter((e) => e.splitGroupId === expense.splitGroupId).map((e) => e.id),
-    )
-    const names = new Set<string>()
-    for (const p of allParticipants) {
-      if (groupExpenseIds.has(p.expenseId)) names.add(p.name)
-    }
-    return Array.from(names)
+    return collectGroupParticipantNames(expense.splitGroupId, expenses, allParticipants)
   }, [expenses, allParticipants, expense?.splitGroupId])
 
   const selectedSplitGroup = useMemo(
@@ -160,6 +154,19 @@ export function ExpenseDetails() {
     if (!expensesCol || !expense) return
     const doc = await expensesCol.findOne(expense.id).exec()
     if (doc) await doc.patch({ splitGroupId: groupId, updatedAt: new Date().toISOString() })
+  }
+
+  // Picking a split group pulls its known members into the split right away;
+  // the merged rows stay local until «Сохранить участников» is pressed.
+  const handleSelectSplitGroup = async (group: SplitGroupDocument | null) => {
+    await setExpenseSplitGroup(group?.id)
+    if (!group) return
+    const names = collectGroupParticipantNames(group.id, expenses, allParticipants)
+    const merged = mergeGroupParticipants(localParticipants, expense?.creatorName ?? '', names) as SplitParticipant[]
+    if (merged !== localParticipants) {
+      setParticipantsDirty(true)
+      setLocalParticipants(merged)
+    }
   }
 
   const handleCreateSplitGroup = async (groupName: string) => {
@@ -641,7 +648,7 @@ export function ExpenseDetails() {
         <SplitGroupSelect
           groups={splitGroups}
           selected={selectedSplitGroup}
-          onSelect={(group) => void setExpenseSplitGroup(group?.id)}
+          onSelect={(group) => void handleSelectSplitGroup(group)}
           onCreate={handleCreateSplitGroup}
         />
       </div>

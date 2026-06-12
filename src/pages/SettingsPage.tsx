@@ -5,6 +5,7 @@ import { SyncSection } from '../components/settings/SyncSection'
 import { LinkedProvidersSection } from '../components/settings/LinkedProvidersSection'
 import { NotificationChannelsSection } from '../components/settings/NotificationChannelsSection'
 import { RoomsSection } from '../components/settings/RoomsSection'
+import { CitySection } from '../components/settings/CitySection'
 import { BackupSection } from '../components/settings/BackupSection'
 import { AiSection } from '../components/settings/AiSection'
 import { showBackButton } from '../telegram/backButton'
@@ -22,6 +23,7 @@ export function SettingsPage() {
       <LinkedProvidersSection />
       <NotificationChannelsSection />
       <RoomsSection />
+      <CitySection />
       <AiSection />
       <BackupSection />
       <AppInfoSection />

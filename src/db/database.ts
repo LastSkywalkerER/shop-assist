@@ -15,6 +15,7 @@ import { shoppingListItemSchema } from './schemas/shoppingListItem.schema'
 import { purchaseAttachmentSchema } from './schemas/purchaseAttachment.schema'
 import { currencyRateSchema } from './schemas/currencyRate.schema'
 import { splitGroupSchema } from './schemas/splitGroup.schema'
+import { superCategorySchema } from './schemas/superCategory.schema'
 import type { RxDatabase, RxCollection } from 'rxdb'
 import type {
   ProductDocument,
@@ -31,6 +32,7 @@ import type {
   PurchaseAttachmentDocument,
   CurrencyRateDocument,
   SplitGroupDocument,
+  SuperCategoryDocument,
 } from './types'
 import { getDatabaseVersion, getStoredDbVersion, setStoredDbVersion } from './version'
 import { readRawIndexedDB, buildBackupFromRawData, downloadBackup } from './backup'
@@ -52,6 +54,7 @@ export type ShopAssistCollections = {
   purchaseAttachments: RxCollection<PurchaseAttachmentDocument>
   currencyRates: RxCollection<CurrencyRateDocument>
   splitGroups: RxCollection<SplitGroupDocument>
+  superCategories: RxCollection<SuperCategoryDocument>
 }
 
 export type ShopAssistDatabase = RxDatabase<ShopAssistCollections>
@@ -162,7 +165,10 @@ async function createDb(): Promise<ShopAssistDatabase> {
     },
     expenseCategories: {
       schema: expenseCategorySchema,
-      migrationStrategies: {},
+      migrationStrategies: {
+        // v1 adds the optional superCategoryId; old categories stay ungrouped.
+        1: (oldDoc: any) => oldDoc,
+      },
     },
     expenses: {
       schema: expenseSchema,
@@ -310,6 +316,14 @@ async function createDb(): Promise<ShopAssistDatabase> {
   await db.addCollections({
     splitGroups: {
       schema: splitGroupSchema,
+      migrationStrategies: {},
+    },
+  })
+
+  // Super categories — coarse analytics grouping over expense categories.
+  await db.addCollections({
+    superCategories: {
+      schema: superCategorySchema,
       migrationStrategies: {},
     },
   })
