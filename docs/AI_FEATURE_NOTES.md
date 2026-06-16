@@ -269,6 +269,49 @@ both pick up the same row.
 The pending table is **cloud-only** — no RxDB collection, no schema
 version bump. Client subscribes directly via `usePendingScans(roomId)`.
 
+## Bulk expense list import (since 1.19.0)
+
+A separate, deliberately-hidden flow for importing a *list of expenses* (a
+spending log), distinct from the single-receipt scanner. Entry point:
+**long-press** the receipt-scan FAB on `ExpensesDashboard` (a normal tap still
+opens the scanner). Gated behind `aiEnabled`.
+
+Flow:
+
+1. **Input** — image, pasted/`.txt` text, or PDF. The client builds two hints
+   from local data: `labels` (distinct existing expense names) and
+   `categoryNames`, so the model can map each raw line to a known human label.
+2. **Parse** — synchronous `parse-expense-list` edge function (single LLM call,
+   `EXPENSE_LIST_JSON_SCHEMA`). Returns `{ currency, rows: [{ date, name,
+   amount, currency, matchedLabel, categoryName, confidence }] }`. PDFs are sent
+   **directly to the model** as an OpenRouter `file` content part (Gemini 2.5
+   flash ingests them natively) — no client-side text extraction. If a configured
+   model handles PDFs poorly, add a dedicated PDF-capable model rather than a
+   local fallback.
+3. **Reconcile** — `src/lib/ai/expenseListMatching.ts` matches each row against
+   existing expenses: **same currency AND amount exact-or-within-±1 unit**; ties
+   broken by date closeness then amount delta (date never excludes a match).
+   Matched rows are highlighted and deselected by default; missing rows are
+   selected. A quick name field (keyed by the raw source name) propagates to all
+   rows sharing that name; a pencil opens `BulkRowDetailEditor` for full details
+   (store/category/date/notes/author) — name & shared fields propagate, while
+   amount/date/currency stay per-row.
+4. **Review + bulk insert** — approved rows are `bulkInsert`ed into the
+   `expenses` collection (same amount normalization as `AddExpense`). No
+   receipt/items, no attachments.
+
+No DB schema change and no new table — it's a sync function over the existing
+`expenses` schema. `_shared/openrouter.ts` was refactored so the strict JSON
+schema is a parameter: `callOpenRouterSchema<T>(…, jsonSchema)` is the generic
+path; `callOpenRouter` is now a thin receipt wrapper around it. Usage is logged
+to `ai_usage_log` with `function_name='parse-expense-list'`, `pass='extract'`
+(no CHECK constraint on those columns).
+
+Files: `src/components/expenses/BulkExpenseUploadFlow.tsx`,
+`BulkRowDetailEditor.tsx`, `src/lib/ai/parseExpenseList.ts`,
+`src/lib/ai/expenseListMatching.ts` (+ `.test.ts`),
+`supabase/functions/parse-expense-list/index.ts`.
+
 ## Files of interest
 
 - `src/components/expenses/ScanReceiptFlow.tsx` — camera + pipeline orchestration.

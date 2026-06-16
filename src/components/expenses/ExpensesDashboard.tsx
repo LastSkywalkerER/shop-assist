@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import type { MangoQuery } from 'rxdb'
 import { useRxCollection, useRxPaginatedQuery, useRxQuery } from '../../db/hooks'
 import { useDragSelect } from '../../hooks/useDragSelect'
@@ -20,6 +20,7 @@ import { blobStoreRemove } from '../../db/blobStore'
 import { useAiSettings } from '../../contexts/AiSettingsContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { ScanReceiptFlow } from './ScanReceiptFlow'
+import { BulkExpenseUploadFlow } from './BulkExpenseUploadFlow'
 import { PendingScanRow } from './PendingScanRow'
 import { usePendingScans } from '../../hooks/usePendingScans'
 
@@ -30,6 +31,32 @@ export function ExpensesDashboard() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [scanning, setScanning] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+
+  // Long-press on the scan FAB reveals the (hidden) bulk expense-list import;
+  // a normal tap still opens the receipt scanner.
+  const longPressTimer = useRef<number | null>(null)
+  const longPressFired = useRef(false)
+  const startScanPress = () => {
+    longPressFired.current = false
+    longPressTimer.current = window.setTimeout(() => {
+      longPressFired.current = true
+      setBulkOpen(true)
+    }, 500)
+  }
+  const cancelScanPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+  }
+  const handleScanClick = () => {
+    if (longPressFired.current) {
+      longPressFired.current = false
+      return
+    }
+    setScanning(true)
+  }
 
   const { aiEnabled } = useAiSettings()
   const { roomId } = useAuth()
@@ -270,9 +297,13 @@ export function ExpensesDashboard() {
           {aiEnabled && (
             <button
               type="button"
-              onClick={() => setScanning(true)}
+              onClick={handleScanClick}
+              onPointerDown={startScanPress}
+              onPointerUp={cancelScanPress}
+              onPointerLeave={cancelScanPress}
+              onContextMenu={(e) => e.preventDefault()}
               aria-label="Сканировать чек"
-              title="Сканировать чек"
+              title="Сканировать чек (удерживайте — импорт списка расходов)"
               className="fixed bottom-[160px] right-5 w-[52px] h-[52px] bg-surface border border-separator/40 text-primary-text rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -286,6 +317,7 @@ export function ExpensesDashboard() {
       )}
 
       {scanning && <ScanReceiptFlow onClose={() => setScanning(false)} />}
+      {bulkOpen && <BulkExpenseUploadFlow onClose={() => setBulkOpen(false)} />}
 
       {/* Confirm delete modal */}
       {confirmDelete && (
