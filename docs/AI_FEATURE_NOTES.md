@@ -269,6 +269,62 @@ both pick up the same row.
 The pending table is **cloud-only** — no RxDB collection, no schema
 version bump. Client subscribes directly via `usePendingScans(roomId)`.
 
+## Bulk expense list import (since 1.19.0)
+
+A separate, deliberately-hidden flow for importing a *list of expenses* (a
+spending log), distinct from the single-receipt scanner. Entry point:
+**long-press** the receipt-scan FAB on `ExpensesDashboard` (a normal tap still
+opens the scanner). Gated behind `aiEnabled`.
+
+Flow:
+
+1. **Input** — one or **several images** (`kind:'images'` → multiple `image_url`
+   parts in a *single* model call, treated as one statement; one rate-limit hit),
+   a single PDF, or pasted/`.txt` text. The client builds two hints from local
+   data: `labels` (distinct existing expense names) and `categoryNames`, so the
+   model can map each raw line to a known human label.
+2. **Parse** — synchronous `parse-expense-list` edge function (single LLM call,
+   `EXPENSE_LIST_JSON_SCHEMA`). Returns `{ currency, rows: [{ date, name,
+   amount, direction, currency, matchedLabel, categoryName, confidence }] }`.
+   `amount` is **always positive** (absolute value, also guarded with `Math.abs`
+   server-side); the sign lives in `direction: 'expense' | 'income'`, which the
+   model infers from **colour/sign** (red/`-`/списание = expense, green/`+`/
+   поступление = income). PDFs are sent **directly to the model** as an
+   OpenRouter `file` content part — no client-side text extraction.
+3. **Reconcile** — `src/lib/ai/expenseListMatching.ts` matches each row against
+   existing expenses: **same currency AND amount exact-or-within-±1 unit**; ties
+   broken by date closeness then amount delta (date never excludes a match).
+   Matched rows are highlighted and deselected; income rows are dimmed with a
+   «доход» badge and deselected; only missing **expense** rows are pre-selected.
+   Each row has a quick name field (keyed by the raw source name, propagates to
+   all rows sharing that name), a pencil → `BulkRowDetailEditor`, a **delete**
+   (drop from this import) and an **ignore** button.
+   - **Ignore list** (`expenseImportIgnores`, synced room-scoped collection +
+     `expense_import_ignores_sync` table): pressing ignore stores the row name
+     and removes every near-identical row now; future imports skip matches up
+     front (`hiddenByIgnore` count surfaced). Matching is `src/lib/ai/ignoreList.ts`
+     — normalize (lowercase, strip punctuation/`…`, collapse spaces) then
+     equal / prefix / token-containment. Deliberately conservative: it merges a
+     name with a truncated or longer variant of itself but never two distinct
+     merchants sharing only a generic prefix. The input screen lists ignored
+     names as removable chips.
+4. **Review + bulk insert** — approved rows are `bulkInsert`ed into the
+   `expenses` collection (same amount normalization as `AddExpense`). No
+   receipt/items, no attachments.
+
+`_shared/openrouter.ts` was refactored so the strict JSON schema is a parameter:
+`callOpenRouterSchema<T>(…, jsonSchema)` is the generic path; `callOpenRouter` is
+now a thin receipt wrapper around it. Usage is logged to `ai_usage_log` with
+`function_name='parse-expense-list'`, `pass='extract'` (no CHECK constraint on
+those columns).
+
+Files: `src/components/expenses/BulkExpenseUploadFlow.tsx`,
+`BulkRowDetailEditor.tsx`, `src/lib/ai/parseExpenseList.ts`,
+`src/lib/ai/expenseListMatching.ts`, `src/lib/ai/ignoreList.ts` (+ `.test.ts`),
+`src/db/schemas/expenseImportIgnore.schema.ts`,
+`supabase/functions/parse-expense-list/index.ts`,
+`supabase/migrations/20260617120000_expense_import_ignores.sql`.
+
 ## Files of interest
 
 - `src/components/expenses/ScanReceiptFlow.tsx` — camera + pipeline orchestration.

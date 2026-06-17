@@ -16,6 +16,7 @@ import { purchaseAttachmentSchema } from './schemas/purchaseAttachment.schema'
 import { currencyRateSchema } from './schemas/currencyRate.schema'
 import { splitGroupSchema } from './schemas/splitGroup.schema'
 import { superCategorySchema } from './schemas/superCategory.schema'
+import { expenseImportIgnoreSchema } from './schemas/expenseImportIgnore.schema'
 import type { RxDatabase, RxCollection } from 'rxdb'
 import type {
   ProductDocument,
@@ -33,6 +34,7 @@ import type {
   CurrencyRateDocument,
   SplitGroupDocument,
   SuperCategoryDocument,
+  ExpenseImportIgnoreDocument,
 } from './types'
 import { getDatabaseVersion, getStoredDbVersion, setStoredDbVersion } from './version'
 import { readRawIndexedDB, buildBackupFromRawData, downloadBackup } from './backup'
@@ -55,6 +57,7 @@ export type ShopAssistCollections = {
   currencyRates: RxCollection<CurrencyRateDocument>
   splitGroups: RxCollection<SplitGroupDocument>
   superCategories: RxCollection<SuperCategoryDocument>
+  expenseImportIgnores: RxCollection<ExpenseImportIgnoreDocument>
 }
 
 export type ShopAssistDatabase = RxDatabase<ShopAssistCollections>
@@ -324,6 +327,14 @@ async function createDb(): Promise<ShopAssistDatabase> {
   await db.addCollections({
     superCategories: {
       schema: superCategorySchema,
+      migrationStrategies: {},
+    },
+  })
+
+  // Expense-import ignore list — names to skip during bulk expense-list upload.
+  await db.addCollections({
+    expenseImportIgnores: {
+      schema: expenseImportIgnoreSchema,
       migrationStrategies: {},
     },
   })

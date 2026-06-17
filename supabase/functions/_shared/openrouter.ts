@@ -155,6 +155,56 @@ B) Заполни matches. ВСЕГДА давай лучший доступны
 
 ВАЖНО: productName, expenseCategoryName, storeName — ТОЛЬКО точная подстановка из соответствующего источника (products[].name / categoryNames / storeNames), либо null. expenseLabel и cleanedName можно генерировать если в catalog нет подходящего.`
 
+// --- Bulk expense-list parsing (parse-expense-list edge function) ---
+
+export const EXPENSE_LIST_JSON_SCHEMA = {
+  name: 'expense_list',
+  strict: true,
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      currency: { type: 'string', description: 'ISO 4217 default currency for the whole list (BYN/RUB/USD/EUR…)' },
+      rows: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            date: { type: ['string', 'null'], description: 'ISO date YYYY-MM-DD, or null if the line has no date' },
+            name: { type: 'string', description: 'human-readable expense name, exactly as in the source' },
+            amount: { type: 'number', description: 'ABSOLUTE (always positive) value of the transaction; never include the sign here' },
+            direction: { type: 'string', enum: ['expense', 'income'], description: 'expense = money out (red / negative / minus / списание); income = money in (green / positive / plus / поступление)' },
+            currency: { type: ['string', 'null'], description: 'ISO 4217 if the row has its own currency, else null' },
+            matchedLabel: { type: ['string', 'null'], description: 'exact string from the provided labels[], else null' },
+            categoryName: { type: ['string', 'null'], description: 'exact string from the provided categoryNames[], else null' },
+            confidence: { type: 'number', minimum: 0, maximum: 1 },
+          },
+          required: ['date', 'name', 'amount', 'direction', 'currency', 'matchedLabel', 'categoryName', 'confidence'],
+        },
+      },
+    },
+    required: ['currency', 'rows'],
+  },
+}
+
+export const EXPENSE_LIST_PROMPT = `Ты — парсер списка расходов (журнала трат, выписки по счёту). На входе может быть НЕСКОЛЬКО изображений (страниц/скриншотов одной выписки), PDF или текст. Одна строка/позиция = одна операция. Если изображений несколько — считай их продолжением одного списка и не дублируй строки. Извлеки строго в JSON:
+- currency — валюта по умолчанию для всего списка (ISO 4217: BYN/RUB/USD/EUR…), по умолчанию BYN.
+- rows[] — по одному элементу на каждую операцию:
+    * date — дата операции в формате YYYY-MM-DD. Если у строки нет даты — null.
+    * name — человеко-читаемое название операции РОВНО как в источнике. Исправь только явные опечатки и смешанные o/о, a/а, c/с, p/р в кириллице.
+    * amount — сумма операции числом, ВСЕГДА ПОЛОЖИТЕЛЬНАЯ (модуль, без знака и без валюты). Знак передавай через direction, а НЕ в amount.
+    * direction — направление движения денег:
+        – "expense" (расход, деньги уходят): сумма красная и/или со знаком «-», помечена как списание/оплата/покупка/перевод исходящий. В выписках это обычная трата.
+        – "income" (доход, деньги приходят): сумма зелёная и/или со знаком «+», помечена как поступление/зачисление/возврат/пополнение/входящий перевод.
+        Ориентируйся в первую очередь на ЦВЕТ и ЗНАК суммы, затем на текст операции. Если совсем непонятно — ставь "expense".
+    * currency — ISO-код валюты, если у конкретной строки своя валюта; иначе null.
+    * matchedLabel — РОВНО строка из переданного списка labels, если строка явно относится к уже известному пользователю названию расхода; иначе null. НЕ выдумывай — только точная подстановка из labels.
+    * categoryName — РОВНО строка из переданного списка categoryNames, которая лучше всего описывает трату; иначе null.
+    * confidence — 0..1, уверенность в правильности строки.
+
+Игнорируй итоги, подытоги, заголовки таблиц, остаток по счёту, разделители и служебные строки. Не выдумывай операции — извлекай только то, что есть в источнике.`
+
 export function base64Bytes(b64: string): number {
   const padding = (b64.match(/=+$/)?.[0]?.length ?? 0)
   return Math.floor((b64.length * 3) / 4) - padding
@@ -177,18 +227,31 @@ export interface CallResult {
   rawUsage?: { prompt_tokens?: number; completion_tokens?: number }
 }
 
-export async function callOpenRouter(
+export interface RawCallResult<T> {
+  data: T
+  rawUsage?: { prompt_tokens?: number; completion_tokens?: number }
+}
+
+/**
+ * Generic OpenRouter strict-JSON call. Performs the request, logs it, and
+ * parses the assistant content (with a greedy `{…}` fallback) into `T`. Used
+ * directly by non-receipt callers (e.g. parse-expense-list); the receipt
+ * pipeline goes through `callOpenRouter`, which wraps this and then applies
+ * receipt-specific normalization.
+ */
+export async function callOpenRouterSchema<T>(
   apiKey: string,
   model: string,
   messages: unknown[],
   log: Log,
+  jsonSchema: unknown,
   opts?: { reasoningEffort?: 'low' | 'medium' | 'high'; signal?: AbortSignal },
-): Promise<CallResult> {
+): Promise<RawCallResult<T>> {
   const reqBody: Record<string, unknown> = {
     model,
     messages,
     temperature: 0,
-    response_format: { type: 'json_schema', json_schema: RECEIPT_JSON_SCHEMA },
+    response_format: { type: 'json_schema', json_schema: jsonSchema },
   }
   if (opts?.reasoningEffort) {
     reqBody.reasoning = { effort: opts.reasoningEffort }
@@ -204,7 +267,7 @@ export async function callOpenRouter(
     if (typeof msg.content === 'string') {
       log.block('openrouter:msg', `message[${i}] text`, msg.content)
     } else if (Array.isArray(msg.content)) {
-      const parts = msg.content as Array<{ type?: string; text?: string; image_url?: { url?: string } }>
+      const parts = msg.content as Array<{ type?: string; text?: string; image_url?: { url?: string }; file?: { filename?: string; file_data?: string } }>
       for (let p = 0; p < parts.length; p++) {
         const part = parts[p]
         if (part.type === 'text' && typeof part.text === 'string') {
@@ -213,6 +276,10 @@ export async function callOpenRouter(
           const url = part.image_url?.url ?? ''
           const head = url.slice(0, url.indexOf(',') + 1) || '<no-prefix>'
           log.step('openrouter:msg', { idx: `${i}.${p}`, type: 'image_url', prefix: head, payload_bytes: Math.max(0, url.length - head.length) })
+        } else if (part.type === 'file') {
+          const data = part.file?.file_data ?? ''
+          const head = data.slice(0, data.indexOf(',') + 1) || '<no-prefix>'
+          log.step('openrouter:msg', { idx: `${i}.${p}`, type: 'file', filename: part.file?.filename ?? null, prefix: head, payload_bytes: Math.max(0, data.length - head.length) })
         }
       }
     }
@@ -248,15 +315,29 @@ export async function callOpenRouter(
   }
   log.block('openrouter:content', 'raw assistant content', content)
 
-  let parsed: ReceiptPayload
+  let parsed: T
   try {
-    parsed = JSON.parse(content) as ReceiptPayload
+    parsed = JSON.parse(content) as T
   } catch {
     log.warn('openrouter:json_parse_fallback', 'strict JSON.parse failed; trying greedy match')
     const match = content.match(/\{[\s\S]*\}/)
     if (!match) throw new Error('OpenRouter returned non-JSON content')
-    parsed = JSON.parse(match[0]) as ReceiptPayload
+    parsed = JSON.parse(match[0]) as T
   }
+
+  return { data: parsed, rawUsage: body?.usage }
+}
+
+export async function callOpenRouter(
+  apiKey: string,
+  model: string,
+  messages: unknown[],
+  log: Log,
+  opts?: { reasoningEffort?: 'low' | 'medium' | 'high'; signal?: AbortSignal },
+): Promise<CallResult> {
+  const { data: parsed, rawUsage } = await callOpenRouterSchema<ReceiptPayload>(
+    apiKey, model, messages, log, RECEIPT_JSON_SCHEMA, opts,
+  )
 
   if (!Array.isArray(parsed.items)) parsed.items = []
   for (const it of parsed.items) {
@@ -293,7 +374,7 @@ export async function callOpenRouter(
   })
   log.block('openrouter:parsed_full', 'normalized payload', JSON.stringify(parsed, null, 2))
 
-  return { data: parsed, rawUsage: body?.usage }
+  return { data: parsed, rawUsage }
 }
 
 export function catalogStats(catalog: Catalog): Record<string, number> {
