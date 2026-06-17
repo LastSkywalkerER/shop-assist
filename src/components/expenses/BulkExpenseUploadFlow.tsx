@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
-import type { ExpenseDocument, StoreDocument, ExpenseCategoryDocument } from '../../db/types'
+import type { ExpenseDocument, StoreDocument, ExpenseCategoryDocument, ExpenseImportIgnoreDocument } from '../../db/types'
 import { useAiSettings } from '../../contexts/AiSettingsContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -14,6 +14,7 @@ import {
   type ParseExpenseListResult,
 } from '../../lib/ai/parseExpenseList'
 import { matchParsedRows } from '../../lib/ai/expenseListMatching'
+import { isIgnored, namesMatch } from '../../lib/ai/ignoreList'
 import {
   BulkRowDetailEditor,
   type SharedOverride,
@@ -42,18 +43,23 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const storesCol = useRxCollection<StoreDocument>('stores')
   const categoriesCol = useRxCollection<ExpenseCategoryDocument>('expenseCategories')
+  const ignoresCol = useRxCollection<ExpenseImportIgnoreDocument>('expenseImportIgnores')
 
   const { data: expensesAll } = useRxQuery(expensesCol)
   const { data: stores } = useRxQuery(storesCol)
   const { data: categories } = useRxQuery(categoriesCol)
+  const { data: ignores } = useRxQuery(ignoresCol)
+
+  const ignoreNames = useMemo(() => ignores.map((i) => i.name), [ignores])
 
   const [step, setStep] = useState<Step>('input')
   const [mode, setMode] = useState<Mode>('text')
   const [text, setText] = useState('')
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>([])
   const [parsing, setParsing] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [hiddenByIgnore, setHiddenByIgnore] = useState(0)
 
   const [result, setResult] = useState<ParseExpenseListResult | null>(null)
   const [items, setItems] = useState<RowItem[]>([])
@@ -141,11 +147,11 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
       if (!text.trim()) { setError('Вставьте список расходов'); return }
       input = { kind: 'text', text }
     } else if (mode === 'image') {
-      if (!file) { setError('Выберите изображение'); return }
-      input = { kind: 'image', blob: file }
+      if (files.length === 0) { setError('Выберите изображения'); return }
+      input = { kind: 'images', blobs: files }
     } else {
-      if (!file) { setError('Выберите PDF-файл'); return }
-      input = { kind: 'pdf', blob: file, filename: file.name }
+      if (files.length === 0) { setError('Выберите PDF-файл'); return }
+      input = { kind: 'pdf', blob: files[0], filename: files[0].name }
     }
 
     setParsing(true)
@@ -157,13 +163,22 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
       const categoryNames = categories.map((c) => c.name)
       const res = await parseExpenseList({ input, model, currency: DEFAULT_CURRENCY, labels, categoryNames })
       if (res.rows.length === 0) { setError('Не удалось распознать ни одной строки'); return }
-      const newItems: RowItem[] = res.rows.map((row) => ({ id: crypto.randomUUID(), row }))
-      const newMatches = matchParsedRows(res.rows, res.currency || DEFAULT_CURRENCY, expensesAll)
+      const allItems: RowItem[] = res.rows.map((row) => ({ id: crypto.randomUUID(), row }))
+      // Drop rows already on the ignore list; they are skipped on every import.
+      const visible = allItems.filter((it) => !isIgnored(it.row.name, ignoreNames))
+      const cur = res.currency || DEFAULT_CURRENCY
+      const visibleMatches = matchParsedRows(visible.map((it) => it.row), cur, expensesAll)
       setResult(res)
-      setItems(newItems)
+      setItems(visible)
+      setHiddenByIgnore(allItems.length - visible.length)
       setSharedByRawName({})
       setPerRowById({})
-      setSelectedRowIds(new Set(newItems.filter((_, i) => !newMatches[i].match).map((it) => it.id)))
+      // Pre-select missing expenses only; income and already-recorded rows start off.
+      setSelectedRowIds(new Set(
+        visible
+          .filter((it, i) => it.row.direction !== 'income' && !visibleMatches[i].match)
+          .map((it) => it.id),
+      ))
       setStep('reconcile')
     } catch (err) {
       console.error('Failed to parse expense list:', err)
@@ -180,6 +195,38 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
       else next.add(id)
       return next
     })
+  }
+
+  // Remove a single row from the current import (does not affect future imports).
+  const deleteRow = (id: string) => {
+    setItems((prev) => prev.filter((it) => it.id !== id))
+    setSelectedRowIds((prev) => { const n = new Set(prev); n.delete(id); return n })
+  }
+
+  // Ignore a row: persist its name (synced) and drop every near-identical row.
+  const ignoreRow = async (item: RowItem) => {
+    const name = item.row.name
+    if (ignoresCol && !ignores.some((ig) => namesMatch(ig.name, name))) {
+      const now = new Date().toISOString()
+      try {
+        await ignoresCol.insert({ id: crypto.randomUUID(), name, createdAt: now, updatedAt: now })
+      } catch (err) {
+        console.error('Failed to add ignore entry:', err)
+      }
+    }
+    const removeIds = new Set(items.filter((it) => namesMatch(it.row.name, name)).map((it) => it.id))
+    setItems((prev) => prev.filter((it) => !removeIds.has(it.id)))
+    setSelectedRowIds((prev) => {
+      const n = new Set(prev)
+      for (const id of removeIds) n.delete(id)
+      return n
+    })
+    showToast(`В игнор-листе: «${name}». Скрыто строк: ${removeIds.size}`, 'success')
+  }
+
+  const removeIgnore = async (id: string) => {
+    const doc = await ignoresCol?.findOne(id).exec()
+    if (doc) await doc.remove()
   }
 
   const setQuickName = (rawName: string, value: string) => {
@@ -230,10 +277,16 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
   }
 
   const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    if (f) { setFile(f); setError('') }
+    const picked = Array.from(e.target.files ?? [])
+    if (picked.length) {
+      setError('')
+      if (mode === 'image') setFiles((prev) => [...prev, ...picked])
+      else setFiles([picked[0]])
+    }
     e.target.value = ''
   }
+
+  const removeFile = (idx: number) => setFiles((prev) => prev.filter((_, i) => i !== idx))
 
   const onPickTxt = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -265,7 +318,7 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
               {([['text', 'Текст'], ['image', 'Фото'], ['pdf', 'PDF']] as const).map(([m, label]) => (
                 <button
                   key={m}
-                  onClick={() => { setMode(m); setError('') }}
+                  onClick={() => { setMode(m); setError(''); setFiles([]) }}
                   className={`flex-1 py-2 rounded-lg text-[14px] font-medium transition-colors ${
                     mode === m ? 'bg-primary text-on-primary' : 'text-text-hint active:bg-bg-secondary/50'
                   }`}
@@ -303,13 +356,34 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
                   onClick={() => fileInputRef.current?.click()}
                   className="w-full py-3 bg-surface text-text text-[15px] font-medium rounded-2xl active:bg-bg-secondary/50 transition-colors flex items-center justify-center gap-2"
                 >
-                  {mode === 'image' ? 'Выбрать изображение' : 'Выбрать PDF'}
+                  {mode === 'image'
+                    ? (files.length ? 'Добавить ещё фото' : 'Выбрать фото')
+                    : 'Выбрать PDF'}
                 </button>
-                {file && <p className="text-[13px] text-text-hint px-1 truncate">Выбрано: {file.name}</p>}
+                {mode === 'image' && (
+                  <p className="text-[12px] text-text-hint px-1">Можно выбрать несколько фото — они распознаются как одна выписка.</p>
+                )}
+                {files.length > 0 && (
+                  <ul className="space-y-1">
+                    {files.map((f, i) => (
+                      <li key={i} className="flex items-center gap-2 bg-bg-secondary/30 rounded-lg px-3 py-1.5">
+                        <span className="flex-1 min-w-0 text-[13px] text-text-hint truncate">{f.name}</span>
+                        <button
+                          onClick={() => removeFile(i)}
+                          aria-label="Убрать файл"
+                          className="shrink-0 text-text-hint active:opacity-60 transition-opacity"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept={mode === 'image' ? 'image/*' : 'application/pdf,.pdf'}
+                  multiple={mode === 'image'}
                   hidden
                   onChange={onPickFile}
                 />
@@ -321,26 +395,56 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
                 {error}
               </div>
             )}
+
+            {ignores.length > 0 && (
+              <div className="pt-1">
+                <p className="text-[12px] text-text-hint px-1 mb-1.5">
+                  Игнор-лист ({ignores.length}) — эти названия пропускаются при распознавании:
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ignores.map((ig) => (
+                    <span
+                      key={ig.id}
+                      className="inline-flex items-center gap-1 bg-bg-secondary/40 rounded-full pl-3 pr-1.5 py-1 text-[12px] text-text-hint max-w-full"
+                    >
+                      <span className="truncate">{ig.name}</span>
+                      <button
+                        onClick={() => removeIgnore(ig.id)}
+                        aria-label="Убрать из игнор-листа"
+                        className="shrink-0 w-4 h-4 flex items-center justify-center active:opacity-60 transition-opacity"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
 
         {step === 'reconcile' && (
           <>
             <p className="text-[13px] text-text-hint px-1">
-              Распознано строк: {items.length}. Уже записанные подсвечены — выберите недостающие для добавления.
+              Распознано строк: {items.length}. Уже записанные подсвечены, доходы приглушены — выберите недостающие
+              расходы для добавления.
+              {hiddenByIgnore > 0 && <> Скрыто по игнор-листу: {hiddenByIgnore}.</>}
             </p>
             <div className="space-y-2">
               {items.map((item, idx) => {
                 const m = matches[idx]
                 const selected = selectedRowIds.has(item.id)
                 const cur = item.row.currency || listCurrency
+                const income = item.row.direction === 'income'
                 return (
                   <div
                     key={item.id}
-                    className={`rounded-2xl border px-3 py-2.5 ${
-                      m?.match
-                        ? 'border-green-500/30 bg-green-500/5'
-                        : 'border-separator/20 bg-surface'
+                    className={`rounded-2xl border px-3 py-2.5 transition-opacity ${
+                      income
+                        ? 'border-separator/15 bg-surface opacity-60'
+                        : m?.match
+                          ? 'border-green-500/30 bg-green-500/5'
+                          : 'border-separator/20 bg-surface'
                     }`}
                   >
                     <div className="flex items-start gap-2.5">
@@ -359,9 +463,32 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[15px] text-text truncate">{item.row.name}</span>
-                          <span className="text-[14px] font-medium text-text shrink-0">{fmtAmount(item.row.amount, cur)}</span>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <span className="text-[14px] font-medium text-text mr-0.5">{fmtAmount(item.row.amount, cur)}</span>
+                            <button
+                              onClick={() => deleteRow(item.id)}
+                              aria-label="Удалить строку"
+                              title="Удалить из списка"
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-text-hint active:opacity-60 transition-opacity"
+                            >
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+                            </button>
+                            <button
+                              onClick={() => ignoreRow(item)}
+                              aria-label="В игнор-лист"
+                              title="В игнор-лист — скрывать похожие сейчас и впредь"
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-text-hint active:opacity-60 transition-opacity"
+                            >
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="m5.6 5.6 12.8 12.8" /></svg>
+                            </button>
+                          </div>
                         </div>
-                        <div className="text-[12px] text-text-hint mt-0.5">{fmtDate(item.row.date)}</div>
+                        <div className="text-[12px] text-text-hint mt-0.5 flex items-center gap-1.5">
+                          <span>{fmtDate(item.row.date)}</span>
+                          {income && (
+                            <span className="px-1.5 py-0.5 rounded bg-green-500/15 text-green-700 dark:text-green-400 text-[11px] font-medium">доход</span>
+                          )}
+                        </div>
                         {m?.match && (
                           <div className="text-[12px] text-green-700 dark:text-green-400 mt-1">
                             Уже есть: {m.match.name || 'Расход'} · {fmtDate(m.match.date)} · {fmtAmount(m.match.amount, m.match.currency)}

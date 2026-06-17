@@ -64,7 +64,10 @@ export interface ExpenseListRow {
   date: string | null
   /** Human-readable expense name exactly as written in the source. */
   name: string
+  /** Absolute (always positive) transaction value; the sign lives in `direction`. */
   amount: number
+  /** Money out (expense) vs money in (income), from colour/sign of the amount. */
+  direction: 'expense' | 'income'
   /** Row-specific currency, or null to fall back to the list currency. */
   currency: string | null
   /** Exact match from the provided known-labels list, or null. */

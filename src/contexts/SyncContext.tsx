@@ -33,6 +33,7 @@ const COLLECTION_NAMES = [
   'purchaseAttachments',
   'splitGroups',
   'superCategories',
+  'expenseImportIgnores',
 ]
 
 export function SyncProvider({ children }: { children: ReactNode }) {

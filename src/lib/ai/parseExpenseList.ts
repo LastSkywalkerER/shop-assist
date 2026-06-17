@@ -9,7 +9,10 @@ import { resizeImage } from './ocrPipeline'
 export interface ParsedExpenseRow {
   date: string | null
   name: string
+  /** Always positive; the sign is conveyed by `direction`. */
   amount: number
+  /** Money out (expense) vs money in (income), inferred from colour/sign. */
+  direction: 'expense' | 'income'
   currency: string | null
   matchedLabel: string | null
   categoryName: string | null
@@ -18,6 +21,7 @@ export interface ParsedExpenseRow {
 
 export type ParseExpenseListInput =
   | { kind: 'image'; blob: Blob }
+  | { kind: 'images'; blobs: Blob[] }
   | { kind: 'pdf'; blob: Blob; filename?: string }
   | { kind: 'text'; text: string }
 
@@ -89,6 +93,13 @@ export async function parseExpenseList(
   } else if (input.kind === 'image') {
     const resized = await resizeImage(input.blob)
     payloadInput = { kind: 'image', base64: await blobToBase64(resized), mime: resized.type || 'image/jpeg' }
+  } else if (input.kind === 'images') {
+    if (input.blobs.length === 0) throw new ParseExpenseListError('Не выбраны изображения', 'empty')
+    const items = await Promise.all(input.blobs.map(async (b) => {
+      const resized = await resizeImage(b)
+      return { base64: await blobToBase64(resized), mime: resized.type || 'image/jpeg' }
+    }))
+    payloadInput = { kind: 'images', items }
   } else {
     payloadInput = {
       kind: 'pdf',

@@ -31,7 +31,10 @@ const MAX_DECODED_BYTES = 12 * 1024 * 1024 // 12 MB after base64 decode (PDFs ru
 
 type ParseInput =
   | { kind: 'image' | 'pdf'; base64: string; mime?: string; filename?: string }
+  | { kind: 'images'; items: { base64: string; mime?: string }[] }
   | { kind: 'text'; text: string }
+
+const MAX_IMAGES = 10
 
 interface RequestBody {
   model: string
@@ -172,7 +175,7 @@ serve(async (req) => {
     })
   }
   const kind = body.input?.kind
-  if (kind !== 'image' && kind !== 'pdf' && kind !== 'text') {
+  if (kind !== 'image' && kind !== 'images' && kind !== 'pdf' && kind !== 'text') {
     log.warn('body:invalid_input_kind', { kind })
     return new Response(JSON.stringify({ ok: false, error: 'Invalid input kind' }), {
       status: 400,
@@ -202,6 +205,46 @@ serve(async (req) => {
       })
     }
     messages = [{ role: 'user', content: `${promptText}\n\nСписок расходов:\n${text}` }]
+  } else if (kind === 'images') {
+    const items = (body.input as { items?: { base64?: string; mime?: string }[] }).items
+    if (!Array.isArray(items) || items.length === 0) {
+      log.warn('prep:missing_images')
+      return new Response(JSON.stringify({ ok: false, error: 'Missing images' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    if (items.length > MAX_IMAGES) {
+      log.warn('prep:too_many_images', { count: items.length })
+      return new Response(JSON.stringify({ ok: false, error: `Слишком много изображений (максимум ${MAX_IMAGES})` }), {
+        status: 413,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    let totalDecoded = 0
+    const imageParts = items.map((it, i) => {
+      const b64 = it?.base64 ?? ''
+      totalDecoded += base64Bytes(b64)
+      const mime = it.mime && /^image\/(jpeg|png|webp)$/.test(it.mime) ? it.mime : 'image/jpeg'
+      log.step('prep:image', { idx: i, mime, base64_chars: b64.length })
+      return { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } }
+    })
+    if (items.some((it) => !it?.base64)) {
+      log.warn('prep:missing_base64_in_images')
+      return new Response(JSON.stringify({ ok: false, error: 'Missing base64' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    if (totalDecoded > MAX_DECODED_BYTES) {
+      log.warn('prep:too_large', { decoded_bytes: totalDecoded, images: items.length })
+      return new Response(JSON.stringify({ ok: false, error: 'Файлы слишком большие (≤12 MB суммарно)' }), {
+        status: 413,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    log.step('prep:images', { count: items.length, total_decoded_bytes: totalDecoded })
+    messages = [{ role: 'user', content: [...imageParts, { type: 'text', text: promptText }] }]
   } else {
     const input = body.input as { base64?: string; mime?: string; filename?: string }
     if (!input.base64) {
@@ -266,13 +309,21 @@ serve(async (req) => {
     .map((r) => ({
       date: typeof r.date === 'string' && r.date ? r.date : null,
       name: r.name.trim(),
-      amount: r.amount,
+      // amount is always stored positive; the model carries the sign in `direction`,
+      // but guard against a signed value slipping through.
+      amount: Math.abs(r.amount),
+      direction: r.direction === 'income' ? 'income' : 'expense',
       currency: typeof r.currency === 'string' && r.currency ? r.currency : null,
       matchedLabel: typeof r.matchedLabel === 'string' && r.matchedLabel ? r.matchedLabel : null,
       categoryName: typeof r.categoryName === 'string' && r.categoryName ? r.categoryName : null,
       confidence: typeof r.confidence === 'number' ? r.confidence : 0.5,
     }))
-  log.step('parsed:summary', { currency: listCurrency, rows: cleanRows.length })
+  log.step('parsed:summary', {
+    currency: listCurrency,
+    rows: cleanRows.length,
+    expense: cleanRows.filter((r) => r.direction === 'expense').length,
+    income: cleanRows.filter((r) => r.direction === 'income').length,
+  })
 
   const cost = estimateCost(body.model, result.rawUsage)
   log.step('cost:estimate', { model: body.model, cost_usd: cost, usage: result.rawUsage ?? null })

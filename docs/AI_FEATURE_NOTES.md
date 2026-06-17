@@ -278,39 +278,52 @@ opens the scanner). Gated behind `aiEnabled`.
 
 Flow:
 
-1. **Input** — image, pasted/`.txt` text, or PDF. The client builds two hints
-   from local data: `labels` (distinct existing expense names) and
-   `categoryNames`, so the model can map each raw line to a known human label.
+1. **Input** — one or **several images** (`kind:'images'` → multiple `image_url`
+   parts in a *single* model call, treated as one statement; one rate-limit hit),
+   a single PDF, or pasted/`.txt` text. The client builds two hints from local
+   data: `labels` (distinct existing expense names) and `categoryNames`, so the
+   model can map each raw line to a known human label.
 2. **Parse** — synchronous `parse-expense-list` edge function (single LLM call,
    `EXPENSE_LIST_JSON_SCHEMA`). Returns `{ currency, rows: [{ date, name,
-   amount, currency, matchedLabel, categoryName, confidence }] }`. PDFs are sent
-   **directly to the model** as an OpenRouter `file` content part (Gemini 2.5
-   flash ingests them natively) — no client-side text extraction. If a configured
-   model handles PDFs poorly, add a dedicated PDF-capable model rather than a
-   local fallback.
+   amount, direction, currency, matchedLabel, categoryName, confidence }] }`.
+   `amount` is **always positive** (absolute value, also guarded with `Math.abs`
+   server-side); the sign lives in `direction: 'expense' | 'income'`, which the
+   model infers from **colour/sign** (red/`-`/списание = expense, green/`+`/
+   поступление = income). PDFs are sent **directly to the model** as an
+   OpenRouter `file` content part — no client-side text extraction.
 3. **Reconcile** — `src/lib/ai/expenseListMatching.ts` matches each row against
    existing expenses: **same currency AND amount exact-or-within-±1 unit**; ties
    broken by date closeness then amount delta (date never excludes a match).
-   Matched rows are highlighted and deselected by default; missing rows are
-   selected. A quick name field (keyed by the raw source name) propagates to all
-   rows sharing that name; a pencil opens `BulkRowDetailEditor` for full details
-   (store/category/date/notes/author) — name & shared fields propagate, while
-   amount/date/currency stay per-row.
+   Matched rows are highlighted and deselected; income rows are dimmed with a
+   «доход» badge and deselected; only missing **expense** rows are pre-selected.
+   Each row has a quick name field (keyed by the raw source name, propagates to
+   all rows sharing that name), a pencil → `BulkRowDetailEditor`, a **delete**
+   (drop from this import) and an **ignore** button.
+   - **Ignore list** (`expenseImportIgnores`, synced room-scoped collection +
+     `expense_import_ignores_sync` table): pressing ignore stores the row name
+     and removes every near-identical row now; future imports skip matches up
+     front (`hiddenByIgnore` count surfaced). Matching is `src/lib/ai/ignoreList.ts`
+     — normalize (lowercase, strip punctuation/`…`, collapse spaces) then
+     equal / prefix / token-containment. Deliberately conservative: it merges a
+     name with a truncated or longer variant of itself but never two distinct
+     merchants sharing only a generic prefix. The input screen lists ignored
+     names as removable chips.
 4. **Review + bulk insert** — approved rows are `bulkInsert`ed into the
    `expenses` collection (same amount normalization as `AddExpense`). No
    receipt/items, no attachments.
 
-No DB schema change and no new table — it's a sync function over the existing
-`expenses` schema. `_shared/openrouter.ts` was refactored so the strict JSON
-schema is a parameter: `callOpenRouterSchema<T>(…, jsonSchema)` is the generic
-path; `callOpenRouter` is now a thin receipt wrapper around it. Usage is logged
-to `ai_usage_log` with `function_name='parse-expense-list'`, `pass='extract'`
-(no CHECK constraint on those columns).
+`_shared/openrouter.ts` was refactored so the strict JSON schema is a parameter:
+`callOpenRouterSchema<T>(…, jsonSchema)` is the generic path; `callOpenRouter` is
+now a thin receipt wrapper around it. Usage is logged to `ai_usage_log` with
+`function_name='parse-expense-list'`, `pass='extract'` (no CHECK constraint on
+those columns).
 
 Files: `src/components/expenses/BulkExpenseUploadFlow.tsx`,
 `BulkRowDetailEditor.tsx`, `src/lib/ai/parseExpenseList.ts`,
-`src/lib/ai/expenseListMatching.ts` (+ `.test.ts`),
-`supabase/functions/parse-expense-list/index.ts`.
+`src/lib/ai/expenseListMatching.ts`, `src/lib/ai/ignoreList.ts` (+ `.test.ts`),
+`src/db/schemas/expenseImportIgnore.schema.ts`,
+`supabase/functions/parse-expense-list/index.ts`,
+`supabase/migrations/20260617120000_expense_import_ignores.sql`.
 
 ## Files of interest
 

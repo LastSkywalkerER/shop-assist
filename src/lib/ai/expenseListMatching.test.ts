@@ -14,6 +14,7 @@ const exp = (over: Partial<ExpenseDocument> & { id: string; amount: number }): E
 const row = (over: Partial<ParsedExpenseRow> & { amount: number }): ParsedExpenseRow => ({
   date: null,
   name: 'Расход',
+  direction: 'expense',
   currency: null,
   matchedLabel: null,
   categoryName: null,

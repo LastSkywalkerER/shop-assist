@@ -173,13 +173,14 @@ export const EXPENSE_LIST_JSON_SCHEMA = {
           properties: {
             date: { type: ['string', 'null'], description: 'ISO date YYYY-MM-DD, or null if the line has no date' },
             name: { type: 'string', description: 'human-readable expense name, exactly as in the source' },
-            amount: { type: 'number' },
+            amount: { type: 'number', description: 'ABSOLUTE (always positive) value of the transaction; never include the sign here' },
+            direction: { type: 'string', enum: ['expense', 'income'], description: 'expense = money out (red / negative / minus / списание); income = money in (green / positive / plus / поступление)' },
             currency: { type: ['string', 'null'], description: 'ISO 4217 if the row has its own currency, else null' },
             matchedLabel: { type: ['string', 'null'], description: 'exact string from the provided labels[], else null' },
             categoryName: { type: ['string', 'null'], description: 'exact string from the provided categoryNames[], else null' },
             confidence: { type: 'number', minimum: 0, maximum: 1 },
           },
-          required: ['date', 'name', 'amount', 'currency', 'matchedLabel', 'categoryName', 'confidence'],
+          required: ['date', 'name', 'amount', 'direction', 'currency', 'matchedLabel', 'categoryName', 'confidence'],
         },
       },
     },
@@ -187,18 +188,22 @@ export const EXPENSE_LIST_JSON_SCHEMA = {
   },
 }
 
-export const EXPENSE_LIST_PROMPT = `Ты — парсер списка расходов (журнала трат). На входе изображение, PDF или текст со списком трат, где одна строка/позиция = один расход. Извлеки строго в JSON:
+export const EXPENSE_LIST_PROMPT = `Ты — парсер списка расходов (журнала трат, выписки по счёту). На входе может быть НЕСКОЛЬКО изображений (страниц/скриншотов одной выписки), PDF или текст. Одна строка/позиция = одна операция. Если изображений несколько — считай их продолжением одного списка и не дублируй строки. Извлеки строго в JSON:
 - currency — валюта по умолчанию для всего списка (ISO 4217: BYN/RUB/USD/EUR…), по умолчанию BYN.
-- rows[] — по одному элементу на каждую трату:
-    * date — дата траты в формате YYYY-MM-DD. Если у строки нет даты — null.
-    * name — человеко-читаемое название траты РОВНО как в источнике. Исправь только явные опечатки и смешанные o/о, a/а, c/с, p/р в кириллице.
-    * amount — сумма траты числом (только число, без валюты).
+- rows[] — по одному элементу на каждую операцию:
+    * date — дата операции в формате YYYY-MM-DD. Если у строки нет даты — null.
+    * name — человеко-читаемое название операции РОВНО как в источнике. Исправь только явные опечатки и смешанные o/о, a/а, c/с, p/р в кириллице.
+    * amount — сумма операции числом, ВСЕГДА ПОЛОЖИТЕЛЬНАЯ (модуль, без знака и без валюты). Знак передавай через direction, а НЕ в amount.
+    * direction — направление движения денег:
+        – "expense" (расход, деньги уходят): сумма красная и/или со знаком «-», помечена как списание/оплата/покупка/перевод исходящий. В выписках это обычная трата.
+        – "income" (доход, деньги приходят): сумма зелёная и/или со знаком «+», помечена как поступление/зачисление/возврат/пополнение/входящий перевод.
+        Ориентируйся в первую очередь на ЦВЕТ и ЗНАК суммы, затем на текст операции. Если совсем непонятно — ставь "expense".
     * currency — ISO-код валюты, если у конкретной строки своя валюта; иначе null.
     * matchedLabel — РОВНО строка из переданного списка labels, если строка явно относится к уже известному пользователю названию расхода; иначе null. НЕ выдумывай — только точная подстановка из labels.
     * categoryName — РОВНО строка из переданного списка categoryNames, которая лучше всего описывает трату; иначе null.
     * confidence — 0..1, уверенность в правильности строки.
 
-Игнорируй итоги, подытоги, заголовки таблиц, разделители и служебные строки. Не выдумывай траты — извлекай только то, что есть в источнике.`
+Игнорируй итоги, подытоги, заголовки таблиц, остаток по счёту, разделители и служебные строки. Не выдумывай операции — извлекай только то, что есть в источнике.`
 
 export function base64Bytes(b64: string): number {
   const padding = (b64.match(/=+$/)?.[0]?.length ?? 0)

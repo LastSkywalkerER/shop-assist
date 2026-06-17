@@ -56,6 +56,18 @@ export interface SuperCategoryDocument {
   updatedAt: string
 }
 
+/**
+ * A name to skip when importing an expense list (bulk upload). Matched against
+ * parsed row names (normalized) to hide near-identical rows and skip them on
+ * future recognitions. Room-scoped and synced.
+ */
+export interface ExpenseImportIgnoreDocument {
+  id: string
+  name: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ExpenseDocument {
   id: string
   name?: string
