@@ -5,7 +5,8 @@ export const BASE_CURRENCY = 'BYN'
 
 /**
  * Pick the most recent rate document for each currency.
- * Rates are stored as `rate` BYN per `scale` units of the currency.
+ * `rate` is already normalized to BYN per 1 unit of the currency; `scale` is
+ * the original NBRB scale, kept for audit only and not used in conversion.
  */
 export function buildLatestRateMap(
   rates: CurrencyRateDocument[],
@@ -32,6 +33,7 @@ export function convertToBase(
   const cur = (currency || BASE_CURRENCY).toUpperCase()
   if (cur === BASE_CURRENCY) return amount
   const rate = rateMap.get(cur)
-  if (!rate || !rate.scale) return null
-  return (amount * rate.rate) / rate.scale
+  if (!rate) return null
+  // `rate` is BYN per 1 unit already; the NBRB `scale` is audit-only.
+  return amount * rate.rate
 }

@@ -29,7 +29,7 @@ describe('convertToBaseAtDate', () => {
     rate({ currency: 'USD', date: '2026-06-01', rate: 3.0 }),
     rate({ currency: 'USD', date: '2026-06-05', rate: 3.2 }),
     rate({ currency: 'USD', date: '2026-06-10', rate: 3.4 }),
-    rate({ currency: 'RUB', date: '2026-06-01', rate: 3.4, scale: 100 }),
+    rate({ currency: 'RUB', date: '2026-06-01', rate: 0.034, scale: 100 }),
   ])
 
   it('returns the amount unchanged for the base currency', () => {
@@ -51,7 +51,7 @@ describe('convertToBaseAtDate', () => {
     expect(convertToBaseAtDate(10, 'USD', '2025-01-01', history)).toBeCloseTo(30, 5)
   })
 
-  it('applies the NBRB scale', () => {
+  it('multiplies by the per-unit rate and ignores scale', () => {
     expect(convertToBaseAtDate(1000, 'RUB', '2026-06-05', history)).toBeCloseTo(34, 5)
   })
 
@@ -59,8 +59,8 @@ describe('convertToBaseAtDate', () => {
     expect(convertToBaseAtDate(10, 'EUR', '2026-06-05', history)).toBeNull()
   })
 
-  it('returns null when the stored scale is falsy', () => {
-    const broken = buildRateHistoryMap([rate({ currency: 'PLN', date: '2026-06-01', rate: 0.9, scale: 0 })])
-    expect(convertToBaseAtDate(10, 'PLN', '2026-06-05', broken)).toBeNull()
+  it('ignores the NBRB scale (rate is already per-unit)', () => {
+    const pln = buildRateHistoryMap([rate({ currency: 'PLN', date: '2026-06-01', rate: 0.75, scale: 10 })])
+    expect(convertToBaseAtDate(125, 'PLN', '2026-06-05', pln)).toBeCloseTo(93.75, 5)
   })
 })
