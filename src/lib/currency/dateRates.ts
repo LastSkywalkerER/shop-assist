@@ -58,6 +58,6 @@ export function convertToBaseAtDate(
   }
 
   const rate = found >= 0 ? list[found] : list[0]
-  if (!rate.scale) return null
-  return (amount * rate.rate) / rate.scale
+  // `rate` is BYN per 1 unit already; the NBRB `scale` is audit-only.
+  return amount * rate.rate
 }

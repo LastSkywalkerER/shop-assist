@@ -24,9 +24,10 @@ describe('buildLatestRateMap', () => {
 })
 
 describe('convertToBase', () => {
+  // `rate` is stored as BYN per 1 unit; `scale` is audit-only and ignored.
   const map = buildLatestRateMap([
     rate({ currency: 'USD', date: '2026-06-02', rate: 3.2, scale: 1 }),
-    rate({ currency: 'RUB', date: '2026-06-02', rate: 3.4, scale: 100 }),
+    rate({ currency: 'RUB', date: '2026-06-02', rate: 0.034, scale: 100 }),
   ])
 
   it('returns the amount unchanged for the base currency', () => {
@@ -34,7 +35,7 @@ describe('convertToBase', () => {
     expect(convertToBase(42, 'byn', map)).toBe(42)
   })
 
-  it('applies rate / scale', () => {
+  it('multiplies by the per-unit rate and ignores scale', () => {
     expect(convertToBase(10, 'USD', map)).toBeCloseTo(32, 5)
     expect(convertToBase(1000, 'RUB', map)).toBeCloseTo(34, 5)
   })
