@@ -9,7 +9,13 @@ const corsHeaders = {
 
 // NBRB sets most pairs daily; IDR (and some others) are monthly (periodicity=1) only.
 const DAILY_CURRENCIES = ['USD', 'EUR', 'RUB', 'PLN', 'UAH'] as const
-const MONTHLY_CURRENCIES = ['IDR'] as const
+const MONTHLY_CURRENCIES = ['IDR', 'HUF', 'RSD'] as const
+
+// Not published by NBRB. BAM is pegged to EUR (1 EUR = 1.95583 BAM).
+// Rate derived from NBRB EUR on 2026-07-16 (3.2957 BYN/EUR) → 1.6851 BYN/BAM.
+const FIXED_CURRENCY_RATES: Record<string, { rate: number; source: string }> = {
+  BAM: { rate: 1.685065, source: 'fixed' },
+}
 
 interface NbrbRate {
   Cur_ID: number
@@ -105,6 +111,19 @@ serve(async (req) => {
       const entry = monthlyRates.find(r => r.Cur_Abbreviation === code)
       if (entry) rows.push(buildRow(code, entry))
     }
+    for (const [code, { rate, source }] of Object.entries(FIXED_CURRENCY_RATES)) {
+      rows.push({
+        id: crypto.randomUUID(),
+        currency: code,
+        date: ondate,
+        rate,
+        scale: 1,
+        source,
+        created_at: nowIso,
+        updated_at: nowIso,
+        _deleted: false,
+      })
+    }
 
     if (rows.length === 0) {
       return new Response(
@@ -113,7 +132,7 @@ serve(async (req) => {
           ondate,
           skipped: true,
           reason: 'tracked currencies missing from NBRB response',
-          expected: [...DAILY_CURRENCIES, ...MONTHLY_CURRENCIES],
+          expected: [...DAILY_CURRENCIES, ...MONTHLY_CURRENCIES, ...Object.keys(FIXED_CURRENCY_RATES)],
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
