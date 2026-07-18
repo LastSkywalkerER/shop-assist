@@ -33,7 +33,7 @@ export const RECEIPT_JSON_SCHEMA = {
         required: ['name', 'address'],
       },
       date: { type: ['string', 'null'], description: 'ISO date (YYYY-MM-DD), if visible on receipt' },
-      currency: { type: 'string', description: 'ISO 4217 code such as BYN, RUB, USD, EUR, HUF, RSD, BAM' },
+      currency: { type: 'string', description: 'ISO 4217 code such as BYN, RUB, USD, EUR, HUF, RSD, BAM, CZK' },
       total: { type: ['number', 'null'] },
       items: {
         type: 'array',
@@ -88,7 +88,7 @@ export const EXTRACT_PROMPT = `Ты — парсер кассовых чеков
 - store.name — название магазина или сети
 - store.address — ПОЛНЫЙ адрес покупки одной строкой. Если магазин в ТРЦ/ТЦ/МФК/аутлете/рынке — укажи название ТЦ перед уличным адресом (например: "ТРЦ Палаццо, г. Минск, ул. Тимирязева, 74, корпус А"). Не теряй город, улицу, дом, корпус.
 - date — YYYY-MM-DD
-- currency — BYN/RUB/USD/EUR/HUF/RSD/BAM/PLN/UAH и т.п. (по умолчанию BYN)
+- currency — BYN/RUB/USD/EUR/HUF/RSD/BAM/CZK/PLN/UAH и т.п. (по умолчанию BYN)
 - total — итоговая сумма
 - items[] — позиции. Для каждой:
     * name — исправь смешанные o/о, a/а, c/с в кириллице.
@@ -164,7 +164,7 @@ export const EXPENSE_LIST_JSON_SCHEMA = {
     type: 'object',
     additionalProperties: false,
     properties: {
-      currency: { type: 'string', description: 'ISO 4217 default currency for the whole list (BYN/RUB/USD/EUR/HUF/RSD/BAM…)' },
+      currency: { type: 'string', description: 'ISO 4217 default currency for the whole list (BYN/RUB/USD/EUR/HUF/RSD/BAM/CZK…)' },
       rows: {
         type: 'array',
         items: {
@@ -189,7 +189,7 @@ export const EXPENSE_LIST_JSON_SCHEMA = {
 }
 
 export const EXPENSE_LIST_PROMPT = `Ты — парсер списка расходов (журнала трат, выписки по счёту). На входе может быть НЕСКОЛЬКО изображений (страниц/скриншотов одной выписки), PDF или текст. Одна строка/позиция = одна операция. Если изображений несколько — считай их продолжением одного списка и не дублируй строки. Извлеки строго в JSON:
-- currency — валюта по умолчанию для всего списка (ISO 4217: BYN/RUB/USD/EUR/HUF/RSD/BAM…), по умолчанию BYN.
+- currency — валюта по умолчанию для всего списка (ISO 4217: BYN/RUB/USD/EUR/HUF/RSD/BAM/CZK…), по умолчанию BYN.
 - rows[] — по одному элементу на каждую операцию:
     * date — дата операции в формате YYYY-MM-DD. Если у строки нет даты — null.
     * name — человеко-читаемое название операции РОВНО как в источнике. Исправь только явные опечатки и смешанные o/о, a/а, c/с, p/р в кириллице.

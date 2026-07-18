@@ -14,6 +14,7 @@ export const CURRENCIES: Currency[] = [
   { code: 'HUF', symbol: 'Ft' },
   { code: 'RSD', symbol: 'din' },
   { code: 'BAM', symbol: 'KM' },
+  { code: 'CZK', symbol: 'Kč' },
 ]
 
 export const DEFAULT_CURRENCY = 'BYN'

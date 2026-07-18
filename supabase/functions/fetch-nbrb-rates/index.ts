@@ -8,7 +8,7 @@ const corsHeaders = {
 }
 
 // NBRB sets most pairs daily; IDR (and some others) are monthly (periodicity=1) only.
-const DAILY_CURRENCIES = ['USD', 'EUR', 'RUB', 'PLN', 'UAH'] as const
+const DAILY_CURRENCIES = ['USD', 'EUR', 'RUB', 'PLN', 'UAH', 'CZK'] as const
 const MONTHLY_CURRENCIES = ['IDR', 'HUF', 'RSD'] as const
 
 // Not published by NBRB. BAM is pegged to EUR (1 EUR = 1.95583 BAM).
