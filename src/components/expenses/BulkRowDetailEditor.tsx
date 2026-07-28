@@ -7,21 +7,20 @@ import { Input } from '../shared/Input'
 import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
 import { CreatorField } from '../shared/CreatorField'
 
-/** Attributes shared across every parsed row with the same source name. */
-export interface SharedOverride {
+/** Manual overrides for a single parsed row. Every field applies to that row only. */
+export interface RowOverride {
   customName?: string
   storeId?: string
   categoryId?: string
   notes?: string
   creatorName?: string
-}
-
-/** Per-row attributes (amount/date/currency stay specific to one parsed line). */
-export interface RowOverride {
   amount?: string
   date?: string
   currency?: string
 }
+
+/** Fields that an opt-in bulk apply copies to sibling rows (amount/date/currency stay per row). */
+export type SharedRowFields = Omit<RowOverride, 'amount' | 'date' | 'currency'>
 
 export interface BulkRowDetailInitial {
   name: string
@@ -35,7 +34,7 @@ export interface BulkRowDetailInitial {
 }
 
 interface BulkRowDetailEditorProps {
-  /** Raw source name — shown so the user knows the name change propagates. */
+  /** Raw source name — shown on the opt-in bulk apply toggle. */
   rawName: string
   siblingCount: number
   initial: BulkRowDetailInitial
@@ -45,7 +44,7 @@ interface BulkRowDetailEditorProps {
   onCreateStore: (data: { name: string; address?: string }) => Promise<StoreDocument | undefined>
   onCreateCategory: (name: string) => Promise<ExpenseCategoryDocument | undefined>
   roomId: string | null
-  onSave: (shared: SharedOverride, row: RowOverride) => void
+  onSave: (values: RowOverride, applyToSiblings: boolean) => void
   onClose: () => void
 }
 
@@ -74,6 +73,8 @@ export function BulkRowDetailEditor({
   )
   const [notes, setNotes] = useState(initial.notes ?? '')
   const [creatorName, setCreatorName] = useState(initial.creatorName ?? '')
+  // Off by default: an edit touches only the row the user opened.
+  const [applyToSiblings, setApplyToSiblings] = useState(false)
 
   const handleCreateStore = async (data: { name: string; address?: string }) => {
     const store = await onCreateStore(data)
@@ -94,8 +95,11 @@ export function BulkRowDetailEditor({
         categoryId: selectedCategory?.id,
         notes: notes.trim() || undefined,
         creatorName: creatorName.trim() || undefined,
+        amount,
+        currency,
+        date,
       },
-      { amount, currency, date },
+      applyToSiblings,
     )
   }
 
@@ -116,9 +120,27 @@ export function BulkRowDetailEditor({
           </div>
 
           {siblingCount > 1 && (
-            <div className="bg-primary/10 border border-primary/20 rounded-2xl px-3 py-2.5 text-[12px] text-text-hint">
-              Имя и общие поля применятся ко всем строкам с исходным названием «{rawName}» ({siblingCount} шт.). Сумма и дата — только для этой строки.
-            </div>
+            <button
+              type="button"
+              onClick={() => setApplyToSiblings((v) => !v)}
+              className="w-full flex items-start gap-2.5 bg-bg-secondary/40 rounded-2xl px-3 py-2.5 text-left active:opacity-60 transition-opacity"
+            >
+              <span
+                className={`mt-0.5 w-5 h-5 shrink-0 rounded border-2 flex items-center justify-center transition-colors ${
+                  applyToSiblings ? 'bg-primary border-primary' : 'border-separator'
+                }`}
+              >
+                {applyToSiblings && (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                )}
+              </span>
+              <span className="flex-1 min-w-0 text-[12px] text-text-hint">
+                Применить название, магазин, категорию и комментарий ко всем строкам «{rawName}» ({siblingCount} шт.).
+                Сумма и дата в любом случае меняются только у этой строки.
+              </span>
+            </button>
           )}
 
           <ExpenseNameAutocomplete
