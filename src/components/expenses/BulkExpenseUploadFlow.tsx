@@ -17,8 +17,8 @@ import { matchParsedRows } from '../../lib/ai/expenseListMatching'
 import { isIgnored, namesMatch } from '../../lib/ai/ignoreList'
 import {
   BulkRowDetailEditor,
-  type SharedOverride,
   type RowOverride,
+  type SharedRowFields,
 } from './BulkRowDetailEditor'
 
 interface BulkExpenseUploadFlowProps {
@@ -64,7 +64,8 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
   const [result, setResult] = useState<ParseExpenseListResult | null>(null)
   const [items, setItems] = useState<RowItem[]>([])
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
-  const [sharedByRawName, setSharedByRawName] = useState<Record<string, SharedOverride>>({})
+  // Manual edits are keyed by row id, never by source name: a bank statement
+  // repeats the same generic name ("Безналичная операция") on unrelated rows.
   const [perRowById, setPerRowById] = useState<Record<string, RowOverride>>({})
   const [editingId, setEditingId] = useState<string | null>(null)
 
@@ -93,24 +94,25 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
   }, [items])
 
   function effective(item: RowItem) {
-    const shared = sharedByRawName[item.row.name] ?? {}
     const per = perRowById[item.id] ?? {}
-    const cn = shared.customName?.trim()
+    const cn = per.customName?.trim()
     const name = cn || item.row.matchedLabel || item.row.name
     const amount = per.amount ?? String(item.row.amount)
     const currency = per.currency ?? item.row.currency ?? listCurrency
     const date = per.date ?? item.row.date ?? TODAY()
-    const categoryId = shared.categoryId
-      ?? (item.row.categoryName ? categoryByName.get(item.row.categoryName.toLowerCase()) : undefined)
+    // Once the row has been edited its category wins, including when cleared.
+    const categoryId = 'categoryId' in per
+      ? per.categoryId
+      : (item.row.categoryName ? categoryByName.get(item.row.categoryName.toLowerCase()) : undefined)
     return {
       name,
       amount,
       currency,
       date,
       categoryId,
-      storeId: shared.storeId,
-      notes: shared.notes,
-      creatorName: shared.creatorName,
+      storeId: per.storeId,
+      notes: per.notes,
+      creatorName: per.creatorName,
     }
   }
 
@@ -171,7 +173,6 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
       setResult(res)
       setItems(visible)
       setHiddenByIgnore(allItems.length - visible.length)
-      setSharedByRawName({})
       setPerRowById({})
       // Pre-select missing expenses only; income and already-recorded rows start off.
       setSelectedRowIds(new Set(
@@ -229,13 +230,29 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
     if (doc) await doc.remove()
   }
 
-  const setQuickName = (rawName: string, value: string) => {
-    setSharedByRawName((prev) => ({ ...prev, [rawName]: { ...prev[rawName], customName: value } }))
+  const setQuickName = (id: string, value: string) => {
+    setPerRowById((prev) => ({ ...prev, [id]: { ...prev[id], customName: value } }))
   }
 
-  const handleDetailSave = (item: RowItem, shared: SharedOverride, row: RowOverride) => {
-    setSharedByRawName((prev) => ({ ...prev, [item.row.name]: { ...prev[item.row.name], ...shared } }))
-    setPerRowById((prev) => ({ ...prev, [item.id]: { ...prev[item.id], ...row } }))
+  const handleDetailSave = (item: RowItem, values: RowOverride, applyToSiblings: boolean) => {
+    setPerRowById((prev) => {
+      const next = { ...prev, [item.id]: { ...prev[item.id], ...values } }
+      if (applyToSiblings) {
+        const sharedFields: SharedRowFields = {
+          customName: values.customName,
+          storeId: values.storeId,
+          categoryId: values.categoryId,
+          notes: values.notes,
+          creatorName: values.creatorName,
+        }
+        for (const other of items) {
+          if (other.id !== item.id && other.row.name === item.row.name) {
+            next[other.id] = { ...next[other.id], ...sharedFields }
+          }
+        }
+      }
+      return next
+    })
     setEditingId(null)
   }
 
@@ -501,8 +518,8 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
                       <div className="flex items-center gap-2 mt-2 pl-[30px]">
                         <input
                           type="text"
-                          value={sharedByRawName[item.row.name]?.customName ?? (item.row.matchedLabel || item.row.name)}
-                          onChange={(e) => setQuickName(item.row.name, e.currentTarget.value)}
+                          value={perRowById[item.id]?.customName ?? (item.row.matchedLabel || item.row.name)}
+                          onChange={(e) => setQuickName(item.id, e.currentTarget.value)}
                           placeholder="Название"
                           className="flex-1 min-w-0 bg-bg-secondary/40 rounded-lg px-3 py-1.5 text-[14px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 outline-none transition-shadow"
                         />
@@ -627,7 +644,7 @@ export function BulkExpenseUploadFlow({ onClose }: BulkExpenseUploadFlowProps) {
           onCreateStore={handleCreateStore}
           onCreateCategory={handleCreateCategory}
           roomId={roomId}
-          onSave={(shared, row) => handleDetailSave(editingItem, shared, row)}
+          onSave={(values, applyToSiblings) => handleDetailSave(editingItem, values, applyToSiblings)}
           onClose={() => setEditingId(null)}
         />
       )}
