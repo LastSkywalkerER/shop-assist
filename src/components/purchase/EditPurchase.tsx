@@ -13,6 +13,7 @@ import { UrlInput, type UrlMeta } from './UrlInput'
 import { parseLinkMeta, serializeLinkMeta } from '../../lib/linkMeta'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { blobStoreGet, blobStorePut, blobStoreRemove, addPendingUpload } from '../../db/blobStore'
+import { toDateInputValue, withDatePart } from '../../lib/date'
 
 interface EditPurchaseProps {
   purchase: PurchaseDocument
@@ -37,7 +38,7 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
   )
   const [price, setPrice] = useState(purchase.price.toString())
   const [currency, setCurrency] = useState(purchase.currency || DEFAULT_CURRENCY)
-  const [date, setDate] = useState(purchase.purchaseDate.split('T')[0])
+  const [date, setDate] = useState(() => toDateInputValue(purchase.purchaseDate))
   const [manufacturer, setManufacturer] = useState(purchase.manufacturer ?? '')
   const [packageVolume, setPackageVolume] = useState(purchase.packageVolume ?? '')
   const [variety, setVariety] = useState(purchase.variety ?? '')
@@ -142,7 +143,8 @@ export function EditPurchase({ purchase, collection, onDone }: EditPurchaseProps
           storeId: resolvedStore.id,
           price: parseFloat(parseFloat(price).toFixed(2)),
           currency,
-          purchaseDate: new Date(date).toISOString(),
+          // Keeps the stored time of day: only the calendar date is editable here.
+          purchaseDate: withDatePart(purchase.purchaseDate, date),
           manufacturer: manufacturer.trim() || undefined,
           packageVolume: packageVolume.trim() || undefined,
           variety: variety.trim() || undefined,

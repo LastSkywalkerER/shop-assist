@@ -9,6 +9,7 @@ import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { CreatorField } from '../shared/CreatorField'
 import { useAuth } from '../../contexts/AuthContext'
+import { toDateInputValue, withDatePart } from '../../lib/date'
 
 interface EditExpenseProps {
   expense: ExpenseDocument
@@ -38,7 +39,7 @@ export function EditExpense({
   )
   const [amount, setAmount] = useState(expense.amount.toString())
   const [currency, setCurrency] = useState(expense.currency || DEFAULT_CURRENCY)
-  const [date, setDate] = useState(expense.date.split('T')[0])
+  const [date, setDate] = useState(() => toDateInputValue(expense.date))
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryDocument | null>(
     expense.categoryId ? categories.find((c) => c.id === expense.categoryId) || null : null
   )
@@ -47,11 +48,14 @@ export function EditExpense({
   const [saving, setSaving] = useState(false)
   const [validationError, setValidationError] = useState('')
 
+  // Keeps the stored time of day: only the calendar date is editable here.
+  const nextDate = withDatePart(expense.date, date)
+
   const hasChanges =
     name.trim() !== (expense.name || '') ||
     selectedStore?.id !== expense.storeId ||
     parseFloat(amount) !== expense.amount ||
-    new Date(date).toISOString() !== expense.date ||
+    nextDate !== expense.date ||
     currency !== (expense.currency || DEFAULT_CURRENCY) ||
     selectedCategory?.id !== expense.categoryId ||
     notes.trim() !== (expense.notes || '') ||
@@ -78,7 +82,7 @@ export function EditExpense({
           storeId: selectedStore?.id,
           amount: parseFloat(parseFloat(amount).toFixed(2)),
           currency,
-          date: new Date(date).toISOString(),
+          date: nextDate,
           categoryId: selectedCategory?.id,
           notes: notes.trim() || undefined,
           creatorName: creatorName.trim() || undefined,
