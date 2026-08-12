@@ -5,15 +5,20 @@ import { useRxCollection } from '../../db/hooks'
 import type { ExpenseDocument } from '../../db/types'
 import { CURRENCIES, DEFAULT_CURRENCY } from '../../config/currencies'
 import { useAuth } from '../../contexts/AuthContext'
+import { useCalcInput } from '../../hooks/useCalcInput'
+import { CalcKeypad } from '../shared/CalcKeypad'
 
 interface ExpenseQuickAddBarProps {
   expenses?: Array<{ name?: string; categoryId?: string; date?: string }>
   onAdd?: () => void
+  /** Fires when the calculator strip opens/closes — the page can move
+   *  floating buttons out of the way while it is expanded. */
+  onCalcOpenChange?: (open: boolean) => void
 }
 
 const MAX_SUGGESTIONS = 5
 
-export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarProps) {
+export function ExpenseQuickAddBar({ expenses = [], onAdd, onCalcOpenChange }: ExpenseQuickAddBarProps) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
@@ -106,6 +111,20 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
     }
   }
 
+  // The amount field doubles as a calculator: `12+3*2` → 18.
+  const amountCalc = useCalcInput({
+    value: amount,
+    onChange: setAmount,
+    decimals: 2,
+    min: 0,
+    onEnter: () => void handleAdd(),
+  })
+
+  const calcOpen = amountCalc.focused
+  useEffect(() => {
+    onCalcOpenChange?.(calcOpen)
+  }, [calcOpen, onCalcOpenChange])
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
@@ -125,6 +144,7 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
     <div className="fixed bottom-0 left-0 right-0 z-10 pointer-events-none">
       <div className="px-4 pb-[80px] pt-2 pointer-events-auto">
         <div ref={wrapperRef} className="relative">
+          <CalcKeypad calc={amountCalc} className="mb-1.5 glass border border-separator/20 shadow-[0_4px_20px_rgba(0,0,0,0.1)]" />
           <div className="glass rounded-2xl border border-separator/20 ring-1 ring-primary/15 shadow-[0_4px_20px_rgba(0,0,0,0.1)] flex items-center gap-2 px-3 py-2.5 min-h-[52px]">
             <button
               type="button"
@@ -182,15 +202,9 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
                 )}
             </div>
           <input
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            onKeyDown={handleKeyDown}
+            {...amountCalc.inputProps}
             placeholder="0"
-            className="w-16 bg-transparent text-[15px] text-text placeholder:text-text-hint outline-none text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            className="w-16 bg-transparent text-[15px] text-text placeholder:text-text-hint outline-none text-right"
           />
           <select
             value={currency}

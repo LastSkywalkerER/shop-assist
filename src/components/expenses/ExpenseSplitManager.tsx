@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useId } from 'react'
 import type { ExpenseShareMode } from '../../db/types'
 import { useRoomMembers } from '../../hooks/useRoomMembers'
+import { CalcInput } from '../shared/CalcInput'
 import { computeShares, lineItemTotal, type ParticipantInput } from '../../lib/expenses/splitting'
 
 /** Local editable shape for a participant (matches ParticipantInput). */
@@ -190,13 +191,12 @@ export function ExpenseSplitManager({
             </div>
 
             {p.shareMode === 'amount' && (
-              <input
-                type="number"
-                inputMode="decimal"
-                value={p.shareAmount ?? ''}
-                onChange={(e) =>
-                  update(p.id, { shareAmount: e.currentTarget.value === '' ? undefined : parseFloat(e.currentTarget.value) })
+              <CalcInput
+                value={p.shareAmount === undefined ? '' : String(p.shareAmount)}
+                onChange={(value) =>
+                  update(p.id, { shareAmount: value === '' ? undefined : parseFloat(value) })
                 }
+                min={0}
                 placeholder={`Сумма доли, ${currency}`}
                 className="w-full bg-bg-secondary/40 rounded-xl px-3 py-2 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
               />
@@ -234,19 +234,19 @@ export function ExpenseSplitManager({
             )}
 
             {/* Already settled */}
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] text-text-hint pl-1">Уже отдал</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                value={p.settledAmount ?? ''}
-                onChange={(e) =>
-                  update(p.id, { settledAmount: e.currentTarget.value === '' ? undefined : parseFloat(e.currentTarget.value) })
+            <div className="flex items-start gap-2">
+              <span className="text-[13px] text-text-hint pl-1 py-1.5">Уже отдал</span>
+              <CalcInput
+                value={p.settledAmount === undefined ? '' : String(p.settledAmount)}
+                onChange={(value) =>
+                  update(p.id, { settledAmount: value === '' ? undefined : parseFloat(value) })
                 }
+                min={0}
                 placeholder="0"
-                className="w-24 bg-bg-secondary/40 rounded-xl px-3 py-1.5 text-[14px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow text-right tabular-nums"
+                wrapperClassName="flex-1 min-w-0"
+                className="w-full bg-bg-secondary/40 rounded-xl px-3 py-1.5 text-[14px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow text-right tabular-nums"
               />
-              <span className="text-[13px] text-text-hint">{currency}</span>
+              <span className="text-[13px] text-text-hint py-1.5">{currency}</span>
             </div>
           </div>
         )

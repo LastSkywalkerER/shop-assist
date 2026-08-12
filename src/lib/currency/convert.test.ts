@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { CurrencyRateDocument } from '../../db/types'
-import { buildLatestRateMap, convertToBase, BASE_CURRENCY } from './convert'
+import { buildLatestRateMap, convertToBase, convertBetween, BASE_CURRENCY } from './convert'
 
 const rate = (over: Partial<CurrencyRateDocument> & { currency: string; date: string }): CurrencyRateDocument => ({
   id: `${over.currency}-${over.date}`,
@@ -42,5 +42,28 @@ describe('convertToBase', () => {
 
   it('returns null when no rate is available', () => {
     expect(convertToBase(10, 'EUR', map)).toBeNull()
+  })
+})
+
+describe('convertBetween', () => {
+  const map = buildLatestRateMap([
+    rate({ currency: 'USD', date: '2026-06-02', rate: 3.2 }),
+    rate({ currency: 'EUR', date: '2026-06-02', rate: 3.6 }),
+  ])
+
+  it('returns the amount unchanged when both sides match', () => {
+    expect(convertBetween(42, 'USD', 'usd', map)).toBe(42)
+    expect(convertBetween(42, '', BASE_CURRENCY, map)).toBe(42)
+  })
+
+  it('converts through the base currency', () => {
+    expect(convertBetween(10, 'USD', BASE_CURRENCY, map)).toBeCloseTo(32, 5)
+    expect(convertBetween(32, BASE_CURRENCY, 'USD', map)).toBeCloseTo(10, 5)
+    expect(convertBetween(9, 'EUR', 'USD', map)).toBeCloseTo(10.125, 5)
+  })
+
+  it('returns null when a rate is missing', () => {
+    expect(convertBetween(10, 'PLN', BASE_CURRENCY, map)).toBeNull()
+    expect(convertBetween(10, 'USD', 'PLN', map)).toBeNull()
   })
 })

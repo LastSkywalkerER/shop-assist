@@ -37,3 +37,27 @@ export function convertToBase(
   // `rate` is BYN per 1 unit already; the NBRB `scale` is audit-only.
   return amount * rate.rate
 }
+
+/**
+ * Convert `amount` between two arbitrary currencies, going through the base.
+ * Returns `null` when either side has no usable rate, so callers can say
+ * "couldn't convert" instead of silently mixing currencies.
+ */
+export function convertBetween(
+  amount: number,
+  from: string,
+  to: string,
+  rateMap: Map<string, CurrencyRateDocument>,
+): number | null {
+  const src = (from || BASE_CURRENCY).toUpperCase()
+  const dst = (to || BASE_CURRENCY).toUpperCase()
+  if (src === dst) return amount
+
+  const inBase = convertToBase(amount, src, rateMap)
+  if (inBase === null) return null
+  if (dst === BASE_CURRENCY) return inBase
+
+  const dstRate = rateMap.get(dst)
+  if (!dstRate || !dstRate.rate) return null
+  return inBase / dstRate.rate
+}

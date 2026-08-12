@@ -1,4 +1,6 @@
 import { CURRENCIES, DEFAULT_CURRENCY } from '../../config/currencies'
+import { useCalcInput } from '../../hooks/useCalcInput'
+import { CalcKeypad } from './CalcKeypad'
 
 interface CurrencyAmountInputProps {
   label: string
@@ -20,6 +22,8 @@ export function CurrencyAmountInput({
   required,
 }: CurrencyAmountInputProps) {
   const inputId = label.toLowerCase().replace(/\s+/g, '-')
+  // Accepts math as well as plain numbers: `12+3*2`, `100-15%`.
+  const calc = useCalcInput({ value: amount, onChange: onAmountChange, decimals: 2, min: 0 })
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -28,13 +32,8 @@ export function CurrencyAmountInput({
       </label>
       <div className="flex bg-surface rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 transition-shadow">
         <input
+          {...calc.inputProps}
           id={inputId}
-          type="number"
-          inputMode="decimal"
-          step="0.01"
-          min="0"
-          value={amount}
-          onChange={e => onAmountChange(e.target.value)}
           placeholder={placeholder}
           required={required}
           className="flex-1 min-w-0 bg-transparent px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 outline-none"
@@ -49,6 +48,7 @@ export function CurrencyAmountInput({
           ))}
         </select>
       </div>
+      <CalcKeypad calc={calc} />
     </div>
   )
 }

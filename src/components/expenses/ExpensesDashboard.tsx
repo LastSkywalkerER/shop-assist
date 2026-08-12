@@ -32,6 +32,7 @@ export function ExpensesDashboard() {
   const [deleting, setDeleting] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [quickCalcOpen, setQuickCalcOpen] = useState(false)
 
   // Long-press on the scan FAB reveals the (hidden) bulk expense-list import;
   // a normal tap still opens the receipt scanner.
@@ -304,7 +305,10 @@ export function ExpensesDashboard() {
               onContextMenu={(e) => e.preventDefault()}
               aria-label="Сканировать чек"
               title="Сканировать чек (удерживайте — импорт списка расходов)"
-              className="fixed bottom-[160px] right-5 w-[52px] h-[52px] bg-surface border border-separator/40 text-primary-text rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
+              // The quick-add calculator expands into this spot — step aside while it is open.
+              className={`fixed bottom-[160px] right-5 w-[52px] h-[52px] bg-surface border border-separator/40 text-primary-text rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-all z-20 ${
+                quickCalcOpen ? 'opacity-0 pointer-events-none' : ''
+              }`}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
@@ -312,7 +316,7 @@ export function ExpensesDashboard() {
               </svg>
             </button>
           )}
-          <ExpenseQuickAddBar expenses={expensesForQuickAdd} />
+          <ExpenseQuickAddBar expenses={expensesForQuickAdd} onCalcOpenChange={setQuickCalcOpen} />
         </>
       )}
 

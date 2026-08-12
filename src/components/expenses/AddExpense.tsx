@@ -13,6 +13,7 @@ import type {
   PurchaseDocument,
   ShoppingListItemDocument,
   SplitGroupDocument,
+  CurrencyRateDocument,
 } from '../../db/types'
 import { ExpenseNameAutocomplete } from './ExpenseNameAutocomplete'
 import { StoreSelect } from '../purchase/StoreSelect'
@@ -28,6 +29,9 @@ import { CreatorField } from '../shared/CreatorField'
 import { useAuth } from '../../contexts/AuthContext'
 import { addPendingUpload, blobStorePut, blobStoreGet } from '../../db/blobStore'
 import { useConfirm } from '../../contexts/ConfirmDialogContext'
+import { useToast } from '../../contexts/ToastContext'
+import { buildLatestRateMap } from '../../lib/currency/convert'
+import { computeItemDeduction } from '../../lib/expenses/receiptItems'
 import { supabase } from '../../lib/supabase/client'
 import { deletePendingScan, promotePendingScan } from '../../lib/ai/pendingScans'
 import { collectGroupParticipantNames, mergeGroupParticipants } from '../../lib/expenses/splitting'
@@ -76,6 +80,7 @@ export function AddExpense() {
   const productsCol = useRxCollection<ProductDocument>('products')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
   const splitGroupsCol = useRxCollection<SplitGroupDocument>('splitGroups')
+  const currencyRatesCol = useRxCollection<CurrencyRateDocument>('currencyRates')
 
   const { data: expenses } = useRxQuery(expensesCol)
   const { data: stores } = useRxQuery(storesCol)
@@ -84,6 +89,9 @@ export function AddExpense() {
   const { data: purchases } = useRxQuery(purchasesCol)
   const { data: allParticipants } = useRxQuery(participantsCol)
   const { data: splitGroups } = useRxQuery(splitGroupsCol)
+  const { data: currencyRates } = useRxQuery(currencyRatesCol)
+
+  const rateMap = useMemo(() => buildLatestRateMap(currencyRates), [currencyRates])
 
   // Extract product categories
   const productCategories = useMemo(() => {
@@ -124,6 +132,29 @@ export function AddExpense() {
     return collectGroupParticipantNames(groupId, expenses, allParticipants)
   }, [expenses, allParticipants, selectedSplitGroup?.id])
   const confirm = useConfirm()
+  const { showToast } = useToast()
+
+  // Long-press delete on a receipt item: drop the item and take its sum out of
+  // the expense total (the plain tap keeps the total as typed).
+  const handleRemoveItemWithAmount = (item: ReceiptItem) => {
+    setReceiptItems((prev) => prev.filter((i) => i.id !== item.id))
+
+    const { deducted, nextAmount } = computeItemDeduction(item, parseFloat(amount) || 0, currency, rateMap)
+
+    if (deducted === null) {
+      showToast(
+        `«${item.name}» удалена. Курс ${item.currency} → ${currency} неизвестен — сумма не изменена`,
+        'error',
+      )
+      return
+    }
+
+    setAmount(nextAmount > 0 ? nextAmount.toFixed(2) : '')
+    showToast(
+      `«${item.name}» удалена · −${deducted.toFixed(2)} ${currency} · итого ${nextAmount.toFixed(2)} ${currency}`,
+      'success',
+    )
+  }
 
   // Picking a split group pulls its known members into the split right away
   // (the split section auto-expands once participants appear).
@@ -589,6 +620,7 @@ export function AddExpense() {
         purchases={purchases}
         stores={stores}
         expenseStoreId={selectedStore?.id}
+        onRemoveWithAmount={handleRemoveItemWithAmount}
       />
 
       {/* Validation error */}

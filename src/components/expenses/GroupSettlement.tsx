@@ -19,6 +19,7 @@ import {
   type SettlementPayment,
 } from '../../lib/expenses/splitting'
 import { BASE_CURRENCY } from '../../lib/currency/convert'
+import { CalcInput } from '../shared/CalcInput'
 
 export function GroupSettlement() {
   const { groupId } = useParams<{ groupId: string }>()
@@ -220,16 +221,16 @@ export function GroupSettlement() {
                         </button>
                       </div>
                       {isRecording && (
-                        <div className="flex items-center gap-2 mt-2">
-                          <input
-                            type="number"
-                            inputMode="decimal"
+                        <div className="flex items-start gap-2 mt-2">
+                          <CalcInput
                             autoFocus
                             value={amountInput}
-                            onChange={(e) => setAmountInput(e.currentTarget.value)}
-                            className="flex-1 min-w-0 bg-bg-secondary/40 rounded-xl px-3 py-2 text-[15px] text-text focus:ring-2 focus:ring-primary/30 transition-shadow text-right tabular-nums"
+                            onChange={setAmountInput}
+                            min={0}
+                            wrapperClassName="flex-1 min-w-0"
+                            className="w-full bg-bg-secondary/40 rounded-xl px-3 py-2 text-[15px] text-text focus:ring-2 focus:ring-primary/30 transition-shadow text-right tabular-nums"
                           />
-                          <span className="text-[13px] text-text-hint">{base}</span>
+                          <span className="text-[13px] text-text-hint py-2">{base}</span>
                           <button
                             type="button"
                             onClick={confirmRecording}
