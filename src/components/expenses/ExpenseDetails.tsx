@@ -12,6 +12,7 @@ import type {
   ProductDocument,
   PurchaseDocument,
   SplitGroupDocument,
+  CurrencyRateDocument,
 } from '../../db/types'
 import { ConfirmModal } from '../shared/ConfirmModal'
 import { EditExpense } from './EditExpense'
@@ -24,6 +25,9 @@ import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { showBackButton } from '../../telegram/backButton'
 import { addPendingUpload, blobStoreRemove } from '../../db/blobStore'
 import { collectGroupParticipantNames, mergeGroupParticipants } from '../../lib/expenses/splitting'
+import { computeItemDeduction } from '../../lib/expenses/receiptItems'
+import { buildLatestRateMap } from '../../lib/currency/convert'
+import { useToast } from '../../contexts/ToastContext'
 
 export function ExpenseDetails() {
   const { id } = useParams<{ id: string }>()
@@ -34,6 +38,7 @@ export function ExpenseDetails() {
   const [localReceiptItems, setLocalReceiptItems] = useState<ReceiptItem[]>([])
   const [localParticipants, setLocalParticipants] = useState<SplitParticipant[]>([])
   const { roomId } = useAuth()
+  const { showToast } = useToast()
 
   useEffect(() => {
     return showBackButton(() => navigate(-1))
@@ -49,6 +54,7 @@ export function ExpenseDetails() {
   const productsCol = useRxCollection<ProductDocument>('products')
   const purchasesCol = useRxCollection<PurchaseDocument>('purchases')
   const splitGroupsCol = useRxCollection<SplitGroupDocument>('splitGroups')
+  const currencyRatesCol = useRxCollection<CurrencyRateDocument>('currencyRates')
 
   const { data: expenses } = useRxQuery(expensesCol)
   const { data: stores } = useRxQuery(storesCol)
@@ -60,6 +66,9 @@ export function ExpenseDetails() {
   const { data: products } = useRxQuery(productsCol)
   const { data: purchases } = useRxQuery(purchasesCol)
   const { data: splitGroups } = useRxQuery(splitGroupsCol)
+  const { data: currencyRates } = useRxQuery(currencyRatesCol)
+
+  const rateMap = useMemo(() => buildLatestRateMap(currencyRates), [currencyRates])
 
   // Extract product categories
   const productCategories = useMemo(() => {
@@ -494,6 +503,42 @@ export function ExpenseDetails() {
     setLocalReceiptItems(newItems)
   }
 
+  /**
+   * Long-press delete on a receipt item: remove the item and subtract its line
+   * total from the saved expense amount. The plain tap still deletes the item
+   * only, leaving the total as entered.
+   */
+  const handleRemoveItemWithAmount = async (item: ReceiptItem) => {
+    if (!expense || !expensesCol) return
+
+    const expenseCurrency = expense.currency || DEFAULT_CURRENCY
+    const { deducted, nextAmount } = computeItemDeduction(item, expense.amount, expenseCurrency, rateMap)
+
+    await handleReceiptItemsChange(localReceiptItems.filter((i) => i.id !== item.id))
+
+    if (deducted === null) {
+      showToast(
+        `«${item.name}» удалена. Курс ${item.currency} → ${expenseCurrency} неизвестен — сумма не изменена`,
+        'error',
+      )
+      return
+    }
+
+    try {
+      const doc = await expensesCol.findOne(expense.id).exec()
+      if (doc) await doc.patch({ amount: nextAmount, updatedAt: new Date().toISOString() })
+    } catch (err) {
+      console.error('Failed to update expense amount after item removal:', err)
+      showToast(`«${item.name}» удалена, но сумму расхода обновить не удалось`, 'error')
+      return
+    }
+
+    showToast(
+      `«${item.name}» удалена · −${deducted.toFixed(2)} ${expenseCurrency} · итого ${nextAmount.toFixed(2)} ${expenseCurrency}`,
+      'success',
+    )
+  }
+
   const handleParticipantsChange = (newItems: SplitParticipant[]) => {
     // Hold edits in local state only — they are written to the DB when the
     // user presses "Сохранить участников", not while typing.
@@ -640,6 +685,7 @@ export function ExpenseDetails() {
           purchases={purchases}
           stores={stores}
           expenseStoreId={expense?.storeId}
+          onRemoveWithAmount={handleRemoveItemWithAmount}
         />
       </div>
 

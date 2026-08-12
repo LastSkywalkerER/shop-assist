@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { RxCollection } from 'rxdb'
 import type { ExpenseDocument, StoreDocument, ExpenseCategoryDocument } from '../../db/types'
 import { ExpenseNameAutocomplete } from './ExpenseNameAutocomplete'
@@ -47,6 +47,17 @@ export function EditExpense({
   const [creatorName, setCreatorName] = useState(expense.creatorName || '')
   const [saving, setSaving] = useState(false)
   const [validationError, setValidationError] = useState('')
+
+  // The stored amount can change while this form is open — deleting a receipt
+  // item with a long press subtracts its sum from the expense. Pull such
+  // external edits into the field so saving doesn't write the stale value back.
+  const knownAmount = useRef(expense.amount)
+  useEffect(() => {
+    if (expense.amount !== knownAmount.current) {
+      knownAmount.current = expense.amount
+      setAmount(expense.amount.toString())
+    }
+  }, [expense.amount])
 
   // Keeps the stored time of day: only the calendar date is editable here.
   const nextDate = withDatePart(expense.date, date)

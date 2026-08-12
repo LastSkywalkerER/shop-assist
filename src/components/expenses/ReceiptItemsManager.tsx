@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { Input } from '../shared/Input'
 import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
+import { CalcInput } from '../shared/CalcInput'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
 import { CategorySelect } from '../shared/CategorySelect'
 import type { ProductDocument, PurchaseDocument, StoreDocument } from '../../db/types'
@@ -33,9 +34,16 @@ interface ReceiptItemsManagerProps {
   purchases?: PurchaseDocument[]
   stores?: StoreDocument[]
   expenseStoreId?: string
+  /**
+   * Long-press variant of the delete button: removes the item *and* subtracts
+   * its line total from the expense amount. The parent owns both operations
+   * (it knows the expense total and its currency). Omit to expose plain
+   * delete only.
+   */
+  onRemoveWithAmount?: (item: ReceiptItem) => void
 }
 
-export function ReceiptItemsManager({ items, onChange, productCategories, products, purchases, stores, expenseStoreId }: ReceiptItemsManagerProps) {
+export function ReceiptItemsManager({ items, onChange, productCategories, products, purchases, stores, expenseStoreId, onRemoveWithAmount }: ReceiptItemsManagerProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
 
@@ -130,32 +138,21 @@ export function ReceiptItemsManager({ items, onChange, productCategories, produc
                     {subtitle && ` · ${subtitle}`}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleRemove(item.id)}
-                  className="w-8 h-8 shrink-0 flex items-center justify-center rounded-full active:bg-destructive/10 transition-colors"
-                  title="Удалить"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="text-destructive"
-                  >
-                    <path d="M3 6h18" />
-                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                  </svg>
-                </button>
+                <DeleteItemButton
+                  onDelete={() => handleRemove(item.id)}
+                  onDeleteWithAmount={onRemoveWithAmount ? () => onRemoveWithAmount(item) : undefined}
+                />
               </div>
             )
           })}
         </div>
+      )}
+
+      {items.length > 0 && onRemoveWithAmount && (
+        <p className="text-[11px] text-text-hint px-1 -mt-0.5">
+          Тап по корзине — удалить позицию. Долгое нажатие — удалить и вычесть её
+          сумму из общей суммы расхода.
+        </p>
       )}
 
       {/* Add form */}
@@ -191,6 +188,118 @@ export function ReceiptItemsManager({ items, onChange, productCategories, produc
         </button>
       )}
     </div>
+  )
+}
+
+/** How long the delete button must be held to also subtract the line total. */
+const DELETE_LONG_PRESS_MS = 600
+const RING_RADIUS = 14
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
+
+interface DeleteItemButtonProps {
+  onDelete: () => void
+  /** When set, holding the button removes the item and adjusts the total. */
+  onDeleteWithAmount?: () => void
+}
+
+/**
+ * Trash button with two actions: a tap removes the item, a long press removes
+ * it and subtracts its sum from the expense total. The ring around the icon
+ * fills up while held, so the second action is discoverable.
+ */
+function DeleteItemButton({ onDelete, onDeleteWithAmount }: DeleteItemButtonProps) {
+  const [pressing, setPressing] = useState(false)
+  const timer = useRef<number | null>(null)
+  const fired = useRef(false)
+
+  const clearTimer = () => {
+    if (timer.current !== null) {
+      clearTimeout(timer.current)
+      timer.current = null
+    }
+  }
+
+  useEffect(() => clearTimer, [])
+
+  const handlePressStart = () => {
+    if (!onDeleteWithAmount) return
+    fired.current = false
+    setPressing(true)
+    timer.current = window.setTimeout(() => {
+      timer.current = null
+      fired.current = true
+      setPressing(false)
+      navigator.vibrate?.(30)
+      onDeleteWithAmount()
+    }, DELETE_LONG_PRESS_MS)
+  }
+
+  const handlePressEnd = () => {
+    clearTimer()
+    setPressing(false)
+  }
+
+  const handleClick = () => {
+    // The long press already handled this press.
+    if (fired.current) {
+      fired.current = false
+      return
+    }
+    onDelete()
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      onPointerDown={handlePressStart}
+      onPointerUp={handlePressEnd}
+      onPointerLeave={handlePressEnd}
+      onPointerCancel={handlePressEnd}
+      onContextMenu={(e) => e.preventDefault()}
+      className="relative w-8 h-8 shrink-0 flex items-center justify-center rounded-full active:bg-destructive/10 transition-colors select-none touch-manipulation"
+      title={onDeleteWithAmount ? 'Удалить · долгое нажатие — с вычетом из суммы' : 'Удалить'}
+    >
+      {onDeleteWithAmount && (
+        <svg
+          width="32"
+          height="32"
+          viewBox="0 0 32 32"
+          className="absolute inset-0 -rotate-90 pointer-events-none text-destructive"
+        >
+          <circle
+            cx="16"
+            cy="16"
+            r={RING_RADIUS}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeDasharray={RING_CIRCUMFERENCE}
+            strokeDashoffset={pressing ? 0 : RING_CIRCUMFERENCE}
+            style={{
+              transition: `stroke-dashoffset ${pressing ? DELETE_LONG_PRESS_MS : 150}ms linear`,
+              opacity: pressing ? 1 : 0,
+            }}
+          />
+        </svg>
+      )}
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="text-destructive pointer-events-none"
+      >
+        <path d="M3 6h18" />
+        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+      </svg>
+    </button>
   )
 }
 
@@ -399,23 +508,18 @@ function ReceiptItemForm({ item, productCategories, products, purchases, stores,
       />
 
       {/* Quantity + unit price */}
-      <div className="grid grid-cols-[110px_1fr] gap-3 items-end">
-        <div>
-          <label className="block text-[13px] text-section-header font-medium mb-1.5 pl-1">
-            Количество
-          </label>
-          <input
-            type="number"
-            inputMode="decimal"
-            min="0.001"
-            max="99999"
-            step="0.001"
-            value={quantity}
-            onChange={(e) => setQuantity(e.currentTarget.value)}
-            placeholder="1"
-            className="w-full bg-bg-secondary rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
-          />
-        </div>
+      <div className="grid grid-cols-[120px_1fr] gap-3 items-start">
+        <CalcInput
+          label="Количество"
+          value={quantity}
+          onChange={setQuantity}
+          decimals={3}
+          min={0}
+          max={99999}
+          placeholder="1"
+          compactKeypad
+          className="w-full bg-bg-secondary rounded-xl px-4 py-3 text-[15px] text-text placeholder:text-text-hint/60 focus:ring-2 focus:ring-primary/30 transition-shadow"
+        />
         <CurrencyAmountInput
           label="Цена за 1 шт/ед"
           amount={amount}
