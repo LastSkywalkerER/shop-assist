@@ -11,11 +11,14 @@ import { CalcKeypad } from '../shared/CalcKeypad'
 interface ExpenseQuickAddBarProps {
   expenses?: Array<{ name?: string; categoryId?: string; date?: string }>
   onAdd?: () => void
+  /** Fires when the calculator strip opens/closes — the page can move
+   *  floating buttons out of the way while it is expanded. */
+  onCalcOpenChange?: (open: boolean) => void
 }
 
 const MAX_SUGGESTIONS = 5
 
-export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarProps) {
+export function ExpenseQuickAddBar({ expenses = [], onAdd, onCalcOpenChange }: ExpenseQuickAddBarProps) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
@@ -116,6 +119,11 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd }: ExpenseQuickAddBarP
     min: 0,
     onEnter: () => void handleAdd(),
   })
+
+  const calcOpen = amountCalc.focused
+  useEffect(() => {
+    onCalcOpenChange?.(calcOpen)
+  }, [calcOpen, onCalcOpenChange])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {

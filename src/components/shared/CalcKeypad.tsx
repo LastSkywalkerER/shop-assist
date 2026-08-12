@@ -35,7 +35,11 @@ export function CalcKeypad({ calc, compact = false, className = '' }: CalcKeypad
     >
       <div className="flex items-center justify-between gap-2 px-1">
         <span className="text-[11px] text-text-hint truncate">
-          {calc.invalid ? 'Не удаётся посчитать' : compact ? 'Калькулятор' : 'Калькулятор: 12+3×2'}
+          {calc.invalid
+            ? 'Не удаётся посчитать'
+            : calc.draft.trim() === '' && !compact
+              ? 'Калькулятор — например 12+3×2'
+              : 'Калькулятор'}
         </span>
         {calc.preview !== null && (
           <span className="text-[12px] font-semibold text-primary-text tabular-nums shrink-0">
