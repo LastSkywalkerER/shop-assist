@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RxCollection } from 'rxdb'
 import type { ExpenseDocument, StoreDocument, ExpenseCategoryDocument } from '../../db/types'
+import { useExpenseGroups } from '../../hooks/useExpenseGroups'
+import { addGroupDraft } from '../../lib/expenses/groupDrafts'
 import { ExpenseNameAutocomplete } from './ExpenseNameAutocomplete'
 import { StoreSelect } from '../purchase/StoreSelect'
 import { ExpenseCategorySelect } from './ExpenseCategorySelect'
+import { ExpenseGroupSelect } from '../groups/ExpenseGroupSelect'
 import { Input } from '../shared/Input'
 import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
@@ -33,6 +36,7 @@ export function EditExpense({
   onCreateCategory,
 }: EditExpenseProps) {
   const { roomId } = useAuth()
+  const { groups: expenseGroups } = useExpenseGroups()
   const [name, setName] = useState(expense.name || '')
   const [selectedStore, setSelectedStore] = useState<StoreDocument | null>(
     expense.storeId ? stores.find((s) => s.id === expense.storeId) || null : null
@@ -43,6 +47,7 @@ export function EditExpense({
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryDocument | null>(
     expense.categoryId ? categories.find((c) => c.id === expense.categoryId) || null : null
   )
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(expense.groupName ?? null)
   const [notes, setNotes] = useState(expense.notes || '')
   const [creatorName, setCreatorName] = useState(expense.creatorName || '')
   const [saving, setSaving] = useState(false)
@@ -69,6 +74,7 @@ export function EditExpense({
     nextDate !== expense.date ||
     currency !== (expense.currency || DEFAULT_CURRENCY) ||
     selectedCategory?.id !== expense.categoryId ||
+    (selectedGroup ?? undefined) !== expense.groupName ||
     notes.trim() !== (expense.notes || '') ||
     creatorName.trim() !== (expense.creatorName || '')
 
@@ -95,6 +101,7 @@ export function EditExpense({
           currency,
           date: nextDate,
           categoryId: selectedCategory?.id,
+          groupName: selectedGroup ?? undefined,
           notes: notes.trim() || undefined,
           creatorName: creatorName.trim() || undefined,
           updatedAt: new Date().toISOString(),
@@ -128,6 +135,13 @@ export function EditExpense({
         selected={selectedCategory}
         onSelect={setSelectedCategory}
         onCreate={onCreateCategory}
+      />
+
+      <ExpenseGroupSelect
+        groups={expenseGroups.map((g) => g.name)}
+        selected={selectedGroup}
+        onSelect={setSelectedGroup}
+        onCreate={addGroupDraft}
       />
 
       <div>

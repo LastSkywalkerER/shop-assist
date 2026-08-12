@@ -9,6 +9,8 @@ export interface ExpenseRowData {
   currency?: string
   date: string
   categoryName?: string
+  /** Expense group name, when the list is not already scoped to one group. */
+  groupName?: string
   notes?: string
   hasAttachments: boolean
   receiptItemsCount: number
@@ -139,9 +141,15 @@ export function ExpenseRow({ data, selectionMode, selected, onToggleSelect, onLo
             </span>
           </>
         )}
-        {data.notes && (
+        {data.groupName && (
           <>
             {(data.storeName || data.categoryName) && <span>·</span>}
+            <span className="px-2 py-0.5 bg-text/8 rounded-full text-[11px]">{data.groupName}</span>
+          </>
+        )}
+        {data.notes && (
+          <>
+            {(data.storeName || data.categoryName || data.groupName) && <span>·</span>}
             <span className="truncate max-w-[120px]">{data.notes}</span>
           </>
         )}

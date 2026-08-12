@@ -144,7 +144,8 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd, onCalcOpenChange }: E
     <div className="fixed bottom-0 left-0 right-0 z-10 pointer-events-none">
       <div className="px-4 pb-[80px] pt-2 pointer-events-auto">
         <div ref={wrapperRef} className="relative">
-          <CalcKeypad calc={amountCalc} className="mb-1.5 glass border border-separator/20 shadow-[0_4px_20px_rgba(0,0,0,0.1)]" />
+          {/* Portaled: anchors itself to the amount field and flips above the bar. */}
+          <CalcKeypad calc={amountCalc} />
           <div className="glass rounded-2xl border border-separator/20 ring-1 ring-primary/15 shadow-[0_4px_20px_rgba(0,0,0,0.1)] flex items-center gap-2 px-3 py-2.5 min-h-[52px]">
             <button
               type="button"

@@ -11,6 +11,11 @@ interface AnalyticsConfigPanelProps {
   selectedCategoryIds: Set<string>
   onToggleCategory: (id: string) => void
   onClearCategories: () => void
+  /** Group names, an analytics dimension independent from categories. */
+  groups: string[]
+  selectedGroups: Set<string>
+  onToggleGroup: (name: string) => void
+  onClearGroups: () => void
 }
 
 const MODES: Array<{ mode: AnalyticsPeriod['mode']; label: string }> = [
@@ -42,6 +47,10 @@ export function AnalyticsConfigPanel({
   selectedCategoryIds,
   onToggleCategory,
   onClearCategories,
+  groups,
+  selectedGroups,
+  onToggleGroup,
+  onClearGroups,
 }: AnalyticsConfigPanelProps) {
   const switchMode = (mode: AnalyticsPeriod['mode']) => {
     if (mode === period.mode) return
@@ -168,6 +177,43 @@ export function AnalyticsConfigPanel({
                 {cat.name}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Group multi-select — an independent dimension: combined with the
+          category filter by AND, so both together show the intersection. */}
+      {groups.length > 0 && (
+        <div className="space-y-1">
+          <span className="block text-[11px] text-text-hint pl-1">Группы расходов</span>
+          <div className="overflow-x-auto scrollbar-none -mx-4 px-4">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onClearGroups}
+                className={`shrink-0 px-3.5 py-1.5 rounded-full text-[13px] font-medium outline-none transition-colors ${
+                  selectedGroups.size === 0
+                    ? 'bg-primary text-on-primary'
+                    : 'bg-bg-secondary/40 text-text-hint active:opacity-70'
+                }`}
+              >
+                Все
+              </button>
+              {groups.map((group) => (
+                <button
+                  key={group}
+                  type="button"
+                  onClick={() => onToggleGroup(group)}
+                  className={`shrink-0 px-3.5 py-1.5 rounded-full text-[13px] font-medium outline-none transition-colors ${
+                    selectedGroups.has(group)
+                      ? 'bg-primary text-on-primary'
+                      : 'bg-bg-secondary/40 text-text-hint active:opacity-70'
+                  }`}
+                >
+                  {group}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

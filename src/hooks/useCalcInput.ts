@@ -21,6 +21,8 @@ export interface UseCalcInputOptions {
 }
 
 export interface CalcInputApi {
+  /** The field element, so the keypad can anchor itself to it. */
+  anchorEl: HTMLInputElement | null
   /** Spread onto the `<input>` element. */
   inputProps: {
     ref: (el: HTMLInputElement | null) => void
@@ -69,6 +71,8 @@ export function useCalcInput({
   const [draft, setDraft] = useState(value)
   const [focused, setFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  /** Same node as `inputRef`, in state so the keypad re-renders once it mounts. */
+  const [anchorEl, setAnchorEl] = useState<HTMLInputElement | null>(null)
   /** Last value this hook pushed up — used to tell our own echo apart from
    *  an external change (a picked suggestion, a reset form, ...). */
   const lastPushed = useRef(value)
@@ -203,9 +207,11 @@ export function useCalcInput({
 
   const setRef = useCallback((el: HTMLInputElement | null) => {
     inputRef.current = el
+    setAnchorEl(el)
   }, [])
 
   return {
+    anchorEl,
     inputProps: {
       ref: setRef,
       type: 'text',

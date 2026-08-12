@@ -23,6 +23,9 @@ import { ScanReceiptFlow } from './ScanReceiptFlow'
 import { BulkExpenseUploadFlow } from './BulkExpenseUploadFlow'
 import { PendingScanRow } from './PendingScanRow'
 import { usePendingScans } from '../../hooks/usePendingScans'
+import { GroupPickerModal } from '../groups/GroupPickerModal'
+import { pluralizeExpenses } from '../groups/pluralize'
+import { useToast } from '../../contexts/ToastContext'
 
 export function ExpensesDashboard() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
@@ -33,6 +36,7 @@ export function ExpensesDashboard() {
   const [scanning, setScanning] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [quickCalcOpen, setQuickCalcOpen] = useState(false)
+  const [groupPickerOpen, setGroupPickerOpen] = useState(false)
 
   // Long-press on the scan FAB reveals the (hidden) bulk expense-list import;
   // a normal tap still opens the receipt scanner.
@@ -60,6 +64,7 @@ export function ExpensesDashboard() {
   }
 
   const { aiEnabled } = useAiSettings()
+  const { showToast } = useToast()
   const { roomId } = useAuth()
   const pendingScans = usePendingScans(roomId)
 
@@ -140,6 +145,7 @@ export function ExpensesDashboard() {
         currency: expense.currency,
         date: expense.date,
         categoryName: categoryMap.get(expense.categoryId || '')?.name,
+        groupName: expense.groupName,
         notes: expense.notes,
         hasAttachments,
         receiptItemsCount,
@@ -212,6 +218,26 @@ export function ExpensesDashboard() {
     }
   }
 
+  /** Bulk «в группу»: assign (or clear) the group of the selected expenses. */
+  const handleAssignGroup = async (groupName: string | null) => {
+    if (!expensesCol || selectedIds.size === 0) return
+    const now = new Date().toISOString()
+    const count = selectedIds.size
+    for (const id of selectedIds) {
+      const doc = await expensesCol.findOne(id).exec()
+      if (doc) await doc.patch({ groupName: groupName ?? undefined, updatedAt: now })
+    }
+    setGroupPickerOpen(false)
+    setSelectedIds(new Set())
+    setSelectionMode(false)
+    showToast(
+      groupName
+        ? `${pluralizeExpenses(count)} добавлено в группу «${groupName}»`
+        : `${pluralizeExpenses(count)} убрано из группы`,
+      'success',
+    )
+  }
+
   const handleLongPress = (id: string) => {
     setSelectionMode(true)
     setSelectedIds(new Set([id]))
@@ -268,6 +294,17 @@ export function ExpensesDashboard() {
         <>
           {selectedIds.size > 0 && (
             <button
+              onClick={() => setGroupPickerOpen(true)}
+              title="В группу"
+              className="fixed bottom-[152px] right-5 w-[52px] h-[52px] bg-surface border border-separator/40 text-primary-text rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
+              </svg>
+            </button>
+          )}
+          {selectedIds.size > 0 && (
+            <button
               onClick={() => setConfirmDelete(true)}
               className="fixed bottom-[88px] right-5 w-[52px] h-[52px] bg-destructive text-on-primary rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-transform z-20"
             >
@@ -318,6 +355,14 @@ export function ExpensesDashboard() {
           )}
           <ExpenseQuickAddBar expenses={expensesForQuickAdd} onCalcOpenChange={setQuickCalcOpen} />
         </>
+      )}
+
+      {groupPickerOpen && (
+        <GroupPickerModal
+          subject={pluralizeExpenses(selectedIds.size)}
+          onClose={() => setGroupPickerOpen(false)}
+          onPick={handleAssignGroup}
+        />
       )}
 
       {scanning && <ScanReceiptFlow onClose={() => setScanning(false)} />}

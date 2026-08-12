@@ -78,6 +78,13 @@ export interface ExpenseDocument {
   categoryId?: string
   /** Split group this expense belongs to for the who-owes-whom settlement. */
   splitGroupId?: string
+  /**
+   * Free-form expense group (a trip, a renovation, a project) — an analytics
+   * dimension independent from categories. Stored denormalized as a name, the
+   * same way `product.category` works: RxDB's open-source build caps the
+   * database at 16 collections and the app is already at the limit.
+   */
+  groupName?: string
   notes?: string
   creatorName?: string
   createdAt: string
