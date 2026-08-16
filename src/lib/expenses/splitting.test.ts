@@ -8,6 +8,8 @@ import {
   buildItemTotals,
   creatorSplitInfo,
   annotateExpensesWithSplit,
+  computePersonExpenseBreakdown,
+  allocateSettlement,
   type ParticipantInput,
   type ExpenseInput,
 } from './splitting'
@@ -382,5 +384,167 @@ describe('annotateExpensesWithSplit', () => {
     }
     expect(byCategory.get('food')).toBe(90) // 50 (split share) + 40 (personal)
     expect(byCategory.get('travel')).toBe(100) // 100 (split share)
+  })
+})
+
+describe('computePersonExpenseBreakdown', () => {
+  const expenses: ExpenseInput[] = [
+    {
+      id: 'e1',
+      amount: 300,
+      currency: 'BYN',
+      creatorName: 'Костя',
+      name: 'Ужин',
+      date: '2026-06-01T12:00:00.000Z',
+    },
+    {
+      id: 'e2',
+      amount: 300,
+      currency: 'BYN',
+      creatorName: 'Maksim',
+      name: 'Отель',
+      date: '2026-06-03T12:00:00.000Z',
+    },
+  ]
+  const participantsByExpenseId = new Map<string, ParticipantInput[]>([
+    ['e1', [
+      p({ id: 'k1', name: 'Костя' }),
+      p({ id: 'm1', name: 'Maksim' }),
+      p({ id: 'o1', name: 'Оля', settledAmount: 40 }),
+    ]],
+    ['e2', [
+      p({ id: 'k2', name: 'Костя' }),
+      p({ id: 'm2', name: 'Maksim' }),
+      p({ id: 'o2', name: 'Оля' }),
+    ]],
+  ])
+
+  it('details what each expense cost a person, newest first', () => {
+    const breakdown = computePersonExpenseBreakdown(
+      expenses,
+      participantsByExpenseId,
+      new Map(),
+      [],
+    )
+
+    const olya = breakdown.get('Оля')!
+    expect(olya.map((e) => e.expenseId)).toEqual(['e2', 'e1'])
+
+    const dinner = olya.find((e) => e.expenseId === 'e1')!
+    expect(dinner.expenseName).toBe('Ужин')
+    expect(dinner.isPayer).toBe(false)
+    expect(dinner.paid).toBe(0)
+    expect(dinner.share).toBe(100)
+    expect(dinner.settled).toBe(40)
+    expect(dinner.remaining).toBe(60)
+    expect(dinner.net).toBe(-60)
+    expect(dinner.participantRows).toEqual([
+      { participantId: 'o1', shareNative: 100, settledNative: 40 },
+    ])
+
+    // Костя fronted the dinner and got 40 of it back already.
+    const kostyaDinner = breakdown.get('Костя')!.find((e) => e.expenseId === 'e1')!
+    expect(kostyaDinner.isPayer).toBe(true)
+    expect(kostyaDinner.paid).toBe(300)
+    expect(kostyaDinner.share).toBe(100)
+    expect(kostyaDinner.received).toBe(40)
+    expect(kostyaDinner.remaining).toBe(0)
+    expect(kostyaDinner.net).toBe(160)
+  })
+
+  it('sums each person\'s entries to their settlement balance', () => {
+    const settlement = computeCategorySettlement(
+      expenses,
+      participantsByExpenseId,
+      new Map(),
+      [],
+    )
+    const breakdown = computePersonExpenseBreakdown(
+      expenses,
+      participantsByExpenseId,
+      new Map(),
+      [],
+    )
+
+    for (const person of settlement.perPerson) {
+      const sum = (breakdown.get(person.name) ?? []).reduce((s, e) => s + e.net, 0)
+      expect(Math.round(sum * 100) / 100).toBe(person.net)
+    }
+  })
+
+  it('converts to the base currency and flags a missing rate', () => {
+    const rates: CurrencyRateDocument[] = [
+      {
+        id: 'r1', currency: 'USD', date: '2026-06-01', rate: 3, scale: 1,
+        createdAt: '', updatedAt: '',
+      },
+    ]
+    const breakdown = computePersonExpenseBreakdown(
+      [
+        { id: 'a', amount: 10, currency: 'USD', creatorName: 'Максим' },
+        { id: 'b', amount: 10, currency: 'EUR', creatorName: 'Максим' },
+      ],
+      new Map([
+        ['a', [p({ id: 'm1', name: 'Максим' }), p({ id: 'o1', name: 'Оля' })]],
+        ['b', [p({ id: 'm2', name: 'Максим' }), p({ id: 'o2', name: 'Оля' })]],
+      ]),
+      new Map(),
+      rates,
+    )
+    const olya = breakdown.get('Оля')!
+    const usd = olya.find((e) => e.expenseId === 'a')!
+    expect(usd.share).toBe(15)
+    expect(usd.remainingNative).toBe(5)
+    expect(usd.currency).toBe('USD')
+    expect(usd.conversionGap).toBe(false)
+
+    const eur = olya.find((e) => e.expenseId === 'b')!
+    expect(eur.share).toBe(0)
+    expect(eur.conversionGap).toBe(true)
+    // The native share is still known even without a rate.
+    expect(eur.participantRows[0].shareNative).toBe(5)
+  })
+
+  it('skips expenses without a payer or participants', () => {
+    const breakdown = computePersonExpenseBreakdown(
+      [
+        { id: 'a', amount: 50, currency: 'BYN' },
+        { id: 'b', amount: 50, currency: 'BYN', creatorName: 'Максим' },
+      ],
+      new Map([['b', []]]),
+      new Map(),
+      [],
+    )
+    expect(breakdown.size).toBe(0)
+  })
+})
+
+describe('allocateSettlement', () => {
+  const row = (id: string, shareNative: number, settledNative = 0) => ({
+    participantId: id,
+    shareNative,
+    settledNative,
+  })
+
+  it('adds the payment to a single participant row', () => {
+    const updates = allocateSettlement([row('a', 100, 40)], 25)
+    expect(updates.get('a')).toBe(65)
+  })
+
+  it('fills each row up to its own share before moving on', () => {
+    const updates = allocateSettlement([row('a', 30, 10), row('b', 50)], 60)
+    expect(updates.get('a')).toBe(30) // 20 to close the first row
+    expect(updates.get('b')).toBe(40) // remaining 40
+  })
+
+  it('keeps an overpayment on the last row instead of dropping it', () => {
+    const updates = allocateSettlement([row('a', 20)], 35)
+    expect(updates.get('a')).toBe(35)
+  })
+
+  it('ignores non-positive or empty input', () => {
+    expect(allocateSettlement([], 10).size).toBe(0)
+    expect(allocateSettlement([row('a', 20)], 0).size).toBe(0)
+    expect(allocateSettlement([row('a', 20)], -5).size).toBe(0)
   })
 })

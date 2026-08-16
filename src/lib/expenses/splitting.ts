@@ -153,6 +153,10 @@ export interface ExpenseInput {
   creatorName?: string
   /** The expense "type" (food, transport, …). Orthogonal to whether it is split. */
   categoryId?: string
+  /** Display label, used by the per-person breakdown. */
+  name?: string
+  /** ISO date, used to order the per-person breakdown. */
+  date?: string
 }
 
 /**
@@ -438,6 +442,186 @@ export function computeCategorySettlement(
 
 function round2(x: number): number {
   return Math.round(x * 100) / 100
+}
+
+/** One participant row of a person inside a single expense. */
+export interface PersonExpenseParticipantRow {
+  participantId: string
+  /** Owed share, in the expense's own currency. */
+  shareNative: number
+  /** Already repaid toward this expense, in the expense's own currency. */
+  settledNative: number
+}
+
+/**
+ * How one expense affects one person: what they fronted, what they consumed,
+ * what has already been repaid, and what is still open — the per-expense
+ * detail behind a row of {@link PersonBalance}.
+ *
+ * `paid`/`share`/`settled`/`received`/`net` are in the base currency (BYN) so
+ * they add up across a group; the `*Native` fields stay in the expense's own
+ * currency because that is what `participant.settledAmount` stores.
+ */
+export interface PersonExpenseEntry {
+  expenseId: string
+  expenseName: string
+  date?: string
+  currency: string
+  /** Full bill, in the expense's own currency. */
+  amountNative: number
+  payerName: string
+  /** True when this person fronted the whole bill. */
+  isPayer: boolean
+  /** The person's participant rows in this expense (empty for a payer who did not consume). */
+  participantRows: PersonExpenseParticipantRow[]
+  /** Fronted to the store: the full bill for the payer, 0 otherwise. */
+  paid: number
+  /** The person's own share of this expense. */
+  share: number
+  /** Already repaid by this person toward this expense. */
+  settled: number
+  /** Repayments this person received as the payer of this expense. */
+  received: number
+  /** paid − share + settled − received: this expense's contribution to the person's balance. */
+  net: number
+  /** Still owed to the payer for this expense (0 for the payer), base currency. */
+  remaining: number
+  /** Same as `remaining`, in the expense's own currency. */
+  remainingNative: number
+  /** True when a currency conversion was skipped for lack of a rate. */
+  conversionGap: boolean
+}
+
+/**
+ * Break a settlement down per person and per expense.
+ *
+ * Uses exactly the same inputs and share math as
+ * {@link computeCategorySettlement}, so for every person the `net` of their
+ * entries sums to that person's balance before group-level repayments.
+ * Entries are ordered newest first.
+ */
+export function computePersonExpenseBreakdown(
+  expenses: ExpenseInput[],
+  participantsByExpenseId: Map<string, ParticipantInput[]>,
+  itemTotalsByExpenseId: Map<string, Map<string, number>>,
+  rates: CurrencyRateDocument[],
+): Map<string, PersonExpenseEntry[]> {
+  const rateMap = buildLatestRateMap(rates)
+  const byPerson = new Map<string, PersonExpenseEntry[]>()
+
+  for (const expense of expenses) {
+    const payer = expense.creatorName?.trim()
+    const participants = participantsByExpenseId.get(expense.id) ?? []
+    // Mirrors computeCategorySettlement: nothing to attribute without a payer.
+    if (!payer || participants.length === 0) continue
+
+    let conversionGap = false
+    const convert = (x: number): number => {
+      const v = convertToBase(x, expense.currency, rateMap)
+      if (v === null) {
+        conversionGap = true
+        return 0
+      }
+      return v
+    }
+
+    const { shares } = computeShares(
+      expense.amount,
+      participants,
+      itemTotalsByExpenseId.get(expense.id) ?? new Map(),
+    )
+
+    const settledTotalNative = participants.reduce((sum, p) => sum + (p.settledAmount ?? 0), 0)
+
+    // Everyone this expense touches: the payer plus each participant.
+    const names = new Set<string>([payer, ...participants.map((p) => p.name)])
+
+    for (const name of names) {
+      const isPayer = name === payer
+      const rows = participants.filter((p) => p.name === name)
+
+      const shareNative = rows.reduce((sum, p) => sum + (shares.get(p.id) ?? 0), 0)
+      const settledNative = rows.reduce((sum, p) => sum + (p.settledAmount ?? 0), 0)
+      const remainingNative = isPayer ? 0 : Math.max(0, shareNative - settledNative)
+
+      const paid = isPayer ? convert(expense.amount) : 0
+      const share = convert(shareNative)
+      const settled = convert(settledNative)
+      const received = isPayer ? convert(settledTotalNative) : 0
+
+      const entry: PersonExpenseEntry = {
+        expenseId: expense.id,
+        expenseName: expense.name?.trim() || 'Без названия',
+        date: expense.date,
+        currency: expense.currency,
+        amountNative: expense.amount,
+        payerName: payer,
+        isPayer,
+        participantRows: rows.map((p) => ({
+          participantId: p.id,
+          shareNative: round2(shares.get(p.id) ?? 0),
+          settledNative: round2(p.settledAmount ?? 0),
+        })),
+        paid: round2(paid),
+        share: round2(share),
+        settled: round2(settled),
+        received: round2(received),
+        net: round2(paid - share + settled - received),
+        remaining: round2(convert(remainingNative)),
+        remainingNative: round2(remainingNative),
+        conversionGap,
+      }
+
+      const list = byPerson.get(name) ?? []
+      list.push(entry)
+      byPerson.set(name, list)
+    }
+  }
+
+  for (const list of byPerson.values()) {
+    list.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+  }
+  return byPerson
+}
+
+/**
+ * Spread a repayment across a person's participant rows inside one expense.
+ *
+ * Each row is filled up to its own share first (so a normal single-row split
+ * just gets `settled + amount`); anything left over lands on the last row, so
+ * an overpayment is never silently dropped. Returns `participantId -> new
+ * total settledAmount`, containing only the rows that actually change.
+ */
+export function allocateSettlement(
+  rows: PersonExpenseParticipantRow[],
+  amount: number,
+): Map<string, number> {
+  const result = new Map<string, number>()
+  if (rows.length === 0 || !Number.isFinite(amount) || amount <= 0) return result
+
+  let leftCents = toCents(amount)
+  const updated = rows.map((r) => ({ row: r, cents: toCents(r.settledNative) }))
+
+  for (const u of updated) {
+    if (leftCents <= 0) break
+    const room = toCents(u.row.shareNative) - u.cents
+    if (room <= 0) continue
+    const take = Math.min(room, leftCents)
+    u.cents += take
+    leftCents -= take
+  }
+
+  // Overpayment (or fully settled rows): put the rest on the last row.
+  if (leftCents !== 0) {
+    const last = updated[updated.length - 1]
+    last.cents = Math.max(0, last.cents + leftCents)
+  }
+
+  for (const u of updated) {
+    const next = fromCents(u.cents)
+    if (next !== u.row.settledNative) result.set(u.row.participantId, next)
+  }
+  return result
 }
 
 /**
