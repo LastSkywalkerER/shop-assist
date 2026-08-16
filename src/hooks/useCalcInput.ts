@@ -48,6 +48,13 @@ export interface CalcInputApi {
   backspace: () => void
   clear: () => void
   commit: () => void
+  /**
+   * Empty the field and the parent value without touching focus — for a form
+   * that clears itself while the field is still focused (the quick-add bar
+   * submits, then moves focus away, which would otherwise blur-commit the
+   * just-submitted draft straight back into the parent).
+   */
+  reset: () => void
 }
 
 /**
@@ -69,6 +76,12 @@ export function useCalcInput({
   onEnter,
 }: UseCalcInputOptions): CalcInputApi {
   const [draft, setDraft] = useState(value)
+  /** Mirrors `draft` so callbacks (blur, keypad) never act on a stale closure. */
+  const draftRef = useRef(draft)
+  const setDraftValue = useCallback((next: string) => {
+    draftRef.current = next
+    setDraft(next)
+  }, [])
   const [focused, setFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
   /** Same node as `inputRef`, in state so the keypad re-renders once it mounts. */
@@ -80,9 +93,9 @@ export function useCalcInput({
   useEffect(() => {
     if (value !== lastPushed.current) {
       lastPushed.current = value
-      setDraft(value)
+      setDraftValue(value)
     }
-  }, [value])
+  }, [value, setDraftValue])
 
   const clamp = useCallback(
     (raw: number) => {
@@ -105,7 +118,7 @@ export function useCalcInput({
   /** Update the field and, when the expression resolves, the parent value. */
   const applyDraft = useCallback(
     (next: string) => {
-      setDraft(next)
+      setDraftValue(next)
       const trimmed = next.trim()
       if (!trimmed) {
         push('')
@@ -116,7 +129,7 @@ export function useCalcInput({
       // blanking the parent on every keystroke.
       if (result !== null) push(formatCalcValue(clamp(result), decimals))
     },
-    [push, clamp, decimals],
+    [push, clamp, decimals, setDraftValue],
   )
 
   const handleChange = useCallback(
@@ -127,22 +140,24 @@ export function useCalcInput({
   )
 
   const commit = useCallback(() => {
-    const trimmed = draft.trim()
+    // Read through the ref: blur can fire after the form already reset the
+    // field, and the closure's `draft` would still hold the old text.
+    const trimmed = draftRef.current.trim()
     if (!trimmed) {
-      setDraft('')
+      setDraftValue('')
       push('')
       return
     }
     const result = evaluateForCommit(trimmed)
     if (result === null) {
       // Unusable leftovers — fall back to the last value the parent knows.
-      setDraft(lastPushed.current)
+      setDraftValue(lastPushed.current)
       return
     }
     const formatted = formatCalcValue(clamp(result), decimals)
-    setDraft(formatted)
+    setDraftValue(formatted)
     push(formatted)
-  }, [draft, push, clamp, decimals])
+  }, [push, clamp, decimals, setDraftValue])
 
   const setCaret = useCallback((position: number) => {
     requestAnimationFrame(() => {
@@ -156,32 +171,39 @@ export function useCalcInput({
   const insert = useCallback(
     (token: string) => {
       const el = inputRef.current
-      const start = el?.selectionStart ?? draft.length
+      const current = draftRef.current
+      const start = el?.selectionStart ?? current.length
       const end = el?.selectionEnd ?? start
-      applyDraft(draft.slice(0, start) + token + draft.slice(end))
+      applyDraft(current.slice(0, start) + token + current.slice(end))
       setCaret(start + token.length)
     },
-    [draft, applyDraft, setCaret],
+    [applyDraft, setCaret],
   )
 
   const backspace = useCallback(() => {
     const el = inputRef.current
-    const start = el?.selectionStart ?? draft.length
+    const current = draftRef.current
+    const start = el?.selectionStart ?? current.length
     const end = el?.selectionEnd ?? start
     if (start === end) {
       if (start === 0) return
-      applyDraft(draft.slice(0, start - 1) + draft.slice(end))
+      applyDraft(current.slice(0, start - 1) + current.slice(end))
       setCaret(start - 1)
       return
     }
-    applyDraft(draft.slice(0, start) + draft.slice(end))
+    applyDraft(current.slice(0, start) + current.slice(end))
     setCaret(start)
-  }, [draft, applyDraft, setCaret])
+  }, [applyDraft, setCaret])
 
   const clear = useCallback(() => {
     applyDraft('')
     setCaret(0)
   }, [applyDraft, setCaret])
+
+  const reset = useCallback(() => {
+    setDraftValue('')
+    push('')
+  }, [push, setDraftValue])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -236,5 +258,6 @@ export function useCalcInput({
     backspace,
     clear,
     commit,
+    reset,
   }
 }

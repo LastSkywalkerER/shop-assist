@@ -79,6 +79,16 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd, onCalcOpenChange }: E
 
   const canAdd = (name.trim() || amount.trim()) && parseFloat(amount) > 0
 
+  // Declared before `handleAdd` uses it; `onEnter` only runs after both exist.
+  // The amount field doubles as a calculator: `12+3*2` → 18.
+  const amountCalc = useCalcInput({
+    value: amount,
+    onChange: setAmount,
+    decimals: 2,
+    min: 0,
+    onEnter: () => void handleAdd(),
+  })
+
   const handleAdd = async () => {
     if (!canAdd || !expensesCol) return
     setShowSuggestions(false)
@@ -103,22 +113,16 @@ export function ExpenseQuickAddBar({ expenses = [], onAdd, onCalcOpenChange }: E
       })
       setName('')
       setPickedCategoryId(undefined)
-      setAmount('')
+      // reset() (not setAmount('')) because focusing the name input below
+      // blurs the amount field, and a blur commits whatever the calculator
+      // still holds — which would write the submitted sum right back.
+      amountCalc.reset()
       inputRef.current?.focus()
       onAdd?.()
     } catch (err) {
       console.error('Failed to add expense:', err)
     }
   }
-
-  // The amount field doubles as a calculator: `12+3*2` → 18.
-  const amountCalc = useCalcInput({
-    value: amount,
-    onChange: setAmount,
-    decimals: 2,
-    min: 0,
-    onEnter: () => void handleAdd(),
-  })
 
   const calcOpen = amountCalc.focused
   useEffect(() => {
