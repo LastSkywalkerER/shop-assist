@@ -14,6 +14,7 @@ import {
   type CategoryLite,
   type PurchaseLite,
 } from './matching.ts'
+import { categoryIdForLabel, suggestLabelFromHistory } from './labelSuggestion.ts'
 
 export interface PrefillItem {
   id: string
@@ -55,6 +56,8 @@ export function resolveMatches(
     products: ProductLite[]
     purchases: PurchaseLite[]
     expenses: ExpenseLite[]
+    receipts: Array<{ id: string; expense_id: string }>
+    receiptItems: Array<{ receipt_id: string; name?: string | null }>
   },
 ): ResolveResult {
   const modelMatches = parsed.matches ?? null
@@ -146,11 +149,28 @@ export function resolveMatches(
   })
 
   // Expense label / category: trust the model's pick (no threshold — it's a pre-fill).
-  const suggestedName: string | undefined = modelMatches?.expenseLabel?.trim() || undefined
+  let suggestedName: string | undefined = modelMatches?.expenseLabel?.trim() || undefined
   let suggestedCategoryId: string | undefined
   if (modelMatches?.expenseCategoryName) {
     const cat = categoryByName.get(modelMatches.expenseCategoryName.trim().toLowerCase())
     if (cat) suggestedCategoryId = cat.id
+  }
+
+  // The validate pass is best-effort: when it times out or errors, `matches`
+  // stays empty and the form used to open with a blank name. Vote a label out
+  // of the room's own history instead of shipping nothing.
+  if (!suggestedName) {
+    const fallback = suggestLabelFromHistory(
+      { storeName: parsed.store?.name, items: parsed.items },
+      matchedStoreId,
+      { expenses: room.expenses, receipts: room.receipts, receiptItems: room.receiptItems },
+    )
+    suggestedName = fallback.name
+    if (!suggestedCategoryId) suggestedCategoryId = fallback.categoryId
+  } else if (!suggestedCategoryId) {
+    // Model named the expense but skipped the category (it often does) —
+    // reuse whatever category that same label carried last time.
+    suggestedCategoryId = categoryIdForLabel(suggestedName, room.expenses)
   }
 
   let prefilledDate: string | undefined

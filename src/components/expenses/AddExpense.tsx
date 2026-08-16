@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type {
@@ -22,6 +22,7 @@ import { SplitGroupSelect } from './SplitGroupSelect'
 import { ExpenseGroupSelect } from '../groups/ExpenseGroupSelect'
 import { useExpenseGroups } from '../../hooks/useExpenseGroups'
 import { addGroupDraft } from '../../lib/expenses/groupDrafts'
+import { suggestLabelFromExpenses } from '../../lib/expenses/labelSuggestion'
 import { Input } from '../shared/Input'
 import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
@@ -253,6 +254,31 @@ export function AddExpense() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stores, ocrPrefill?.storeId, ocrPrefill?.storeName])
+
+  // The scan pipeline names the expense from the model's `expenseLabel`. When
+  // that came back empty — an older prefill payload, or a validate pass that
+  // returned nothing — recover a label from the room's own history so the form
+  // doesn't open with a blank name. Runs once, and never over user input.
+  const labelFallbackApplied = useRef(false)
+  useEffect(() => {
+    if (!ocrPrefill || ocrPrefill.name || labelFallbackApplied.current) return
+    if (!expenses.length) return
+    // Wait for the store to resolve — it carries the strongest signal.
+    if ((ocrPrefill.storeId || ocrPrefill.storeName) && !selectedStore) return
+
+    labelFallbackApplied.current = true
+    const suggestion = suggestLabelFromExpenses(
+      { storeId: selectedStore?.id, storeName: selectedStore?.name ?? ocrPrefill.storeName },
+      expenses,
+    )
+    if (!suggestion.name) return
+    setName((prev) => (prev.trim() ? prev : suggestion.name as string))
+    if (suggestion.categoryId) {
+      const cat = categories.find((c) => c.id === suggestion.categoryId)
+      if (cat) setSelectedCategory((prev) => prev ?? cat)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expenses, categories, selectedStore, ocrPrefill?.name, ocrPrefill?.storeName])
 
   // Resolve OCR-suggested expense category once categories load.
   useEffect(() => {

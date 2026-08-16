@@ -22,7 +22,7 @@ import {
 } from '../_shared/openrouter.ts'
 import { buildCatalog, loadRoomData } from '../_shared/catalog.ts'
 import { resolveMatches } from '../_shared/resolve.ts'
-import type { Pass, ReceiptPayload } from '../_shared/types.ts'
+import type { Catalog, Pass, ReceiptMatches, ReceiptPayload } from '../_shared/types.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,6 +36,16 @@ const LIMIT_PER_DAY = 200
 // Treat a processing row as orphaned (worker likely crashed) after this many
 // minutes; a retry call will reclaim it.
 const ORPHAN_PROCESSING_MINUTES = 10
+
+// Per-attempt budget for the validate pass. It used to be a single 120s shot;
+// when the provider stalled past that the abort killed the only chance at
+// `matches` and the expense arrived with no name and no category. Two shorter
+// attempts fit in the same wall clock and survive a single slow response.
+const VALIDATE_TIMEOUT_MS = 75_000
+// Retry sends a lighter catalog: same lists, no per-label item histories and
+// no per-product context. Smaller prompt → far quicker turnaround.
+const RETRY_LABEL_LIMIT = 120
+const RETRY_PRODUCT_LIMIT = 200
 
 interface RequestBody {
   scanId?: string
@@ -83,6 +93,51 @@ interface PassResult {
   usage: { prompt_tokens?: number; completion_tokens?: number } | null
 }
 
+/** Did the validate pass actually come back with something usable? */
+function hasUsableMatches(matches: ReceiptMatches | null | undefined): boolean {
+  if (!matches) return false
+  return !!(matches.expenseLabel || matches.expenseCategoryName || matches.storeName
+    || (matches.items?.length ?? 0) > 0)
+}
+
+/** Strip the nested history out of the catalog for the retry attempt. */
+function slimCatalog(catalog: Catalog): Catalog {
+  return {
+    categoryNames: catalog.categoryNames,
+    storeNames: catalog.storeNames,
+    expenseLabels: (catalog.expenseLabels ?? [])
+      .slice(0, RETRY_LABEL_LIMIT)
+      .map((e) => ({ name: e.name, categories: e.categories, stores: [], items: [] })),
+    products: (catalog.products ?? [])
+      .slice(0, RETRY_PRODUCT_LIMIT)
+      .map((p) => ({ name: p.name, categories: [], stores: [] })),
+  }
+}
+
+/**
+ * The escalate pass re-reads the image with the extract prompt, so its payload
+ * always comes back with empty `matches`. Assigning it wholesale used to throw
+ * away everything validate had resolved — that alone left the form with no
+ * name and no category on every escalated scan. Keep the receipt-level matches
+ * (they describe the receipt, not individual lines) and keep the per-item ones
+ * only while the indices still line up.
+ */
+function mergeMatchesAfterEscalate(
+  validated: ReceiptPayload,
+  escalated: ReceiptPayload,
+): ReceiptMatches | null {
+  if (hasUsableMatches(escalated.matches)) return escalated.matches ?? null
+  const prior = validated.matches
+  if (!prior || !hasUsableMatches(prior)) return escalated.matches ?? null
+  const sameShape = escalated.items.length === validated.items.length
+  return {
+    items: sameShape ? (prior.items ?? []) : [],
+    expenseLabel: prior.expenseLabel ?? null,
+    expenseCategoryName: prior.expenseCategoryName ?? null,
+    storeName: prior.storeName ?? null,
+  }
+}
+
 async function runPipeline(args: {
   supabase: SupabaseClient
   openrouterKey: string
@@ -128,26 +183,45 @@ async function runPipeline(args: {
   const roomData = await loadRoomData(args.supabase, args.roomId)
   const catalog = buildCatalog(roomData)
   log.step('pass:validate:catalog_stats', catalogStats(catalog))
-  try {
-    const validateText = `${VALIDATE_PROMPT}
+
+  // Two attempts: the full catalog first, then a slimmed one. A single stalled
+  // response no longer costs the scan its whole `matches` block.
+  const attempts: Array<{ catalog: Catalog; effort: 'low' | 'medium' }> = [
+    { catalog, effort: 'medium' },
+    { catalog: slimCatalog(catalog), effort: 'low' },
+  ]
+  for (let attempt = 0; attempt < attempts.length; attempt++) {
+    const { catalog: attemptCatalog, effort } = attempts[attempt]
+    if (attempt > 0) log.step('pass:validate:retry', { attempt, stats: catalogStats(attemptCatalog) })
+    try {
+      const validateText = `${VALIDATE_PROMPT}
 
 receipt:
 ${JSON.stringify(parsed)}
 
 catalog:
-${JSON.stringify(catalog)}`
-    const validateRes = await callOpenRouter(openrouterKey, models.validate, [
-      { role: 'user', content: validateText },
-    ], log, { reasoningEffort: 'medium', signal: makeStepSignal(120_000) })
-    parsed = validateRes.data
-    passes.push({
-      pass: 'validate',
-      model: models.validate,
-      cost_usd: estimateCost(models.validate, validateRes.rawUsage),
-      usage: validateRes.rawUsage ?? null,
-    })
-  } catch (err) {
-    log.warn('pass:validate:failed', { error: err instanceof Error ? err.message : String(err) })
+${JSON.stringify(attemptCatalog)}`
+      const validateRes = await callOpenRouter(openrouterKey, models.validate, [
+        { role: 'user', content: validateText },
+      ], log, { reasoningEffort: effort, signal: makeStepSignal(VALIDATE_TIMEOUT_MS) })
+      passes.push({
+        pass: 'validate',
+        model: models.validate,
+        cost_usd: estimateCost(models.validate, validateRes.rawUsage),
+        usage: validateRes.rawUsage ?? null,
+      })
+      // Keep the cleaned receipt either way, but a response that came back
+      // without matches is as useless to the form as no response at all —
+      // retry it the same way as a hard failure.
+      parsed = validateRes.data
+      if (hasUsableMatches(parsed.matches)) break
+      log.warn('pass:validate:no_matches', { attempt })
+    } catch (err) {
+      log.warn('pass:validate:failed', {
+        attempt,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   // Pass 3: escalate (only if validate flagged it).
@@ -162,7 +236,9 @@ ${JSON.stringify(catalog)}`
           { type: 'text', text: escalatePrompt },
         ],
       }], log, { signal: makeStepSignal(60_000) })
-      parsed = escalateRes.data
+      const escalated = escalateRes.data
+      escalated.matches = mergeMatchesAfterEscalate(parsed, escalated)
+      parsed = escalated
       passes.push({
         pass: 'escalate',
         model: models.escalate,

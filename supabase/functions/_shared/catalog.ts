@@ -21,7 +21,7 @@ export interface RoomData {
   purchases: PurchaseLite[]
   expenses: ExpenseLite[]
   receipts: Array<{ id: string; expense_id: string }>
-  receiptItems: Array<{ receipt_id: string; converted_to_purchase_id: string | null }>
+  receiptItems: Array<{ receipt_id: string; name: string | null; converted_to_purchase_id: string | null }>
 }
 
 type QueryBuilder = ReturnType<ReturnType<SupabaseClient['from']>['select']>
@@ -36,7 +36,7 @@ export async function loadRoomData(supabase: SupabaseClient, roomId: string): Pr
     notDeleted(supabase.from('purchases_sync').select('id, product_id, store_id, purchase_date')),
     notDeleted(supabase.from('expenses_sync').select('id, name, store_id, category_id, amount, date')),
     notDeleted(supabase.from('receipts_sync').select('id, expense_id')),
-    notDeleted(supabase.from('receipt_items_sync').select('receipt_id, converted_to_purchase_id')),
+    notDeleted(supabase.from('receipt_items_sync').select('receipt_id, name, converted_to_purchase_id')),
   ])
 
   return {
@@ -46,7 +46,7 @@ export async function loadRoomData(supabase: SupabaseClient, roomId: string): Pr
     purchases: (purchases.data ?? []) as PurchaseLite[],
     expenses: (expenses.data ?? []) as ExpenseLite[],
     receipts: (receipts.data ?? []) as Array<{ id: string; expense_id: string }>,
-    receiptItems: (receiptItems.data ?? []) as Array<{ receipt_id: string; converted_to_purchase_id: string | null }>,
+    receiptItems: (receiptItems.data ?? []) as Array<{ receipt_id: string; name: string | null; converted_to_purchase_id: string | null }>,
   }
 }
 
