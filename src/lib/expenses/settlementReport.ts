@@ -51,6 +51,15 @@ const FILE_DATE_FMT = new Intl.DateTimeFormat('ru-RU', {
   year: 'numeric',
 })
 
+const FILE_TIME_FMT = new Intl.DateTimeFormat('ru-RU', {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
+/** Characters no common filesystem accepts inside a file name. */
+const ILLEGAL_FILENAME_CHARS = /[\\/:*?"<>|]/g
+
 export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -67,12 +76,16 @@ function formatDate(iso: string | undefined): string {
 
 /**
  * Document title, which browsers also use as the default PDF file name.
- * Slashes would be read as path separators, so the date is dot-separated.
+ *
+ * Carries the group, the date and the time so two exports of the same group
+ * never collide in the downloads folder; characters a filesystem would reject
+ * are stripped, since the browser copies the title through verbatim.
  */
 export function settlementReportTitle(groupName: string, generatedAt: Date): string {
-  const date = FILE_DATE_FMT.format(generatedAt).replace(/\//g, '.')
-  const name = groupName.trim() || 'Без группы'
-  return `Сводка по расходам — ${name} — ${date}`
+  const name = groupName.replace(ILLEGAL_FILENAME_CHARS, ' ').trim() || 'Без группы'
+  const date = FILE_DATE_FMT.format(generatedAt)
+  const time = FILE_TIME_FMT.format(generatedAt).replace(':', '-')
+  return `Сводка расходов — ${name} — ${date} ${time}`
 }
 
 /** One deduplicated expense of the group, rebuilt from the per-person entries. */
@@ -348,5 +361,17 @@ export function buildSettlementReportHtml(input: SettlementReportInput): string 
   ${detailsHtml ? `<section class="section"><h2>Детализация по участникам</h2>${detailsHtml}</section>` : ''}
 
   <footer>Shop Assist · ${escapeHtml(title)}</footer>
-</div>`
+</div>
+<script>
+  // The report prints itself: the print dialog must belong to this document so
+  // the browser takes the PDF's page content and file name from it.
+  (function () {
+    function print() { setTimeout(function () { window.print() }, 100) }
+    if (document.readyState === 'complete') print()
+    else window.addEventListener('load', print)
+    window.addEventListener('afterprint', function () {
+      setTimeout(function () { window.close() }, 300)
+    })
+  })()
+</script>`
 }

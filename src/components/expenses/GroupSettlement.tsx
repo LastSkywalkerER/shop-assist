@@ -23,7 +23,7 @@ import {
 } from '../../lib/expenses/splitting'
 import { BASE_CURRENCY } from '../../lib/currency/convert'
 import { buildSettlementReportHtml } from '../../lib/expenses/settlementReport'
-import { printHtmlDocument } from '../../lib/pdf/printDocument'
+import { openPrintableDocument } from '../../lib/pdf/printDocument'
 import { CalcInput } from '../shared/CalcInput'
 import { useConfirm } from '../../contexts/ConfirmDialogContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -231,8 +231,11 @@ export function GroupSettlement() {
   const fmt = (n: number) => `${n.toFixed(2)} ${base}`
   const hasData = result.perPerson.length > 0
 
-  /** Build the printable report and hand it to the browser's print dialog. */
-  const exportPdf = async () => {
+  /**
+   * Build the printable report and open it. Kept synchronous: the pop-up it
+   * opens is only allowed while the click gesture is still in flight.
+   */
+  const exportPdf = () => {
     const html = buildSettlementReportHtml({
       groupName: group?.name ?? '',
       baseCurrency: base,
@@ -248,13 +251,10 @@ export function GroupSettlement() {
       generatedAt: new Date(),
     })
 
-    const outcome = await printHtmlDocument(html)
-    if (outcome === 'printed') {
+    if (openPrintableDocument(html) === 'printing') {
       showToast('Выберите «Сохранить в PDF» в окне печати', 'info')
-    } else if (outcome === 'opened-tab') {
-      showToast('Сводка открыта в новой вкладке — сохраните её в PDF', 'info')
     } else {
-      showToast('Не удалось открыть сводку — разрешите всплывающие окна', 'error')
+      showToast('Разрешите всплывающие окна, чтобы выгрузить сводку', 'error')
     }
   }
 
@@ -411,7 +411,7 @@ export function GroupSettlement() {
         {hasData && (
           <button
             type="button"
-            onClick={() => void exportPdf()}
+            onClick={exportPdf}
             className="shrink-0 flex items-center gap-1.5 bg-surface text-primary-text px-3 py-1.5 rounded-xl text-[13px] font-medium active:opacity-70 transition-opacity"
             title="Экспорт сводки в PDF"
           >

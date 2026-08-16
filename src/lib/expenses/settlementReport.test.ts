@@ -7,7 +7,9 @@ import {
 } from './settlementReport'
 import type { PersonBalance, PersonExpenseEntry } from './splitting'
 
-const generatedAt = new Date('2026-08-16T12:30:00.000Z')
+// Built in local time on purpose: the title is formatted for the user's own
+// clock, so a UTC literal would make this test depend on the machine's zone.
+const generatedAt = new Date(2026, 7, 16, 12, 30)
 
 const balance = (over: Partial<PersonBalance> & { name: string }): PersonBalance => ({
   paid: 0,
@@ -64,12 +66,25 @@ describe('escapeHtml', () => {
 describe('settlementReportTitle', () => {
   it('names the file after the group and the date', () => {
     expect(settlementReportTitle('Трип по рб', generatedAt)).toBe(
-      'Сводка по расходам — Трип по рб — 16.08.2026',
+      'Сводка расходов — Трип по рб — 16.08.2026 12-30',
     )
   })
 
   it('falls back when the group has no name', () => {
     expect(settlementReportTitle('  ', generatedAt)).toContain('Без группы')
+  })
+
+  it('strips characters a filesystem would reject', () => {
+    const title = settlementReportTitle('Трип 07/08 : "юг"', generatedAt)
+    expect(title).not.toMatch(/[\\/:*?"<>|]/)
+    expect(title).toContain('Трип 07 08')
+  })
+
+  it('separates two exports of the same group made on the same day', () => {
+    const later = new Date(2026, 7, 16, 18, 5)
+    expect(settlementReportTitle('Трип по рб', generatedAt)).not.toBe(
+      settlementReportTitle('Трип по рб', later),
+    )
   })
 })
 
@@ -112,6 +127,13 @@ describe('buildSettlementReportHtml', () => {
     expect(buildSettlementReportHtml(input({ conversionGap: true }))).toContain(
       'не нашлось курса',
     )
+  })
+
+  it('prints itself, so the dialog belongs to the report document', () => {
+    const html = buildSettlementReportHtml(input())
+    expect(html).toContain('window.print()')
+    // The title drives the default PDF file name, so it has to be in the head.
+    expect(html).toContain(`<title>${settlementReportTitle('Трип по рб', generatedAt)}</title>`)
   })
 
   it('escapes names coming from user input', () => {
