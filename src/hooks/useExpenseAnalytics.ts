@@ -44,6 +44,7 @@ export interface ExpenseAnalytics {
     frequentExpenses: PieDatum[]
     expensiveExpenses: PieDatum[]
     byCategory: PieDatum[]
+    byGroup: PieDatum[]
   }
   /** Stacked-bar counterparts of the pies (same groups, time-bucketed). */
   bars: {
@@ -52,6 +53,7 @@ export interface ExpenseAnalytics {
     frequentExpenses: StackedSeries
     expensiveExpenses: StackedSeries
     byCategory: StackedSeries
+    byGroup: StackedSeries
   }
   /** Bucket size of the bar charts: monthly above a one-month span, else daily. */
   barGranularity: Granularity
@@ -64,17 +66,23 @@ export interface ExpenseAnalytics {
 
 const NO_NAME_LABEL = 'Без названия'
 const NO_CATEGORY_LABEL = 'Без категории'
+const NO_GROUP_LABEL = 'Без группы'
 
 /**
  * Aggregates expenses and receipt items into the analytics datasets. All
  * amounts are converted to BYN at the rate effective on the expense's date.
- * Period/category filtering happens client-side over one stable subscription
- * per collection (the same full-collection load the dashboard already does).
+ * Period/category/group filtering happens client-side over one stable
+ * subscription per collection (the same full-collection load the dashboard
+ * already does).
+ *
+ * Groups are an independent dimension: the category and group filters are
+ * combined with AND, so selecting both shows their intersection.
  */
 export function useExpenseAnalytics(
   period: AnalyticsPeriod,
   categoryIds: string[],
   superCategoryId: string | null = null,
+  groupNames: string[] = [],
 ): ExpenseAnalytics {
   const expensesCol = useRxCollection<ExpenseDocument>('expenses')
   const categoriesCol = useRxCollection<ExpenseCategoryDocument>('expenseCategories')
@@ -93,6 +101,7 @@ export function useExpenseAnalytics(
   const { data: rates } = useRxQuery(ratesCol)
 
   const categoryIdsKey = categoryIds.join(',')
+  const groupNamesKey = groupNames.join('|')
 
   return useMemo(() => {
     const rateHistory = buildRateHistoryMap(rates)
@@ -125,6 +134,10 @@ export function useExpenseAnalytics(
       return (superId ? superNames.get(superId) : undefined) ?? PIE_OTHER_LABEL
     }
 
+    // Group filter — independent from categories, combined with AND.
+    const groupFilter: Set<string> | null =
+      groupNames.length > 0 ? new Set(groupNames.map((n) => n.toLowerCase())) : null
+
     // Filter expenses by period bounds and selected categories.
     const allDateKeys = expenses.map((e) => dateKeyOf(e.date))
     const bounds = resolveBounds(period, allDateKeys)
@@ -136,6 +149,7 @@ export function useExpenseAnalytics(
     const frequentExpenses = new PieAccumulator()
     const expensiveExpenses = new PieAccumulator()
     const byCategory = new PieAccumulator()
+    const byGroup = new PieAccumulator()
     /** expenseId -> its dateKey, for receipt-item filtering and rate lookup. */
     const includedExpenses = new Map<string, string>()
 
@@ -145,6 +159,11 @@ export function useExpenseAnalytics(
         const dateKey = allDateKeys[i]
         if (dateKey < bounds.fromKey || dateKey > bounds.toKey) continue
         if (categoryFilter && (!expense.categoryId || !categoryFilter.has(expense.categoryId))) continue
+        if (
+          groupFilter &&
+          (!expense.groupName || !groupFilter.has(expense.groupName.trim().toLowerCase()))
+        )
+          continue
 
         includedExpenses.set(expense.id, dateKey)
 
@@ -162,6 +181,7 @@ export function useExpenseAnalytics(
         entries.push({ dateKey, amount: amountBase })
         expensiveExpenses.add(displayName, amountBase, dateKey)
         byCategory.add(categoryPieName(expense.categoryId), amountBase, dateKey)
+        byGroup.add(expense.groupName?.trim() || NO_GROUP_LABEL, amountBase, dateKey)
       }
     }
 
@@ -201,6 +221,7 @@ export function useExpenseAnalytics(
         frequentExpenses: frequentExpenses.toPie(),
         expensiveExpenses: expensiveExpenses.toPie(),
         byCategory: byCategory.toPie(),
+        byGroup: byGroup.toPie(),
       },
       bars: {
         frequentItems: toBars(frequentItems),
@@ -208,11 +229,12 @@ export function useExpenseAnalytics(
         frequentExpenses: toBars(frequentExpenses),
         expensiveExpenses: toBars(expensiveExpenses),
         byCategory: toBars(byCategory),
+        byGroup: toBars(byGroup),
       },
       barGranularity,
       byCategoryDimension,
       conversionGaps,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expenses, categories, superCategories, stores, receipts, receiptItems, rates, period, categoryIdsKey, superCategoryId, loading])
+  }, [expenses, categories, superCategories, stores, receipts, receiptItems, rates, period, categoryIdsKey, superCategoryId, groupNamesKey, loading])
 }

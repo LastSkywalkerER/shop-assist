@@ -19,6 +19,9 @@ import { ExpenseNameAutocomplete } from './ExpenseNameAutocomplete'
 import { StoreSelect } from '../purchase/StoreSelect'
 import { ExpenseCategorySelect } from './ExpenseCategorySelect'
 import { SplitGroupSelect } from './SplitGroupSelect'
+import { ExpenseGroupSelect } from '../groups/ExpenseGroupSelect'
+import { useExpenseGroups } from '../../hooks/useExpenseGroups'
+import { addGroupDraft } from '../../lib/expenses/groupDrafts'
 import { Input } from '../shared/Input'
 import { CurrencyAmountInput } from '../shared/CurrencyAmountInput'
 import { DEFAULT_CURRENCY } from '../../config/currencies'
@@ -89,6 +92,7 @@ export function AddExpense() {
   const { data: purchases } = useRxQuery(purchasesCol)
   const { data: allParticipants } = useRxQuery(participantsCol)
   const { data: splitGroups } = useRxQuery(splitGroupsCol)
+  const { groups: expenseGroups } = useExpenseGroups()
   const { data: currencyRates } = useRxQuery(currencyRatesCol)
 
   const rateMap = useMemo(() => buildLatestRateMap(currencyRates), [currencyRates])
@@ -109,6 +113,7 @@ export function AddExpense() {
   const [date, setDate] = useState(() => ocrPrefill?.date || new Date().toISOString().split('T')[0])
   const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryDocument | null>(null)
   const [selectedSplitGroup, setSelectedSplitGroup] = useState<SplitGroupDocument | null>(null)
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [notes, setNotes] = useState('')
   const [attachments, setAttachments] = useState<AttachmentFile[]>(() => ocrPrefill?.attachments ?? [])
   const [receiptItems, setReceiptItems] = useState<ReceiptItem[]>(() => {
@@ -308,6 +313,7 @@ export function AddExpense() {
         date: new Date(date).toISOString(),
         categoryId: selectedCategory?.id,
         splitGroupId: selectedSplitGroup?.id,
+        groupName: selectedGroup ?? undefined,
         notes: notes.trim() || undefined,
         creatorName: creatorName.trim() || undefined,
         createdAt: now,
@@ -571,6 +577,14 @@ export function AddExpense() {
         selected={selectedCategory}
         onSelect={setSelectedCategory}
         onCreate={handleCreateCategory}
+      />
+
+      {/* Expense group (analytics bucket, independent from categories) */}
+      <ExpenseGroupSelect
+        groups={expenseGroups.map((g) => g.name)}
+        selected={selectedGroup}
+        onSelect={setSelectedGroup}
+        onCreate={addGroupDraft}
       />
 
       {/* Notes/Comment */}

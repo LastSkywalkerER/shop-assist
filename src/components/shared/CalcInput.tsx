@@ -27,7 +27,8 @@ interface CalcInputProps {
 
 /**
  * Numeric field that also accepts math: `12+3*2`, `(4+6)/2`, `100-15%`.
- * The operator strip appears while the field is focused — see `useCalcInput`.
+ * The operator strip floats over the layout while the field is focused (it is
+ * portaled and anchored to the input), so it never shifts the form.
  */
 export function CalcInput({
   value,

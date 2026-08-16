@@ -188,6 +188,8 @@ async function createDb(): Promise<ShopAssistDatabase> {
         4: (oldDoc: any) => oldDoc,
         // v5 adds the optional splitGroupId; old expenses stay ungrouped by design.
         5: (oldDoc: any) => oldDoc,
+        // v6 adds the optional groupName (expense groups); old expenses stay ungrouped.
+        6: (oldDoc: any) => oldDoc,
       },
     },
     receipts: {

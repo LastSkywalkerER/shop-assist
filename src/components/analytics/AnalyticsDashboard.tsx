@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useRxCollection, useRxQuery } from '../../db/hooks'
 import type { ExpenseCategoryDocument, SuperCategoryDocument } from '../../db/types'
 import { useExpenseAnalytics } from '../../hooks/useExpenseAnalytics'
+import { useExpenseGroups } from '../../hooks/useExpenseGroups'
 import { BASE_CURRENCY } from '../../lib/currency/convert'
 import type { AnalyticsPeriod } from '../../lib/analytics/aggregate'
 import { AnalyticsConfigPanel } from './AnalyticsConfigPanel'
@@ -17,11 +18,13 @@ export function AnalyticsDashboard() {
   const [period, setPeriod] = useState<AnalyticsPeriod>({ mode: 'all' })
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set())
   const [selectedSuperCategoryId, setSelectedSuperCategoryId] = useState<string | null>(null)
+  const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set())
 
   const categoriesCol = useRxCollection<ExpenseCategoryDocument>('expenseCategories')
   const superCategoriesCol = useRxCollection<SuperCategoryDocument>('superCategories')
   const { data: categories } = useRxQuery(categoriesCol)
   const { data: superCategories } = useRxQuery(superCategoriesCol)
+  const { groups: expenseGroups } = useExpenseGroups()
 
   // Newest first; sorted in memory (createdAt is not indexed).
   const sortedCategories = useMemo(
@@ -31,6 +34,11 @@ export function AnalyticsDashboard() {
   const sortedSuperCategories = useMemo(
     () => [...superCategories].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [superCategories],
+  )
+  // Only groups that actually have expenses are worth filtering by.
+  const groupNames = useMemo(
+    () => expenseGroups.filter((g) => g.count > 0).map((g) => g.name),
+    [expenseGroups],
   )
 
   // A selected super category narrows the category chips to its members.
@@ -43,13 +51,23 @@ export function AnalyticsDashboard() {
   )
 
   const categoryIds = useMemo(() => [...selectedCategoryIds], [selectedCategoryIds])
-  const analytics = useExpenseAnalytics(period, categoryIds, selectedSuperCategoryId)
+  const groupFilter = useMemo(() => [...selectedGroups], [selectedGroups])
+  const analytics = useExpenseAnalytics(period, categoryIds, selectedSuperCategoryId, groupFilter)
 
   const toggleCategory = (id: string) => {
     setSelectedCategoryIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
+      return next
+    })
+  }
+
+  const toggleGroup = (name: string) => {
+    setSelectedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
       return next
     })
   }
@@ -85,6 +103,10 @@ export function AnalyticsDashboard() {
           selectedCategoryIds={selectedCategoryIds}
           onToggleCategory={toggleCategory}
           onClearCategories={() => setSelectedCategoryIds(new Set())}
+          groups={groupNames}
+          selectedGroups={selectedGroups}
+          onToggleGroup={toggleGroup}
+          onClearGroups={() => setSelectedGroups(new Set())}
         />
 
         {analytics.conversionGaps > 0 && (
@@ -118,6 +140,15 @@ export function AnalyticsDashboard() {
               bars={analytics.bars.byCategory}
               barGranularity={analytics.barGranularity}
             />
+            {groupNames.length > 0 && (
+              <PieCard
+                title="Распределение по группам"
+                data={analytics.pies.byGroup}
+                valueFormatter={fmtMoney}
+                bars={analytics.bars.byGroup}
+                barGranularity={analytics.barGranularity}
+              />
+            )}
             <PieCard
               title="Самые дорогие расходы"
               data={analytics.pies.expensiveExpenses}

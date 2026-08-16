@@ -25,6 +25,12 @@ All Supabase changes must be duplicated as local code for reproducibility:
 
 Every schema or data change must preserve existing user data:
 
+### RxDB collection limit (16)
+
+- The open-source RxDB build refuses to open more than **16 collections** at once (`RxError COL23`), counted globally across all databases in the tab — a 17th collection breaks DB init and the whole app fails to start.
+- `src/db/database.ts` is **already at 16**. A new synced entity therefore cannot get its own collection.
+- Denormalize instead, the way `product.category` and `expense.groupName` do it: store the entity as a name/value on an existing document plus an additive Supabase column. Empty "entities" that no document points at yet can be kept as device-local drafts (see `src/lib/expenses/groupDrafts.ts`).
+
 ### RxDB migration strategies
 - Every schema `version` increment requires a corresponding `migrationStrategies[N]` entry in `src/db/database.ts`
 - Strategies must handle undefined/null old fields safely
