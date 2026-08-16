@@ -293,6 +293,42 @@ export function annotateExpensesWithSplit(
   return result
 }
 
+/**
+ * How much of an expense actually came out of the room's own pocket — the
+ * figure the analytics screens total instead of the bill the payer fronted.
+ *
+ * A personal (unsplit) expense counts in full: nobody owes anything back. A
+ * split expense counts only the money its **room-member** participants have
+ * really handed over (`settledAmount`); shares of people outside the room, and
+ * shares nobody has repaid yet, are somebody else's money and stay out of the
+ * statistics until they are marked as paid. The payer's own fronting is never
+ * counted on its own — it enters through their participant row like everyone
+ * else's, so the payer's share shows up once they mark it as given.
+ *
+ * Every participant is capped at their own share, so an overpayment recorded by
+ * {@link allocateSettlement} can never push an expense above its bill.
+ *
+ * Returns the amount in the expense's own currency.
+ */
+export function roomSettledAmount(
+  amount: number,
+  participants: ParticipantInput[],
+  itemTotals: Map<string, number>,
+  isRoomMember: (name: string) => boolean,
+): number {
+  if (participants.length === 0) return amount
+
+  const { shares } = computeShares(amount, participants, itemTotals)
+  let cents = 0
+  for (const p of participants) {
+    if (!isRoomMember(p.name)) continue
+    const settled = toCents(p.settledAmount ?? 0)
+    const share = toCents(shares.get(p.id) ?? 0)
+    cents += Math.max(0, Math.min(settled, share))
+  }
+  return fromCents(cents)
+}
+
 export interface PersonBalance {
   name: string
   /** Total fronted to stores (as the payer), in base currency. */

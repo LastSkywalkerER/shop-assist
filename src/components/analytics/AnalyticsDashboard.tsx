@@ -109,6 +109,11 @@ export function AnalyticsDashboard() {
           onClearGroups={() => setSelectedGroups(new Set())}
         />
 
+        <p className="text-[11px] text-text-hint px-1 leading-snug">
+          Разделённые расходы учитываются по суммам, которые участники румы
+          фактически отдали, а не по всему чеку плательщика.
+        </p>
+
         {analytics.conversionGaps > 0 && (
           <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2 text-[12px] text-yellow-700 dark:text-yellow-400">
             Не удалось сконвертировать {analytics.conversionGaps}{' '}
