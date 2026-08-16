@@ -59,8 +59,24 @@ touching any of: `supabase/functions/ocr-receipt`, `room_ai_settings`,
   compares store + date (±1 day) + total (±1%).
 - Local fallbacks when the model returns nothing:
   - `matchPurchaseForItem` (token-Jaccard + same-store bonus)
-  - `suggestExpenseLabel` (product→category + historical receipt-item
-    →expense voting, history weighted ×1.5)
+  - `suggestLabelFromHistory`
+    (`supabase/functions/_shared/labelSuggestion.ts`) — runs inside
+    `resolveMatches` whenever `matches.expenseLabel` is empty. Votes a
+    label out of the room's own history: expenses at the matched store
+    (weight 2), existing labels that read like the store name
+    (token-Jaccard ≥ 0.4), and labels of expenses whose receipt items
+    resemble the scanned ones (×1.5). Votes decay with age. The winning
+    label also drags in the category it last carried
+    (`categoryIdForLabel`), which additionally fills the category when
+    the model named the expense but left `expenseCategoryName` null —
+    a routine occurrence.
+  - `suggestLabelFromExpenses` (`src/lib/expenses/labelSuggestion.ts`) —
+    the same store signals re-applied in `AddExpense` for prefill
+    payloads that arrived without a name (older rows, or a scan whose
+    `matches` came back empty anyway). Runs once, never over user input.
+  - `suggestExpenseLabel` in `src/lib/ai/matching.ts` is **dead code**
+    from the synchronous ScanReceiptFlow era — nothing calls it since
+    the pipeline moved server-side.
 
 ## Per-room settings storage
 
@@ -112,6 +128,7 @@ CREATE POLICY my_table_select ON my_table FOR SELECT TO authenticated
 | Saving an OCR-prefilled expense throws RxDB `CONFLICT` (409) | First save succeeded locally but `promotePendingScan`'s remote row delete failed (offline), so the "готово" card lingered; re-opening + re-saving re-inserted the same stable `receiptItem` / attachment ids → CONFLICT (and a duplicate empty expense) | Added a local consumed-scans registry (`src/lib/ai/consumedScans.ts`): the card is hidden the instant the local save succeeds (even offline), `usePendingScans` filters it out, retries the deferred delete on each refetch, and prunes ids once the server row is gone |
 | `new row violates row-level security policy` on receipt scan upload (`Не удалось загрузить чек`) | The four `sync-attachments` Storage policies were the last in the feature still gating on `user_metadata.room_id`. When the active room drifted from the JWT room (a room switch that didn't refresh the token; the AuthContext session-restore fast-path trusts localStorage and skips `completeAccount()`'s JWT reconcile), the path-prefix check failed even for a real member | (A) Migration `20260603120000_harden_attachments_storage_rls.sql` switches all four policies to `is_room_member((foldername)[1]::uuid)`, matching `pending_receipt_scans` and the `*_sync` tables. (B) `reconcileJwtRoom()` in `auth.ts`, called from the AuthContext restore path, heals a drifted JWT `room_id` in the background so Storage RLS + replication push target the active room |
 | Validate pass returned HTTP 400 `Invalid schema for response_format 'receipt': In context=(..., 'required' is required to be supplied and to be an array including every key in properties` | OpenAI strict json_schema mode (GPT-5 mini, 4.1) requires every property under `properties` to appear in `required` for ANY object subschema, including the object variant of a nullable union. Gemini was permissive so extract didn't catch this, but GPT-5 strict on validate rejected the request. | All object subschemas in `RECEIPT_JSON_SCHEMA` now list every key in `required`; optional fields use `type: ['T', 'null']` and the extract prompt tells the model to write `null` rather than omit. |
+| Scan lands in the list with a name, but the detail form opens with Название and Категория empty (intermittent) | Two independent ways to lose the whole `matches` block. (1) The validate pass had a single 120s abort and no retry; when the provider stalled past it the `catch` only logged `pass:validate:failed {"error":"The signal has been aborted"}` and the extract payload (whose `matches` is empty by design) went through as final. (2) When validate set `needsEscalation`, the escalate pass — which re-runs the *extract* prompt — was assigned over `parsed` wholesale, discarding everything validate had just resolved. The list card looked fine either way because `PendingScanRow` falls back to `prefill_payload.storeName`, while `AddExpense` reads `prefill_payload.name` and gets nothing. Confirmed in `ai_usage_log`: the two blank scans logged only an `extract` pass, the third logged extract+validate+escalate and still came out with all-null matches. | (A) Validate now gets two attempts (75s each): full catalog at `medium` reasoning, then a slimmed catalog at `low`. A response that returns *empty* matches is retried the same as a hard failure, and the cleaned receipt is kept from whichever attempt answered. (B) `mergeMatchesAfterEscalate` keeps the receipt-level matches across escalation and keeps per-item ones while the item count still lines up. (C) `suggestLabelFromHistory` fills name + category from the room's history whenever the model still supplies none, with `suggestLabelFromExpenses` repeating the store signals client-side. |
 
 ## How to fix RLS 42501 on similar features in the future
 
