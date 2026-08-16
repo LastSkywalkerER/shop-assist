@@ -1,7 +1,7 @@
 {
   "name": "shop-assist-temp",
   "private": true,
-  "version": "1.25.1",
+  "version": "1.26.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,6 +17,7 @@
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "eruda": "^3.4.3",
+    "pdfmake": "^0.3.11",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-is": "^19",
@@ -30,6 +31,7 @@
   "devDependencies": {
     "@eslint/js": "^9.25.0",
     "@tailwindcss/vite": "^4.1.18",
+    "@types/pdfmake": "^0.3.3",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-basic-ssl": "^2.1.4",

@@ -22,8 +22,11 @@ import {
   type SettlementPayment,
 } from '../../lib/expenses/splitting'
 import { BASE_CURRENCY } from '../../lib/currency/convert'
-import { buildSettlementReportHtml } from '../../lib/expenses/settlementReport'
-import { openPrintableDocument } from '../../lib/pdf/printDocument'
+import {
+  buildSettlementPdf,
+  settlementReportFileName,
+} from '../../lib/expenses/settlementPdf'
+import { downloadPdf } from '../../lib/pdf/generatePdf'
 import { CalcInput } from '../shared/CalcInput'
 import { useConfirm } from '../../contexts/ConfirmDialogContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -76,6 +79,8 @@ export function GroupSettlement() {
   /** Expense whose per-expense repayment input is open, inside `openPerson`. */
   const [payingExpenseId, setPayingExpenseId] = useState<string | null>(null)
   const [expenseAmountInput, setExpenseAmountInput] = useState('')
+  /** True while pdfmake is being loaded and the report rendered. */
+  const [exporting, setExporting] = useState(false)
 
   const group = useMemo(
     () => groups.find((g) => g.id === groupId),
@@ -231,30 +236,34 @@ export function GroupSettlement() {
   const fmt = (n: number) => `${n.toFixed(2)} ${base}`
   const hasData = result.perPerson.length > 0
 
-  /**
-   * Build the printable report and open it. Kept synchronous: the pop-up it
-   * opens is only allowed while the click gesture is still in flight.
-   */
-  const exportPdf = () => {
-    const html = buildSettlementReportHtml({
-      groupName: group?.name ?? '',
-      baseCurrency: base,
-      perPerson: result.perPerson,
-      transfers: result.transfers,
-      breakdown,
-      payments: groupSettlements.map((s) => ({
-        from: s.fromName,
-        to: s.toName,
-        amount: s.amount,
-      })),
-      conversionGap: result.conversionGap,
-      generatedAt: new Date(),
-    })
-
-    if (openPrintableDocument(html) === 'printing') {
-      showToast('Выберите «Сохранить в PDF» в окне печати', 'info')
-    } else {
-      showToast('Разрешите всплывающие окна, чтобы выгрузить сводку', 'error')
+  /** Render the summary into a PDF file and hand it to the browser. */
+  const exportPdf = async () => {
+    if (exporting) return
+    setExporting(true)
+    const generatedAt = new Date()
+    try {
+      await downloadPdf(
+        buildSettlementPdf({
+          groupName: group?.name ?? '',
+          baseCurrency: base,
+          perPerson: result.perPerson,
+          transfers: result.transfers,
+          breakdown,
+          payments: groupSettlements.map((s) => ({
+            from: s.fromName,
+            to: s.toName,
+            amount: s.amount,
+          })),
+          conversionGap: result.conversionGap,
+          generatedAt,
+        }),
+        settlementReportFileName(group?.name ?? '', generatedAt),
+      )
+      showToast('PDF сохранён', 'success')
+    } catch {
+      showToast('Не удалось сформировать PDF', 'error')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -411,8 +420,9 @@ export function GroupSettlement() {
         {hasData && (
           <button
             type="button"
-            onClick={exportPdf}
-            className="shrink-0 flex items-center gap-1.5 bg-surface text-primary-text px-3 py-1.5 rounded-xl text-[13px] font-medium active:opacity-70 transition-opacity"
+            onClick={() => void exportPdf()}
+            disabled={exporting}
+            className="shrink-0 flex items-center gap-1.5 bg-surface text-primary-text px-3 py-1.5 rounded-xl text-[13px] font-medium active:opacity-70 transition-opacity disabled:opacity-50"
             title="Экспорт сводки в PDF"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -420,7 +430,7 @@ export function GroupSettlement() {
               <path d="m7 10 5 5 5-5" />
               <path d="M5 21h14" />
             </svg>
-            PDF
+            {exporting ? '…' : 'PDF'}
           </button>
         )}
       </div>
