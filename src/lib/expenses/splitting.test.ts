@@ -10,6 +10,7 @@ import {
   annotateExpensesWithSplit,
   computePersonExpenseBreakdown,
   allocateSettlement,
+  roomSettledAmount,
   type ParticipantInput,
   type ExpenseInput,
 } from './splitting'
@@ -384,6 +385,66 @@ describe('annotateExpensesWithSplit', () => {
     }
     expect(byCategory.get('food')).toBe(90) // 50 (split share) + 40 (personal)
     expect(byCategory.get('travel')).toBe(100) // 100 (split share)
+  })
+})
+
+describe('roomSettledAmount', () => {
+  // Room roster: Ксюша, Maksim, Оля. Сергей and Костя are outside names.
+  const room = new Set(['ксюша', 'maksim', 'оля'])
+  const isRoomMember = (name: string) => room.has(name.trim().toLowerCase())
+
+  // The "Хата гродно" case: Ксюша fronted 400, five people split it equally,
+  // Сергей and Maksim have handed their 80 back.
+  const hataParticipants = (over: Record<string, number> = {}): ParticipantInput[] =>
+    [
+      { id: 'ksusha', name: 'Ксюша' },
+      { id: 'sergey', name: 'Сергей', settledAmount: 80 },
+      { id: 'maksim', name: 'Maksim', settledAmount: 80 },
+      { id: 'kostya', name: 'Костя' },
+      { id: 'olya', name: 'Оля' },
+    ].map((row) => p({ ...row, settledAmount: over[row.id] ?? row.settledAmount }))
+
+  it('counts only what room members actually handed over', () => {
+    // Maksim's 80 is the only room money that moved: Ксюша fronted the bill but
+    // has not marked her own share, Оля has not paid, Сергей is not in the room.
+    expect(roomSettledAmount(400, hataParticipants(), new Map(), isRoomMember)).toBe(80)
+  })
+
+  it('grows as more room members pay their share', () => {
+    expect(
+      roomSettledAmount(400, hataParticipants({ olya: 80 }), new Map(), isRoomMember),
+    ).toBe(160)
+    expect(
+      roomSettledAmount(400, hataParticipants({ olya: 80, ksusha: 80 }), new Map(), isRoomMember),
+    ).toBe(240)
+  })
+
+  it('counts a personal (unsplit) expense in full', () => {
+    expect(roomSettledAmount(400, [], new Map(), isRoomMember)).toBe(400)
+  })
+
+  it('never exceeds a participant share when a repayment overshoots', () => {
+    const participants = [p({ id: 'maksim', name: 'Maksim', settledAmount: 500 })]
+    expect(roomSettledAmount(100, participants, new Map(), isRoomMember)).toBe(100)
+  })
+
+  it('resolves item-mode shares like the settlement does', () => {
+    const participants = [
+      p({ id: 'maksim', name: 'Maksim', shareMode: 'items', itemIds: ['i1'], settledAmount: 30 }),
+      p({ id: 'kostya', name: 'Костя', settledAmount: 70 }),
+    ]
+    // Maksim's item share is 25, so only 25 of his recorded 30 counts.
+    expect(
+      roomSettledAmount(100, participants, new Map([['i1', 25]]), isRoomMember),
+    ).toBe(25)
+  })
+
+  it('ignores negative or missing settled amounts', () => {
+    const participants = [
+      p({ id: 'maksim', name: 'Maksim', settledAmount: -10 }),
+      p({ id: 'olya', name: 'Оля' }),
+    ]
+    expect(roomSettledAmount(100, participants, new Map(), isRoomMember)).toBe(0)
   })
 })
 

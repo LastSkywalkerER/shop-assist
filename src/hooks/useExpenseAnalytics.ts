@@ -8,9 +8,16 @@ import type {
   ReceiptDocument,
   ReceiptItemDocument,
   CurrencyRateDocument,
+  ExpenseParticipantDocument,
 } from '../db/types'
 import { buildRateHistoryMap, convertToBaseAtDate } from '../lib/currency/dateRates'
-import { lineItemTotal } from '../lib/expenses/splitting'
+import {
+  lineItemTotal,
+  buildItemTotals,
+  roomSettledAmount,
+  type ParticipantInput,
+} from '../lib/expenses/splitting'
+import { useRoomMemberNames } from './useRoomMemberNames'
 import {
   dateKeyOf,
   resolveBounds,
@@ -77,6 +84,11 @@ const NO_GROUP_LABEL = 'Без группы'
  *
  * Groups are an independent dimension: the category and group filters are
  * combined with AND, so selecting both shows their intersection.
+ *
+ * Split expenses are counted at what the room actually paid — the sum its
+ * members have really handed over — rather than at the bill the payer fronted;
+ * see {@link roomSettledAmount}. Receipt-item pies are untouched: an item's
+ * price is a property of the receipt, not of who ended up paying for it.
  */
 export function useExpenseAnalytics(
   period: AnalyticsPeriod,
@@ -91,6 +103,7 @@ export function useExpenseAnalytics(
   const receiptsCol = useRxCollection<ReceiptDocument>('receipts')
   const receiptItemsCol = useRxCollection<ReceiptItemDocument>('receiptItems')
   const ratesCol = useRxCollection<CurrencyRateDocument>('currencyRates')
+  const participantsCol = useRxCollection<ExpenseParticipantDocument>('expenseParticipants')
 
   const { data: expenses, loading } = useRxQuery(expensesCol)
   const { data: categories } = useRxQuery(categoriesCol)
@@ -99,6 +112,8 @@ export function useExpenseAnalytics(
   const { data: receipts } = useRxQuery(receiptsCol)
   const { data: receiptItems } = useRxQuery(receiptItemsCol)
   const { data: rates } = useRxQuery(ratesCol)
+  const { data: allParticipants } = useRxQuery(participantsCol)
+  const { isRoomMember, known: roomKnown } = useRoomMemberNames()
 
   const categoryIdsKey = categoryIds.join(',')
   const groupNamesKey = groupNames.join('|')
@@ -133,6 +148,37 @@ export function useExpenseAnalytics(
       const superId = categorySuper.get(catId)
       return (superId ? superNames.get(superId) : undefined) ?? PIE_OTHER_LABEL
     }
+
+    // Split data, used to count a shared expense at what the room really paid.
+    const participantsByExpenseId = new Map<string, ParticipantInput[]>()
+    for (const p of allParticipants) {
+      const list = participantsByExpenseId.get(p.expenseId) ?? []
+      list.push({
+        id: p.id,
+        name: p.name,
+        shareMode: p.shareMode,
+        shareAmount: p.shareAmount,
+        itemIds: p.itemIds,
+        settledAmount: p.settledAmount,
+      })
+      participantsByExpenseId.set(p.expenseId, list)
+    }
+    const itemTotalsByExpenseId = buildItemTotals(receipts, receiptItems)
+
+    /**
+     * The share of an expense that belongs in the room's own statistics. Falls
+     * back to the full bill while the room roster is unknown (offline first
+     * launch / signed out), so the charts never collapse to zero.
+     */
+    const countedAmount = (expense: ExpenseDocument): number =>
+      roomKnown
+        ? roomSettledAmount(
+            expense.amount,
+            participantsByExpenseId.get(expense.id) ?? [],
+            itemTotalsByExpenseId.get(expense.id) ?? new Map(),
+            isRoomMember,
+          )
+        : expense.amount
 
     // Group filter — independent from categories, combined with AND.
     const groupFilter: Set<string> | null =
@@ -173,7 +219,13 @@ export function useExpenseAnalytics(
           NO_NAME_LABEL
         frequentExpenses.add(displayName, 1, dateKey)
 
-        const amountBase = convertToBaseAtDate(expense.amount, expense.currency, dateKey, rateHistory)
+        const counted = countedAmount(expense)
+        // Nothing of this expense has reached the room's own ledger yet — it
+        // is a debt somebody else still owes, not spending. No conversion is
+        // needed either, so a missing rate is not a gap here.
+        if (counted === 0) continue
+
+        const amountBase = convertToBaseAtDate(counted, expense.currency, dateKey, rateHistory)
         if (amountBase === null) {
           conversionGaps++
           continue
@@ -236,5 +288,5 @@ export function useExpenseAnalytics(
       conversionGaps,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expenses, categories, superCategories, stores, receipts, receiptItems, rates, period, categoryIdsKey, superCategoryId, groupNamesKey, loading])
+  }, [expenses, categories, superCategories, stores, receipts, receiptItems, rates, allParticipants, isRoomMember, roomKnown, period, categoryIdsKey, superCategoryId, groupNamesKey, loading])
 }

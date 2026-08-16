@@ -22,6 +22,8 @@ import {
   type SettlementPayment,
 } from '../../lib/expenses/splitting'
 import { BASE_CURRENCY } from '../../lib/currency/convert'
+import { buildSettlementReportHtml } from '../../lib/expenses/settlementReport'
+import { printHtmlDocument } from '../../lib/pdf/printDocument'
 import { CalcInput } from '../shared/CalcInput'
 import { useConfirm } from '../../contexts/ConfirmDialogContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -229,6 +231,33 @@ export function GroupSettlement() {
   const fmt = (n: number) => `${n.toFixed(2)} ${base}`
   const hasData = result.perPerson.length > 0
 
+  /** Build the printable report and hand it to the browser's print dialog. */
+  const exportPdf = async () => {
+    const html = buildSettlementReportHtml({
+      groupName: group?.name ?? '',
+      baseCurrency: base,
+      perPerson: result.perPerson,
+      transfers: result.transfers,
+      breakdown,
+      payments: groupSettlements.map((s) => ({
+        from: s.fromName,
+        to: s.toName,
+        amount: s.amount,
+      })),
+      conversionGap: result.conversionGap,
+      generatedAt: new Date(),
+    })
+
+    const outcome = await printHtmlDocument(html)
+    if (outcome === 'printed') {
+      showToast('Выберите «Сохранить в PDF» в окне печати', 'info')
+    } else if (outcome === 'opened-tab') {
+      showToast('Сводка открыта в новой вкладке — сохраните её в PDF', 'info')
+    } else {
+      showToast('Не удалось открыть сводку — разрешите всплывающие окна', 'error')
+    }
+  }
+
   const renderPersonDetail = (personName: string) => {
     const entries = breakdown.get(personName) ?? []
     const personPayments = groupSettlements.filter(
@@ -374,9 +403,26 @@ export function GroupSettlement() {
 
   return (
     <div className="pb-10 flex-1 overflow-y-auto min-h-0">
-      <div className="p-4 pb-2">
-        <h2 className="text-[20px] font-bold text-text">Сводка по расходам</h2>
-        {group && <p className="text-[14px] text-text-hint mt-0.5">{group.name}</p>}
+      <div className="p-4 pb-2 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-[20px] font-bold text-text">Сводка по расходам</h2>
+          {group && <p className="text-[14px] text-text-hint mt-0.5 truncate">{group.name}</p>}
+        </div>
+        {hasData && (
+          <button
+            type="button"
+            onClick={() => void exportPdf()}
+            className="shrink-0 flex items-center gap-1.5 bg-surface text-primary-text px-3 py-1.5 rounded-xl text-[13px] font-medium active:opacity-70 transition-opacity"
+            title="Экспорт сводки в PDF"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3v12" />
+              <path d="m7 10 5 5 5-5" />
+              <path d="M5 21h14" />
+            </svg>
+            PDF
+          </button>
+        )}
       </div>
 
       {!hasData ? (
